@@ -19,6 +19,7 @@
 #include <wx/sizer.h>
 #include <wx/bmpbuttn.h>
 #include <wx/clrpicker.h>
+#include <wx/colordlg.h>
 #include <wx/wrapsizer.h>
 
 #include <algorithm>
@@ -100,7 +101,7 @@ private:
         int thumb_x = track_x + active_w - thumb_d / 2;
         thumb_x = std::clamp(thumb_x, track_x - thumb_d/2, track_x + track_w - thumb_d/2);
         int thumb_y = (sz.y - thumb_d) / 2;
-        dc.SetBrush(wxBrush(StateColor::darkModeColorFor(wxColour("#FFFFFF"))));
+        dc.SetBrush(wxBrush(wxColour("#FFFFFF")));
         dc.SetPen(wxPen(StateColor::darkModeColorFor(wxColour("#009688")), FromDIP(1)));
         dc.DrawEllipse(thumb_x, thumb_y, thumb_d, thumb_d);
     }
@@ -135,7 +136,7 @@ MixedFilamentDialog::MixedFilamentDialog(wxWindow* parent,
                                      const std::vector<std::string>& filament_colours)
     : DPIDialog(parent, wxID_ANY, _L("Add Mix"),
                 wxDefaultPosition, wxDefaultSize,
-                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
+                wxDEFAULT_DIALOG_STYLE)
     , m_filament_colours(filament_colours)
 {
     m_result.component_a   = 1;
@@ -149,7 +150,7 @@ MixedFilamentDialog::MixedFilamentDialog(wxWindow* parent,
                                      const Slic3r::MixedFilament& existing)
     : DPIDialog(parent, wxID_ANY, _L("Edit Mix"),
                 wxDefaultPosition, wxDefaultSize,
-                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
+                wxDEFAULT_DIALOG_STYLE)
     , m_filament_colours(filament_colours)
     , m_result(existing)
 {
@@ -575,10 +576,13 @@ void MixedFilamentDialog::build_ui()
                 m_tri_wx = 1.0/3.0; m_tri_wy = 1.0/3.0; m_tri_wz = 1.0/3.0;
             }
             resize_gradient_ids(new_count);
-            CallAfter([this]() {
-                rebuild_filament_rows();
-                update_compatibility_warning();
-                Layout(); Fit();
+            wxWeakRef<wxWindow> weak_self(this);
+            CallAfter([weak_self]() {
+                if (!weak_self) return;
+                auto* self = static_cast<MixedFilamentDialog*>(weak_self.get());
+                self->rebuild_filament_rows();
+                self->update_compatibility_warning();
+                self->Layout(); self->Fit();
             });
         });
         card_title_row->Add(m_btn_remove_filament, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
@@ -589,10 +593,13 @@ void MixedFilamentDialog::build_ui()
         m_btn_add_filament->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
             sync_rows_to_result();
             resize_gradient_ids((int)m_filament_rows.size() + 1);
-            CallAfter([this]() {
-                rebuild_filament_rows();
-                update_compatibility_warning();
-                Layout(); Fit();
+            wxWeakRef<wxWindow> weak_self(this);
+            CallAfter([weak_self]() {
+                if (!weak_self) return;
+                auto* self = static_cast<MixedFilamentDialog*>(weak_self.get());
+                self->rebuild_filament_rows();
+                self->update_compatibility_warning();
+                self->Layout(); self->Fit();
             });
         });
         card_title_row->Add(m_btn_add_filament, 0, wxALIGN_CENTER_VERTICAL);
@@ -880,7 +887,7 @@ void MixedFilamentDialog::build_ui()
 
         // Mix Effect title (same font as Blended Color)
         auto* effect_title = new wxStaticText(m_gradient_effect_card, wxID_ANY, _L("Mix Effect"));
-        effect_title->SetFont(Label::Body_12);
+        effect_title->SetFont(Label::Body_14);
         effect_title->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#242424")));
         effect_title->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#FFFFFF")));
         m_gradient_effect_card_sizer->Add(effect_title, 0, wxTOP | wxLEFT | wxRIGHT, FromDIP(16));
@@ -1268,6 +1275,8 @@ void MixedFilamentDialog::build_ui()
         collect_result();
         EndModal(wxID_OK);
     });
+
+    Bind(wxEVT_CLOSE_WINDOW, [this](wxCloseEvent&) { EndModal(wxID_CANCEL); });
 
     Fit();
     CentreOnParent();
@@ -1674,7 +1683,7 @@ void MixedFilamentDialog::rebuild_filament_rows()
 
         auto* row_lbl = new wxStaticText(m_filament_rows_panel, wxID_ANY,
                                          wxString::Format(_L("Filament %d"), i + 1),
-                                         wxDefaultPosition, wxSize(FromDIP(48), -1));
+                                         wxDefaultPosition, wxSize(FromDIP(50), -1));
         row_lbl->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#242424")));
         row_lbl->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#FFFFFF")));
         row->Add(row_lbl, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(12));
@@ -2072,9 +2081,13 @@ void MixedFilamentDialog::update_ratio_or_tri_visibility()
 
     // Update add/remove button visibility
     bool can_remove = !is_match_mode && !is_gradient_mode && !is_cycle_mode && (n > 2);
-    bool can_add = !is_match_mode && !is_gradient_mode && !is_cycle_mode && (n < max_filaments_for_mode(m_current_mode));
+    bool show_add = !is_match_mode && !is_gradient_mode && !is_cycle_mode && n < max_filaments_for_mode(m_current_mode);
+    bool can_add = n < (int)m_filament_colours.size();
     if (m_btn_remove_filament) m_btn_remove_filament->Show(can_remove);
-    if (m_btn_add_filament)    m_btn_add_filament->Show(can_add);
+    if (m_btn_add_filament) {
+        m_btn_add_filament->Show(show_add);
+        m_btn_add_filament->Enable(can_add);
+    }
 
     // Update filament card title visibility
     if (m_filament_card_title) m_filament_card_title->Show(show_filament_rows);
@@ -3119,7 +3132,7 @@ void MixedFilamentDialog::validate_cycle_pattern()
             return;
         }
         if (!parsed.invalid_token.empty()) {
-            set_error(_L("Invalid token in pattern. Please check the pattern syntax."));
+            set_error(_L("Unrecognized pattern format. Please check the pattern syntax."));
             return;
         }
     }

@@ -1246,6 +1246,8 @@ public:
             });
         }
 
+        Bind(wxEVT_CLOSE_WINDOW, [this](wxCloseEvent&) { EndModal(wxID_CANCEL); });
+
         CentreOnParent();
         wxGetApp().UpdateDlgDarkUI(this);
     }
@@ -3295,6 +3297,8 @@ public:
         SetSizerAndFit(root);
         SetMinSize(wxSize(FromDIP(380), std::max(GetSize().GetHeight(), FromDIP(460))));
         update_weight_labels();
+
+        Bind(wxEVT_CLOSE_WINDOW, [this](wxCloseEvent&) { EndModal(wxID_CANCEL); });
 
         if (m_color_map) {
             m_color_map->Bind(wxEVT_SLIDER, [this](wxCommandEvent &) {
@@ -10031,13 +10035,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                                     "mixed_filament_pointillism_pixel_size",
                                     "mixed_filament_pointillism_line_gap",
                                     "mixed_filament_component_bias_enabled",
-                                    "mixed_filament_surface_indentation",
-                                    "dithering_z_step_size",
-                                    "dithering_local_z_mode",
-                                    "dithering_local_z_whole_objects",
-                                    "dithering_local_z_infill",
-                                    "dithering_local_z_direct_multicolor",
-                                    "dithering_step_painted_zones_only"
+                                    "mixed_filament_surface_indentation"
                                 };
                                 preset_bundle->project_config.apply_only(config_loaded, imported_project_option_keys, true);
                                 if (current_num_filaments != desired_physical_filaments) {

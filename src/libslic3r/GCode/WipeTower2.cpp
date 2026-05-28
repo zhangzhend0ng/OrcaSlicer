@@ -1659,7 +1659,7 @@ WipeTower::ToolChangeResult WipeTower2::tool_change(size_t tool)
                                      << " current_tool=" << m_current_tool
                                      << " requested_new_tool=" << tool
                                      << " planned_sequence=[" << planned_sequence.str() << "]";
-            throw Slic3r::RuntimeError("Wipe tower toolchange not found in plan.");
+            return {};
         }
     }
 
@@ -2586,6 +2586,9 @@ void WipeTower2::generate(std::vector<std::vector<WipeTower::ToolChangeResult>>&
         int planSize = static_cast<int>(m_plan.size());
         for (int idx = 0; idx < planSize; idx++) {
             for (auto& toolchange : m_plan[idx].tool_changes) {
+                toolchange = set_toolchange(toolchange.old_tool, toolchange.new_tool, m_plan[idx].height, toolchange.wipe_volume);
+            }
+            for (auto& toolchange : m_plan[idx].local_z_tool_changes) {
                 toolchange = set_toolchange(toolchange.old_tool, toolchange.new_tool, m_plan[idx].height, toolchange.wipe_volume);
             }
         }
