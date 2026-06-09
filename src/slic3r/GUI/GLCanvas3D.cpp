@@ -1203,7 +1203,9 @@ GLCanvas3D::GLCanvas3D(wxGLCanvas* canvas, Bed3D &bed)
 
 GLCanvas3D::~GLCanvas3D()
 {
-    reset_volumes();
+    if (m_canvas != nullptr) {
+        reset_volumes();
+    }
 
     m_sel_plate_toolbar.del_all_item();
     m_sel_plate_toolbar.del_stats_item();
@@ -1350,7 +1352,8 @@ void GLCanvas3D::reset_volumes()
 
     _set_current();
 
-    m_selection.clear();
+    if (wxGetApp().plater())
+        m_selection.clear();
     m_volumes.clear();
     m_dirty = true;
 

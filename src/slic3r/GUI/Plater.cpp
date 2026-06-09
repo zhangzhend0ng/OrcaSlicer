@@ -9480,6 +9480,13 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
 
 Plater::priv::~priv()
 {
+    // Reset canvas volumes while priv is still alive.
+    // During C++ destruction, ~priv() runs BEFORE ~wxPanel() destroys child
+    // windows (view3D/preview/assemble_view → GLCanvas3D).  If we don't clear
+    // volumes now, GLCanvas3D::~GLCanvas3D → reset_volumes() → m_selection.clear()
+    // will reach back to an already-destroyed priv via Plater::canvas3D().
+    reset_canvas_volumes();
+
     if (config != nullptr)
         delete config;
     // Saves the database of visited (already shown) hints into hints.ini.
