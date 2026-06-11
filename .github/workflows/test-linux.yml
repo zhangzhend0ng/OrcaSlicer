@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - ci-test
       - 2.2.0
       - release/*
     paths:
@@ -15,6 +16,7 @@ on:
   pull_request:
     branches:
       - main
+      - ci-test
       - 2.2.0
       - release/*
     paths:

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - ci-test
       - release/*
     paths:
       - 'src/**'
@@ -14,6 +15,7 @@ on:
   pull_request:
     branches:
       - main
+      - ci-test
       - release/*
     paths:
       - 'src/**'
