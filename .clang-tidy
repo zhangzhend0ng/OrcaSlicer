@@ -1,0 +1,88 @@
+# .clang-tidy — OrcaSlicer static analysis configuration
+# Run: clang-tidy -p build/ file.cpp
+# Or: run-clang-tidy -p build/ -quiet
+#
+# Checks are ordered by category: bug-prone → modernize → readability → performance
+
+Checks: >
+  -*,
+  # ── Bug-prone / correctness ──
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+
+  # ── Modern C++ (targeting C++17) ──
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  -modernize-use-auto,
+  -modernize-use-nodiscard,
+
+  # ── Performance ──
+  performance-*,
+  -performance-no-int-to-ptr,
+  -performance-avoid-endl,
+
+  # ── Readability ──
+  readability-*,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-function-cognitive-complexity,
+  -readability-avoid-return-with-void-value,
+  -readability-suspicious-call-argument,
+  -readability-container-contains,
+
+  # ── Misc ──
+  misc-*,
+  -misc-no-recursion,
+  -misc-non-private-member-variables-in-classes,
+  -misc-include-cleaner,
+
+  # ── Portability ──
+  portability-*,
+
+  # ── Google / LLVM conventions (subset) ──
+  google-explicit-constructor,
+  google-readability-casting,
+
+  # ── C++ Core Guidelines ──
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-special-member-functions,
+
+# ── Check options ──
+CheckOptions:
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelBack
+  - key: readability-identifier-naming.VariableCase
+    value: camelBack
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UPPER_CASE
+  - key: modernize-use-override.IgnoreDestructors
+    value: '1'
+  - key: modernize-use-equals-default.IgnoreMacros
+    value: '0'
+
+# ── Header filter ──
+HeaderFilterRegex: 'src/.*'
+
+# ── Format style ──
+FormatStyle: file
