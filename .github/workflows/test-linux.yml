@@ -64,7 +64,7 @@ jobs:
             libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules pkgconf \
             libglu1-mesa-dev libcairo2-dev libgtk-3-dev libsoup2.4-dev libwebkit2gtk-4.1-dev \
             libgstreamer1.0-dev libgstreamer-plugins-good1.0-dev libgstreamer-plugins-base1.0-dev \
-            gstreamer1.0-plugins-bad wget sudo autoconf curl libunwind-dev texinfo
+            gstreamer1.0-plugins-bad wget sudo autoconf curl libunwind-dev texinfo ccache
 
       - name: Install dependencies from build_linux.sh
         shell: bash
@@ -82,6 +82,11 @@ jobs:
           mkdir -p deps/build/destdir
           ./build_linux.sh -dr
 
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ${{ matrix.os }}-release
+
       - name: Configure CMake
         shell: bash
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -90,6 +95,80 @@ jobs:
         shell: bash
         run: cmake --build build --target tests --parallel
 
-      - name: Run tests
+      - name: Detect changed modules
+        id: changed
+        uses: tj-actions/changed-files@v46
+        with:
+          files_yaml: |
+            core:
+              - src/libslic3r/**
+            gui:
+              - src/slic3r/**
+            cmake:
+              - '**/CMakeLists.txt'
+              - cmake/**
+            test_infra:
+              - tests/*.hpp
+              - tests/*.cpp
+              - tests/data/**
+            test_libslic3r:
+              - tests/libslic3r/**
+            test_fff_print:
+              - tests/fff_print/**
+            test_sla_print:
+              - tests/sla_print/**
+            test_slic3rutils:
+              - tests/slic3rutils/**
+            test_libnest2d:
+              - tests/libnest2d/**
+            ci_config:
+              - .github/workflows/**
+
+      - name: Determine test filter
+        id: filter
         shell: bash
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          if [ "${{ steps.changed.outputs.core_any_changed }}" = "true" ] || \
+             [ "${{ steps.changed.outputs.cmake_any_changed }}" = "true" ] || \
+             [ "${{ steps.changed.outputs.test_infra_any_changed }}" = "true" ] || \
+             [ "${{ steps.changed.outputs.ci_config_any_changed }}" = "true" ]; then
+            echo "filter=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.gui_any_changed }}" = "true" ]; then
+            echo "filter=slic3rutils" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_libslic3r_any_changed }}" = "true" ]; then
+            echo "filter=libslic3r" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_fff_print_any_changed }}" = "true" ]; then
+            echo "filter=fff_print" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_sla_print_any_changed }}" = "true" ]; then
+            echo "filter=sla_print" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_slic3rutils_any_changed }}" = "true" ]; then
+            echo "filter=slic3rutils" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_libnest2d_any_changed }}" = "true" ]; then
+            echo "filter=libnest2d" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "filter=__SKIP__" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        if: steps.filter.outputs.filter != '__SKIP__'
+        shell: bash
+        run: |
+          if [ -n "${{ steps.filter.outputs.filter }}" ]; then
+            echo "Running filtered tests: -R ${{ steps.filter.outputs.filter }}"
+            ctest --test-dir build --output-on-failure -R "${{ steps.filter.outputs.filter }}"
+          else
+            echo "Running all tests"
+            ctest --test-dir build --output-on-failure
+          fi

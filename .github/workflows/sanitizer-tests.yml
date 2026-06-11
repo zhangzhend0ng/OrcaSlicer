@@ -94,10 +94,81 @@ jobs:
         shell: bash
         run: cmake --build build_asan --target tests --parallel
 
-      - name: Run tests with ASan
-        shell: bash
-        run: ctest --test-dir build_asan --output-on-failure --timeout 300
+      - name: Detect changed modules
+        id: changed
+        uses: tj-actions/changed-files@v46
+        with:
+          files_yaml: |
+            core:
+              - src/libslic3r/**
+            gui:
+              - src/slic3r/**
+            cmake:
+              - '**/CMakeLists.txt'
+              - cmake/**
+            test_infra:
+              - tests/*.hpp
+              - tests/*.cpp
+              - tests/data/**
+            test_libslic3r:
+              - tests/libslic3r/**
+            test_fff_print:
+              - tests/fff_print/**
+            test_sla_print:
+              - tests/sla_print/**
+            test_slic3rutils:
+              - tests/slic3rutils/**
+            test_libnest2d:
+              - tests/libnest2d/**
+            ci_config:
+              - .github/workflows/**
 
+      - name: Determine test filter
+        id: filter
+        shell: bash
+        run: |
+          if [ "${{ steps.changed.outputs.core_any_changed }}" = "true" ] || \
+             [ "${{ steps.changed.outputs.cmake_any_changed }}" = "true" ] || \
+             [ "${{ steps.changed.outputs.test_infra_any_changed }}" = "true" ] || \
+             [ "${{ steps.changed.outputs.ci_config_any_changed }}" = "true" ]; then
+            echo "filter=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.gui_any_changed }}" = "true" ]; then
+            echo "filter=slic3rutils" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_libslic3r_any_changed }}" = "true" ]; then
+            echo "filter=libslic3r" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_fff_print_any_changed }}" = "true" ]; then
+            echo "filter=fff_print" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_sla_print_any_changed }}" = "true" ]; then
+            echo "filter=sla_print" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_slic3rutils_any_changed }}" = "true" ]; then
+            echo "filter=slic3rutils" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_libnest2d_any_changed }}" = "true" ]; then
+            echo "filter=libnest2d" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "filter=__SKIP__" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests with ASan
+        if: steps.filter.outputs.filter != '__SKIP__'
+        shell: bash
+        run: |
+          if [ -n "${{ steps.filter.outputs.filter }}" ]; then
+            ctest --test-dir build_asan --output-on-failure --timeout 300 -R "${{ steps.filter.outputs.filter }}"
+          else
+            ctest --test-dir build_asan --output-on-failure --timeout 300
+          fi
   # ── UBSan (UndefinedBehaviorSanitizer) ──────────────────────────────────
   ubsan:
     name: UBSan (${{ matrix.os }})
@@ -163,6 +234,78 @@ jobs:
         shell: bash
         run: cmake --build build_ubsan --target tests --parallel
 
-      - name: Run tests with UBSan
+      - name: Detect changed modules
+        id: changed
+        uses: tj-actions/changed-files@v46
+        with:
+          files_yaml: |
+            core:
+              - src/libslic3r/**
+            gui:
+              - src/slic3r/**
+            cmake:
+              - '**/CMakeLists.txt'
+              - cmake/**
+            test_infra:
+              - tests/*.hpp
+              - tests/*.cpp
+              - tests/data/**
+            test_libslic3r:
+              - tests/libslic3r/**
+            test_fff_print:
+              - tests/fff_print/**
+            test_sla_print:
+              - tests/sla_print/**
+            test_slic3rutils:
+              - tests/slic3rutils/**
+            test_libnest2d:
+              - tests/libnest2d/**
+            ci_config:
+              - .github/workflows/**
+
+      - name: Determine test filter
+        id: filter
         shell: bash
-        run: ctest --test-dir build_ubsan --output-on-failure --timeout 300
+        run: |
+          if [ "${{ steps.changed.outputs.core_any_changed }}" = "true" ] || \
+             [ "${{ steps.changed.outputs.cmake_any_changed }}" = "true" ] || \
+             [ "${{ steps.changed.outputs.test_infra_any_changed }}" = "true" ] || \
+             [ "${{ steps.changed.outputs.ci_config_any_changed }}" = "true" ]; then
+            echo "filter=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.gui_any_changed }}" = "true" ]; then
+            echo "filter=slic3rutils" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_libslic3r_any_changed }}" = "true" ]; then
+            echo "filter=libslic3r" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_fff_print_any_changed }}" = "true" ]; then
+            echo "filter=fff_print" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_sla_print_any_changed }}" = "true" ]; then
+            echo "filter=sla_print" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_slic3rutils_any_changed }}" = "true" ]; then
+            echo "filter=slic3rutils" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ steps.changed.outputs.test_libnest2d_any_changed }}" = "true" ]; then
+            echo "filter=libnest2d" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "filter=__SKIP__" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests with UBSan
+        if: steps.filter.outputs.filter != '__SKIP__'
+        shell: bash
+        run: |
+          if [ -n "${{ steps.filter.outputs.filter }}" ]; then
+            ctest --test-dir build_ubsan --output-on-failure --timeout 300 -R "${{ steps.filter.outputs.filter }}"
+          else
+            ctest --test-dir build_ubsan --output-on-failure --timeout 300
+          fi
