@@ -1,4 +1,4 @@
-# cmake/sanitizers.cmake — AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan)
+﻿# cmake/sanitizers.cmake — AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan)
 #
 # Provides options ENABLE_ASAN and ENABLE_UBSAN that add the appropriate
 # compiler and linker flags for GCC, Clang, and MSVC.

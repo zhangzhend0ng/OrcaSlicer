@@ -1,4 +1,4 @@
-# cmake/catch2.cmake — FetchContent configuration for Catch2 v3
+﻿# cmake/catch2.cmake — FetchContent configuration for Catch2 v3
 #
 # This module downloads Catch2 v3.x at configure time and makes the following
 # targets available:

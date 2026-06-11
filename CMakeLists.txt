@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+﻿cmake_minimum_required(VERSION 3.13)
 
 # Verify that your CMake version is exactly 3.31.x series or lower on windows
 if ( ((MSVC) OR (WIN32)) AND (${CMAKE_VERSION} VERSION_GREATER_EQUAL "4.0") )
@@ -55,6 +55,9 @@ if (APPLE)
 endif ()
 
 project(Snapmaker_Orca)
+
+# Export compile_commands.json for clangd / clang-tidy / IDE support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include("version.inc")
 include(GNUInstallDirs)
@@ -887,6 +890,7 @@ if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+option(ORCA_SKIP_ENC_CHECK "Skip encoding checks (useful for ASan/Coverage builds)" OFF)
 if(BUILD_TESTS)
     if(NOT TARGET tests)
         add_custom_target(tests)
