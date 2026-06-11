@@ -56,6 +56,9 @@ endif ()
 
 project(Snapmaker_Orca)
 
+# Export compile_commands.json for clangd / clang-tidy / IDE support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 include("version.inc")
 include(GNUInstallDirs)
 include(CMakeDependentOption)
@@ -107,7 +110,14 @@ option(SLIC3R_PCH               "Use precompiled headers" 1)
 option(SLIC3R_MSVC_COMPILE_PARALLEL "Compile on Visual Studio in parallel" 1)
 option(SLIC3R_MSVC_PDB          "Generate PDB files on MSVC in Release mode" 1)
 option(SLIC3R_PERL_XS           "Compile XS Perl module and enable Perl unit and integration tests" 0)
-option(SLIC3R_ASAN              "Enable ASan on Clang and GCC" 0)
+
+# ── Sanitizers (legacy compat) ──────────────────────────────────────────────────
+# ENABLE_ASAN / ENABLE_UBSAN are declared in cmake/sanitizers.cmake.
+# SLIC3R_ASAN is the legacy name; forward with a deprecation warning.
+if(DEFINED SLIC3R_ASAN)
+    message(WARNING "SLIC3R_ASAN is deprecated — use ENABLE_ASAN instead")
+    set(ENABLE_ASAN ${SLIC3R_ASAN} CACHE BOOL "Enable AddressSanitizer (ASan)" FORCE)
+endif()
 
 # Sentry crash reporting - enabled only on Windows by default
 if (WIN32 OR APPLE)
@@ -391,24 +401,11 @@ if (NOT MSVC AND ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMP
 
 endif()
 
-if (SLIC3R_ASAN)
-    # ASAN should be available on MSVC starting with Visual Studio 2019 16.9
-    # https://devblogs.microsoft.com/cppblog/address-sanitizer-for-msvc-now-generally-available/
-    add_compile_options(-fsanitize=address)
+# ── Sanitizers (ASan / UBSan) ──────────────────────────────────────────────────
+include(cmake/sanitizers.cmake)
 
-    if (NOT MSVC)
-        add_compile_options(-fno-omit-frame-pointer)
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
-        set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -fsanitize=address")
-    else()
-        add_compile_definitions(_DISABLE_STRING_ANNOTATION=1 _DISABLE_VECTOR_ANNOTATION=1)
-    endif ()
-
-    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lasan")
-    endif ()
-endif ()
+# ── Code Coverage ──────────────────────────────────────────────────────────────
+include(cmake/coverage.cmake)
 
 if (APPLE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=partial-availability -Werror=unguarded-availability -Werror=unguarded-availability-new")
@@ -894,6 +891,18 @@ endif()
 
 if(BUILD_TESTS)
     add_subdirectory(tests)
+endif()
+
+option(ORCA_SKIP_ENC_CHECK "Skip encoding checks (useful for ASan/Coverage builds)" OFF)
+if(BUILD_TESTS)
+    if(NOT TARGET tests)
+        add_custom_target(tests)
+    endif()
+    foreach(_t IN ITEMS libnest2d_tests libslic3r_tests slic3rutils_tests fff_print_tests sla_print_tests)
+        if(TARGET ${_t})
+            add_dependencies(tests ${_t})
+        endif()
+    endforeach()
 endif()
 
 if (NOT WIN32 AND NOT APPLE)

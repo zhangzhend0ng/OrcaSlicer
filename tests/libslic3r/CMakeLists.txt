@@ -19,11 +19,11 @@ add_executable(${_TEST_NAME}_tests
 	test_mutable_priority_queue.cpp
 	test_stl.cpp
 	test_meshboolean.cpp
-	# test_marchingsquares.cpp
+	test_marchingsquares.cpp
 	test_timeutils.cpp
 	test_voronoi.cpp
     test_optimizers.cpp
-    # test_png_io.cpp
+    test_png_io.cpp
     test_indexed_triangle_set.cpp
     ../libnest2d/printer_parts.cpp
 	)
@@ -48,5 +48,5 @@ if (WIN32)
 	endif()
 endif()
 
-# catch_discover_tests(${_TEST_NAME}_tests TEST_PREFIX "${_TEST_NAME}: ")
-add_test(${_TEST_NAME}_tests ${_TEST_NAME}_tests ${CATCH_EXTRA_ARGS})
+catch_discover_tests(${_TEST_NAME}_tests TEST_PREFIX "${_TEST_NAME}: " EXTRA_ARGS ${CATCH_EXTRA_ARGS})
+# add_test(${_TEST_NAME}_tests ${_TEST_NAME}_tests ${CATCH_EXTRA_ARGS})
