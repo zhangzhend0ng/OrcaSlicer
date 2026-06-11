@@ -1,4 +1,5 @@
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
 
 #include <numeric>
 #include <iostream>
@@ -66,7 +67,7 @@ SCENARIO("Various Clipper operations - xs/t/11_clipper.t", "[ClipperUtils]") {
     GIVEN("polyline") {
         Polyline polyline { { 50, 150 }, { 300, 150 } };
         WHEN("intersection_pl") {
-            Polylines result = Slic3r::intersection_pl({ polyline }, { square, hole_in_square });
+            Polylines result = Slic3r::intersection_pl(Polylines { polyline }, Polygons { square, hole_in_square });
             THEN("correct number of result lines") {
                 REQUIRE(result.size() == 2);
             }
@@ -99,7 +100,7 @@ SCENARIO("Various Clipper operations - xs/t/11_clipper.t", "[ClipperUtils]") {
 			{ 74730000, 74730000 }, { 55270000, 74730000 }, { 55270000, 68063296 }, { 44730000, 68063296 }, { 44730000, 74730000 }, { 25270000, 74730000 }, { 25270000, 55270000 }, { 31936670, 55270000 },
 			{ 31936670, 44730000 }, { 25270000, 44730000 }, { 25270000, 25270000 }, { 44730000, 25270000 }, { 44730000, 31936670 } };
 		Slic3r::Polygon clip { {75200000, 45200000}, {54800000, 45200000}, {54800000, 24800000}, {75200000, 24800000} };
-        Slic3r::Polylines result = Slic3r::intersection_pl(subject, { clip });
+        Slic3r::Polylines result = Slic3r::intersection_pl(subject, Polygons { clip });
 		THEN("intersection_pl - result is not empty") {
 			REQUIRE(result.size() == 1);
 		}
@@ -117,12 +118,12 @@ SCENARIO("Various Clipper operations - xs/t/11_clipper.t", "[ClipperUtils]") {
 	GIVEN("Clipper bug #126") {
 		Slic3r::Polyline subject { { 200000, 19799999 }, { 200000, 200000 }, { 24304692, 200000 }, { 15102879, 17506106 }, { 13883200, 19799999 }, { 200000, 19799999 } };
 		Slic3r::Polygon clip { { 15257205, 18493894 }, { 14350057, 20200000 }, { -200000, 20200000 }, { -200000, -200000 }, { 25196917, -200000 } };
-		Slic3r::Polylines result = Slic3r::intersection_pl(subject, { clip });
+        Slic3r::Polylines result = Slic3r::intersection_pl(subject, Polygons { clip });
 		THEN("intersection_pl - result is not empty") {
 			REQUIRE(result.size() == 1);
 		}
 		THEN("intersection_pl - result has same length as subject polyline") {
-			REQUIRE(result.front().length() == Approx(subject.length()));
+			REQUIRE_THAT(result.front().length(), WithinRel(subject.length(), 0.001));
 		}
 	}
 
@@ -185,7 +186,7 @@ SCENARIO("Various Clipper operations - t/clipper.t", "[ClipperUtils]") {
                 ExPolygon match({ { 20, 18 }, { 10, 18 }, { 10, 12 }, { 20, 12 } },
                                 { { 14, 16 }, { 16, 16 }, { 16, 14 }, { 14, 14 } });
                 REQUIRE(intersection.size() == 1);
-                REQUIRE(intersection.front().area() == Approx(match.area()));
+                REQUIRE_THAT(intersection.front().area(), WithinRel(match.area(), 0.001));
             }
         }
     }
@@ -206,7 +207,7 @@ SCENARIO("Various Clipper operations - t/clipper.t", "[ClipperUtils]") {
 			ExPolygons diff = Slic3r::diff_ex(Polygons{ square, square2 }, Polygons{ hole });
             THEN("difference of a cw from two ccw is a contour with one hole") {
                 REQUIRE(diff.size() == 1);
-                REQUIRE(diff.front().area() == Approx(ExPolygon({ {40, 40}, {0, 40}, {0, 0}, {40, 0} }, { {15, 25}, {25, 25}, {25, 15}, {15, 15} }).area()));
+                REQUIRE_THAT(diff.front().area(), WithinRel(ExPolygon({ {40, 40}, {0, 40}, {0, 0}, {40, 0} }, { {15, 25}, {25, 25}, {25, 15}, {15, 15} }).area(), 0.001));
             }
         }
     }
@@ -277,25 +278,25 @@ TEST_CASE("Traversing Clipper PolyTree", "[ClipperUtils]") {
 
     SECTION("Traverse into Polygons WITHOUT spatial ordering") {
         Polygons output;
-        REQUIRE(area_sum == Approx(polytree_area(tree.GetFirst(), &output)));
+        REQUIRE_THAT(area_sum, WithinRel(polytree_area(tree.GetFirst(), &output), 0.001));
         REQUIRE(output.size() == reference.size());
     }
     
     SECTION("Traverse into ExPolygons WITHOUT spatial ordering") {
         ExPolygons output;
-        REQUIRE(area_sum == Approx(polytree_area(tree.GetFirst(), &output)));
+        REQUIRE_THAT(area_sum, WithinRel(polytree_area(tree.GetFirst(), &output), 0.001));
         REQUIRE(count_polys(output) == reference.size());
     }
     
     SECTION("Traverse into Polygons WITH spatial ordering") {
         Polygons output;
-        REQUIRE(area_sum == Approx(polytree_area<e_ordering::ON>(tree.GetFirst(), &output)));
+        REQUIRE_THAT(area_sum, WithinRel(polytree_area<e_ordering::ON>(tree.GetFirst(), &output), 0.001));
         REQUIRE(output.size() == reference.size());
     }
     
     SECTION("Traverse into ExPolygons WITH spatial ordering") {
         ExPolygons output;
-        REQUIRE(area_sum == Approx(polytree_area<e_ordering::ON>(tree.GetFirst(), &output)));
+        REQUIRE_THAT(area_sum, WithinRel(polytree_area<e_ordering::ON>(tree.GetFirst(), &output), 0.001));
         REQUIRE(count_polys(output) == reference.size());
     }
 }
