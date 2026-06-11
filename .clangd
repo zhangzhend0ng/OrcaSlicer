@@ -1,0 +1,31 @@
+# .clangd — clangd language server configuration for OrcaSlicer
+#
+# clangd auto-discovers compile_commands.json in build/ directories.
+# Use CMAKE_EXPORT_COMPILE_COMMANDS=ON (enabled by default via CMakeLists.txt)
+# and symlink: ln -s build/compile_commands.json .
+
+CompileFlags:
+  # Remove -Werror flags so clangd shows warnings instead of errors.
+  # Tradeoff: IDE won’t replicate CI’s “warning as error” strictness.
+  # CI catches -Werror violations; this keeps the IDE responsive.
+  Remove: [-Werror, -Werror=*, -Wno-error=*]
+  Add: [-Wno-unknown-warning-option]
+
+Diagnostics:
+  ClangTidy:
+    Add: [performance-*, bugprone-*, modernize-*]
+    Remove: [modernize-use-trailing-return-type, readability-identifier-length, readability-magic-numbers]
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+
+Index:
+  Background: Build
+  StandardLibrary: Yes
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+
+Hover:
+  ShowAKA: Yes
