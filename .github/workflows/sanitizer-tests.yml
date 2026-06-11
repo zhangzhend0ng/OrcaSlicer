@@ -90,7 +90,7 @@ jobs:
 
       - name: Configure CMake with ASan
         shell: bash
-        run: cmake -S . -B build_asan -DCMAKE_BUILD_TYPE=Debug -DENABLE_ASAN=ON -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local"
+        run: cmake -S . -B build_asan -DCMAKE_BUILD_TYPE=Debug -DENABLE_ASAN=ON -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DOPENVDB_USE_STATIC_LIBS=ON
 
       - name: Build tests with ASan
         shell: bash
@@ -230,7 +230,7 @@ jobs:
 
       - name: Configure CMake with UBSan
         shell: bash
-        run: cmake -S . -B build_ubsan -DCMAKE_BUILD_TYPE=Debug -DENABLE_UBSAN=ON -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local"
+        run: cmake -S . -B build_ubsan -DCMAKE_BUILD_TYPE=Debug -DENABLE_UBSAN=ON -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DOPENVDB_USE_STATIC_LIBS=ON
 
       - name: Build tests with UBSan
         shell: bash
