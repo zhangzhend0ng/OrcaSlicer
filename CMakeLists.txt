@@ -56,6 +56,9 @@ endif ()
 
 project(Snapmaker_Orca)
 
+# Export compile_commands.json for clangd / clang-tidy / IDE support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 include("version.inc")
 include(GNUInstallDirs)
 include(CMakeDependentOption)
@@ -107,7 +110,14 @@ option(SLIC3R_PCH               "Use precompiled headers" 1)
 option(SLIC3R_MSVC_COMPILE_PARALLEL "Compile on Visual Studio in parallel" 1)
 option(SLIC3R_MSVC_PDB          "Generate PDB files on MSVC in Release mode" 1)
 option(SLIC3R_PERL_XS           "Compile XS Perl module and enable Perl unit and integration tests" 0)
-option(SLIC3R_ASAN              "Enable ASan on Clang and GCC" 0)
+
+# ── Sanitizers (legacy compat) ──────────────────────────────────────────────────
+# ENABLE_ASAN / ENABLE_UBSAN are declared in cmake/sanitizers.cmake.
+# SLIC3R_ASAN is the legacy name; forward with a deprecation warning.
+if(DEFINED SLIC3R_ASAN)
+    message(WARNING "SLIC3R_ASAN is deprecated — use ENABLE_ASAN instead")
+    set(ENABLE_ASAN ${SLIC3R_ASAN} CACHE BOOL "Enable AddressSanitizer (ASan)" FORCE)
+endif()
 
 # Sentry crash reporting - enabled only on Windows by default
 if (WIN32 OR APPLE)
@@ -391,24 +401,11 @@ if (NOT MSVC AND ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMP
 
 endif()
 
-if (SLIC3R_ASAN)
-    # ASAN should be available on MSVC starting with Visual Studio 2019 16.9
-    # https://devblogs.microsoft.com/cppblog/address-sanitizer-for-msvc-now-generally-available/
-    add_compile_options(-fsanitize=address)
+# ── Sanitizers (ASan / UBSan) ──────────────────────────────────────────────────
+include(cmake/sanitizers.cmake)
 
-    if (NOT MSVC)
-        add_compile_options(-fno-omit-frame-pointer)
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
-        set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -fsanitize=address")
-    else()
-        add_compile_definitions(_DISABLE_STRING_ANNOTATION=1 _DISABLE_VECTOR_ANNOTATION=1)
-    endif ()
-
-    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lasan")
-    endif ()
-endif ()
+# ── Code Coverage ──────────────────────────────────────────────────────────────
+include(cmake/coverage.cmake)
 
 if (APPLE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=partial-availability -Werror=unguarded-availability -Werror=unguarded-availability-new")
@@ -896,6 +893,18 @@ if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+option(ORCA_SKIP_ENC_CHECK "Skip encoding checks (useful for ASan/Coverage builds)" OFF)
+if(BUILD_TESTS)
+    if(NOT TARGET tests)
+        add_custom_target(tests)
+    endif()
+    foreach(_t IN ITEMS libnest2d_tests libslic3r_tests slic3rutils_tests fff_print_tests sla_print_tests)
+        if(TARGET ${_t})
+            add_dependencies(tests ${_t})
+        endif()
+    endforeach()
+endif()
+
 if (NOT WIN32 AND NOT APPLE)
     set(SLIC3R_APP_CMD "snapmaker-orca")
     configure_file(${LIBDIR}/dev-utils/platform/unix/build_appimage.sh.in ${CMAKE_CURRENT_BINARY_DIR}/build_appimage.sh USE_SOURCE_PERMISSIONS @ONLY)
@@ -942,15 +951,90 @@ set (CPACK_PACKAGE_INSTALL_DIRECTORY ${CPACK_PACKAGE_NAME})
 set (CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}/resources/images\\\\Snapmaker_Orca.ico")
 set (CPACK_NSIS_MUI_ICON "${CPACK_PACKAGE_ICON}")
 set (CPACK_NSIS_MUI_UNIICON "${CPACK_PACKAGE_ICON}")
-set (CPACK_NSIS_INSTALLED_ICON_NAME  "$INSTDIR\\\\snapmaker-orca.exe")
+set (CPACK_NSIS_INSTALLED_ICON_NAME "$INSTDIR\\\\snapmaker-orca.exe")
+set(CPACK_NSIS_UNINSTALL_NAME "Uninstall")
 set(CPACK_NSIS_INSTALL_SCRIPT "${CMAKE_SOURCE_DIR}/cmake/nsis/SnapmakerURLProtocols_install.nsh")
 set(CPACK_NSIS_UNINSTALL_SCRIPT "${CMAKE_SOURCE_DIR}/cmake/nsis/SnapmakerURLProtocols_uninstall.nsh")
+# Preinstall guard in one place:
+# 1) Block while app is running.
+# 2) If old version exists, uninstall it with clear failure reason.
+# We keep this in EXTRA_PREINSTALL because CPack's default .onInit uninstall prompt runs before section logic.
+set(CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS [=[
+SnapmakerOrcaPre_check_loop:
+  ExecWait 'cmd.exe /c tasklist /FI "IMAGENAME eq snapmaker-orca.exe" 2>nul | find /i "snapmaker-orca.exe" >nul' $0
+  IntCmp $0 0 SnapmakerOrcaPre_in_use SnapmakerOrcaPre_try_legacy SnapmakerOrcaPre_try_legacy
+SnapmakerOrcaPre_try_legacy:
+  ExecWait 'cmd.exe /c tasklist /FI "IMAGENAME eq Snapmaker_Orca.exe" 2>nul | find /i "Snapmaker_Orca.exe" >nul' $0
+  IntCmp $0 0 SnapmakerOrcaPre_in_use SnapmakerOrcaPre_idle SnapmakerOrcaPre_idle
+SnapmakerOrcaPre_idle:
+  Goto SnapmakerOrcaPre_done
+SnapmakerOrcaPre_in_use:
+  IfSilent SnapmakerOrcaPre_silent SnapmakerOrcaPre_prompt
+SnapmakerOrcaPre_silent:
+  SetErrorLevel 7
+  Quit
+SnapmakerOrcaPre_prompt:
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Snapmaker Orca is still running.$\nClose the program, then click Retry to continue, or Cancel to exit the installer." IDRETRY SnapmakerOrcaPre_check_loop
+  Abort
+SnapmakerOrcaPre_done:
+  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker_Orca" "UninstallString"
+  StrCmp $0 "" SnapmakerOrcaPre_read_hkcu_uninst SnapmakerOrcaPre_has_uninst
+SnapmakerOrcaPre_read_hkcu_uninst:
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker_Orca" "UninstallString"
+SnapmakerOrcaPre_has_uninst:
+  StrCmp $0 "" SnapmakerOrcaPre_finish
+
+  MessageBox MB_YESNOCANCEL|MB_ICONEXCLAMATION "Snapmaker_Orca is already installed.$\n$\nDo you want to uninstall the old version before installing the new one?" /SD IDYES IDYES SnapmakerOrcaPre_uninst IDNO SnapmakerOrcaPre_finish
+  Abort
+
+SnapmakerOrcaPre_uninst:
+  ClearErrors
+  StrCpy $2 $0 1 0
+  StrCmp $2 "$\"" SnapmakerOrcaPre_trim_first_quote SnapmakerOrcaPre_check_last_quote
+SnapmakerOrcaPre_trim_first_quote:
+  StrCpy $0 $0 "" 1
+SnapmakerOrcaPre_check_last_quote:
+  StrCpy $2 $0 1 -1
+  StrCmp $2 "$\"" SnapmakerOrcaPre_trim_last_quote SnapmakerOrcaPre_have_uninst_path
+SnapmakerOrcaPre_trim_last_quote:
+  StrCpy $0 $0 -1
+SnapmakerOrcaPre_have_uninst_path:
+
+  StrLen $2 "Uninstall.exe"
+  StrCpy $3 $0 -$2
+  ; $3 ends with "\" (e.g. ...\Snapmaker_Orca\). _?="...\" breaks Windows cmdline parsing
+  ; (\" escapes the closing quote), truncating _?= at the first space — strip trailing backslashes.
+SnapmakerOrcaPre_trim_inst_slash:
+  StrCpy $2 $3 1 -1
+  StrCmp $2 "\" SnapmakerOrcaPre_do_trim_slash SnapmakerOrcaPre_trim_slash_done
+SnapmakerOrcaPre_do_trim_slash:
+  StrCpy $3 $3 -1
+  Goto SnapmakerOrcaPre_trim_inst_slash
+SnapmakerOrcaPre_trim_slash_done:
+  IfFileExists "$0" 0 SnapmakerOrcaPre_uninst_launch_failed
+  ; Same as CMake CPack NSIS.template.in and NSIS maintainer guidance: use _?=$DIR with NO
+  ; extra quotes around the directory. _?="C:\Program Files\..." breaks parsing (log shows
+  ; _?="C:\Program Fil...) and causes uninstall failure. See NSIS forums t-212468.
+  ExecWait '"$0" /S _?=$3' $1
+  IfErrors SnapmakerOrcaPre_uninst_launch_failed 0
+  IntCmp $1 0 SnapmakerOrcaPre_finish SnapmakerOrcaPre_uninst_failed SnapmakerOrcaPre_uninst_failed
+
+SnapmakerOrcaPre_uninst_failed:
+  MessageBox MB_OK|MB_ICONSTOP "Uninstall failed.$\nUninstaller path: $0$\nWorking dir: $3$\nExit code: $1"
+  Abort
+
+SnapmakerOrcaPre_uninst_launch_failed:
+  MessageBox MB_OK|MB_ICONSTOP "Failed to start uninstaller process.$\nUninstaller path: $0$\nWorking dir: $3$\n$\nSystem error: the uninstall command could not be executed by Windows (IfErrors set).$\nPossible causes: missing/corrupted uninstaller, access denied, or invalid install directory."
+  Abort
+
+SnapmakerOrcaPre_finish:
+]=])
 set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
     CreateShortCut \\\"$DESKTOP\\\\Snapmaker Orca.lnk\\\" \\\"$INSTDIR\\\\snapmaker-orca.exe\\\"
 ")
 set (CPACK_PACKAGE_CHECKSUM SHA256)
 set (CPACK_PACKAGE_INSTALL_REGISTRY_KEY "Snapmaker_Orca")
-set (CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+set (CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL OFF)
 set (CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
 # set (CPACK_NSIS_MODIFY_PATH "ON")
 set(CPACK_PACKAGE_EXECUTABLES "snapmaker-orca;Snapmaker Orca")
@@ -959,4 +1043,5 @@ set (CPACK_RESOURCE_FILE_LICENSE ${CMAKE_SOURCE_DIR}/LICENSE.txt) # must also in
 
 set(CPACK_WIX_UPGRADE_GUID "058245e8-20e0-4a95-9ab7-1acfe17ad511")
 set(CPACK_GENERATOR NSIS)
+set(CPACK_VERBATIM_VARIABLES ON)
 include(CPack)
