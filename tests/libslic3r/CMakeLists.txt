@@ -32,7 +32,7 @@ if (TARGET OpenVDB::openvdb)
     target_sources(${_TEST_NAME}_tests PRIVATE test_hollowing.cpp)
 endif()
     
-target_link_libraries(${_TEST_NAME}_tests test_common libslic3r OpenSSL::Crypto)
+target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs OpenSSL::Crypto)
 if (WIN32)
     target_link_libraries(${_TEST_NAME}_tests bcrypt.lib)
 endif()
