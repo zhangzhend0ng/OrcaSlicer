@@ -16,7 +16,7 @@ add_executable(${_TEST_NAME}_tests
 	test_support_material.cpp
 	test_trianglemesh.cpp
 	)
-target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs OpenSSL::Crypto)
+target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb OpenSSL::Crypto)
 if (WIN32)
     target_link_libraries(${_TEST_NAME}_tests bcrypt.lib)
 endif()
