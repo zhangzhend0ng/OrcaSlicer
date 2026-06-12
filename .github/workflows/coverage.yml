@@ -100,10 +100,14 @@ jobs:
 
       - name: Build tests
         shell: bash
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
         run: cmake --build build_cov --target tests --parallel 2
 
       - name: Run tests with JUnit output
         shell: bash
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
         run: ctest --test-dir build_cov --output-on-failure --output-junit build_cov/test-results.xml
 
       - name: Upload test results
@@ -116,6 +120,8 @@ jobs:
       - name: Generate coverage report
         if: always()
         shell: bash
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
         run: |
           cmake --build build_cov --target coverage 2>&1 | tee build_cov/coverage-summary.txt
 

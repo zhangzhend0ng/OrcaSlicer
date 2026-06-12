@@ -92,7 +92,7 @@ jobs:
           ./build_linux.sh -dr
 
       - name: Fix permissions (post-build)
-        if: steps.cache_deps.outputs.cache-hit != "true"
+        if: steps.cache_deps.outputs.cache-hit != 'true'
         shell: bash
         run: sudo chown $USER -R ./
 
@@ -108,6 +108,8 @@ jobs:
 
       - name: Build tests
         shell: bash
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
         run: cmake --build build --target tests --parallel 2
 
       - name: Detect changed modules
@@ -143,34 +145,34 @@ jobs:
         id: filter
         shell: bash
         run: |
-          if [ "${{ steps.changed.outputs.core_any_changed }}" = "true" ] || \
-             [ "${{ steps.changed.outputs.cmake_any_changed }}" = "true" ] || \
-             [ "${{ steps.changed.outputs.test_infra_any_changed }}" = "true" ] || \
-             [ "${{ steps.changed.outputs.ci_config_any_changed }}" = "true" ]; then
+          if [ "${{ steps.changed.outputs.core_any_changed }}" = 'true' ] || \
+             [ "${{ steps.changed.outputs.cmake_any_changed }}" = 'true' ] || \
+             [ "${{ steps.changed.outputs.test_infra_any_changed }}" = 'true' ] || \
+             [ "${{ steps.changed.outputs.ci_config_any_changed }}" = 'true' ]; then
             echo "filter=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "${{ steps.changed.outputs.gui_any_changed }}" = "true" ]; then
+          if [ "${{ steps.changed.outputs.gui_any_changed }}" = 'true' ]; then
             echo "filter=slic3rutils" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "${{ steps.changed.outputs.test_libslic3r_any_changed }}" = "true" ]; then
+          if [ "${{ steps.changed.outputs.test_libslic3r_any_changed }}" = 'true' ]; then
             echo "filter=libslic3r" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "${{ steps.changed.outputs.test_fff_print_any_changed }}" = "true" ]; then
+          if [ "${{ steps.changed.outputs.test_fff_print_any_changed }}" = 'true' ]; then
             echo "filter=fff_print" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "${{ steps.changed.outputs.test_sla_print_any_changed }}" = "true" ]; then
+          if [ "${{ steps.changed.outputs.test_sla_print_any_changed }}" = 'true' ]; then
             echo "filter=sla_print" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "${{ steps.changed.outputs.test_slic3rutils_any_changed }}" = "true" ]; then
+          if [ "${{ steps.changed.outputs.test_slic3rutils_any_changed }}" = 'true' ]; then
             echo "filter=slic3rutils" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "${{ steps.changed.outputs.test_libnest2d_any_changed }}" = "true" ]; then
+          if [ "${{ steps.changed.outputs.test_libnest2d_any_changed }}" = 'true' ]; then
             echo "filter=libnest2d" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -179,13 +181,15 @@ jobs:
       - name: Run tests
         if: steps.filter.outputs.filter != '__SKIP__'
         shell: bash
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
         run: |
           if [ -n "${{ steps.filter.outputs.filter }}" ]; then
             echo "Running filtered tests: -R ${{ steps.filter.outputs.filter }}"
-            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 300 -R "${{ steps.filter.outputs.filter }}"
+            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml -R "${{ steps.filter.outputs.filter }}"
           else
             echo "Running all tests"
-            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 300
+            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml
           fi
 
       - name: Upload test results
