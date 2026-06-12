@@ -87,7 +87,7 @@ jobs:
 
       - name: Build tests
         shell: bash
-        run: cmake --build build_cov --target tests --parallel
+        run: cmake --build build_cov --target tests --parallel 1
 
       - name: Run tests with JUnit output
         shell: bash
