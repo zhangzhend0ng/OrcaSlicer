@@ -83,7 +83,7 @@ jobs:
           key: ubuntu-22.04-coverage
       - name: Configure CMake with coverage
         shell: bash
-        run: cmake -S . -B build_cov -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DOPENVDB_USE_STATIC_LIBS=ON
+        run: cmake -S . -B build_cov -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DOPENVDB_USE_STATIC_LIBS=ON -DSLIC3R_GUI=OFF
 
       - name: Build tests
         shell: bash
