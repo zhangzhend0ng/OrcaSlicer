@@ -29,6 +29,8 @@ endif()
 # UBSan: always opt-in due to -fno-sanitize-recover=all (breaks non-test binaries)
 option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan) — detect undefined behavior" OFF)
 
+include(CheckCXXCompilerFlag)
+
 # ── ASan ──────────────────────────────────────────────────────────────────────
 if(ENABLE_ASAN)
     # ASan is available on MSVC starting with Visual Studio 2019 16.9
@@ -57,10 +59,18 @@ if(ENABLE_UBSAN)
         add_compile_options(
             -fsanitize=undefined
             -fsanitize=signed-integer-overflow
-            -fsanitize=implicit-conversion
             -fno-sanitize-recover=all
         )
         add_link_options(-fsanitize=undefined)
+
+        # -fsanitize=implicit-conversion requires GCC 7+ but full support varies;
+        # probe at configure-time so the build doesn't break on older toolchains.
+        check_cxx_compiler_flag(-fsanitize=implicit-conversion HAS_IMPLICIT_CONVERSION)
+        if(HAS_IMPLICIT_CONVERSION)
+            add_compile_options(-fsanitize=implicit-conversion)
+        else()
+            message(STATUS "UBSan: -fsanitize=implicit-conversion not supported — skipped")
+        endif()
 
         if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             add_link_options(-lubsan)
