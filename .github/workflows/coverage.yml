@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/deps/build/destdir
-          key: ${{ runner.os }}-cache-orcaslicer_deps-coverage-${{ hashFiles('deps/**') }}
+          key: ${{ runner.os }}-cache-orcaslicer_deps-${{ hashFiles('deps/CMakeLists.txt', 'deps/*.cmake', 'deps/*/*.cmake', 'deps/*/*.patch') }}
 
       - uses: lukka/get-cmake@latest
         with:
