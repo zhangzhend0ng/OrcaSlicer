@@ -76,6 +76,13 @@ jobs:
         shell: bash
         run: sudo chown $USER -R ./
 
+      - name: Free disk space
+        shell: bash
+        run: |
+          echo "Before cleanup:" && df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules 2>/dev/null || true
+          echo "After cleanup:" && df -h /
+
       - name: Build dependencies (if not cached)
         if: steps.cache_deps.outputs.cache-hit != 'true'
         shell: bash
@@ -84,10 +91,16 @@ jobs:
           mkdir -p deps/build/destdir
           ./build_linux.sh -dr
 
+      - name: Fix permissions (post-build)
+        if: steps.cache_deps.outputs.cache-hit != "true"
+        shell: bash
+        run: sudo chown $USER -R ./
+
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
           key: ${{ matrix.os }}-release
+          append-timestamp: false
 
       - name: Configure CMake
         shell: bash
@@ -95,7 +108,7 @@ jobs:
 
       - name: Build tests
         shell: bash
-        run: cmake --build build --target tests --parallel
+        run: cmake --build build --target tests --parallel 2
 
       - name: Detect changed modules
         id: changed
@@ -169,8 +182,16 @@ jobs:
         run: |
           if [ -n "${{ steps.filter.outputs.filter }}" ]; then
             echo "Running filtered tests: -R ${{ steps.filter.outputs.filter }}"
-            ctest --test-dir build --output-on-failure -R "${{ steps.filter.outputs.filter }}"
+            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 300 -R "${{ steps.filter.outputs.filter }}"
           else
             echo "Running all tests"
-            ctest --test-dir build --output-on-failure
+            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 300
           fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results-${{ matrix.os }}
+          path: build/test-results.xml
+          if-no-files-found: warn

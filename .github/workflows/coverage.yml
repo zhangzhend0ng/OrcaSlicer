@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/deps/build/destdir
-          key: ${{ runner.os }}-cache-orcaslicer_deps-${{ hashFiles('deps/CMakeLists.txt', 'deps/*.cmake', 'deps/*/*.cmake', 'deps/*/*.patch') }}
+          key: ubuntu-22.04-cache-orcaslicer_deps-${{ hashFiles('deps/CMakeLists.txt', 'deps/*.cmake', 'deps/*/*.cmake', 'deps/*/*.patch') }}
 
       - uses: lukka/get-cmake@latest
         with:
@@ -68,6 +68,13 @@ jobs:
         shell: bash
         run: sudo chown $USER -R ./
 
+      - name: Free disk space
+        shell: bash
+        run: |
+          echo "Before cleanup:" && df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules 2>/dev/null || true
+          echo "After cleanup:" && df -h /
+
       - name: Build dependencies (if not cached)
         if: steps.cache_deps.outputs.cache-hit != 'true'
         shell: bash
@@ -76,27 +83,28 @@ jobs:
           mkdir -p deps/build/destdir
           ./build_linux.sh -dr
 
+      - name: Fix permissions (post-build)
+        if: steps.cache_deps.outputs.cache-hit != 'true'
+        shell: bash
+        run: sudo chown $USER -R ./
+
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
           key: ubuntu-22.04-coverage
+          append-timestamp: false
       - name: Configure CMake with coverage
         shell: bash
         run: cmake -S . -B build_cov -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DOPENVDB_USE_STATIC_LIBS=ON -DSLIC3R_GUI=OFF -DBUILD_TESTS=ON
 
       - name: Build tests
         shell: bash
-        run: cmake --build build_cov --target tests --parallel 1
+        run: cmake --build build_cov --target tests --parallel 2
 
       - name: Run tests with JUnit output
         shell: bash
         run: ctest --test-dir build_cov --output-on-failure --output-junit build_cov/test-results.xml
-
-      - name: Generate coverage report
-        shell: bash
-        run: |
-          cmake --build build_cov --target coverage 2>&1 | tee build_cov/coverage-summary.txt
 
       - name: Upload test results
         if: always()
@@ -104,6 +112,12 @@ jobs:
         with:
           name: test-results-coverage
           path: build_cov/test-results.xml
+
+      - name: Generate coverage report
+        if: always()
+        shell: bash
+        run: |
+          cmake --build build_cov --target coverage 2>&1 | tee build_cov/coverage-summary.txt
 
       - name: Upload coverage report
         if: always()

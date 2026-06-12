@@ -3,7 +3,11 @@ add_executable(${_TEST_NAME}_tests
     ${_TEST_NAME}_tests_main.cpp
     )
 
-target_link_libraries(${_TEST_NAME}_tests test_common libslic3r_gui libslic3r boost_libs TBB::tbb)
+if(TARGET libslic3r_gui)
+    target_link_libraries(${_TEST_NAME}_tests test_common libslic3r_gui libslic3r boost_libs TBB::tbb)
+else()
+    target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb)
+endif()
 if (MSVC)
     target_link_libraries(${_TEST_NAME}_tests Setupapi.lib)
 endif ()
