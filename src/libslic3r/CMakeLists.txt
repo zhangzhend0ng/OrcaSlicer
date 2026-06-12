@@ -563,11 +563,11 @@ target_link_libraries(libslic3r
         libnest2d
         miniz
         opencv_world
-        boost_libs
     PRIVATE
         ${CMAKE_DL_LIBS}
         ${EXPAT_LIBRARIES}
         ${OCCT_LIBS}
+        boost_libs
         cereal::cereal
         clipper
         eigen
