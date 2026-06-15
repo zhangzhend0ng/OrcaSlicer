@@ -110,7 +110,7 @@ jobs:
         shell: bash
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
-        run: cmake --build build --target tests --parallel 2
+        run: cmake --build build --target tests --parallel 1
 
       - name: Detect changed modules
         id: changed
@@ -186,10 +186,10 @@ jobs:
         run: |
           if [ -n "${{ steps.filter.outputs.filter }}" ]; then
             echo "Running filtered tests: -R ${{ steps.filter.outputs.filter }}"
-            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml -R "${{ steps.filter.outputs.filter }}"
+            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 3600 -R "${{ steps.filter.outputs.filter }}"
           else
             echo "Running all tests"
-            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml
+            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 3600
           fi
 
       - name: Upload test results

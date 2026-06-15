@@ -75,6 +75,14 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules 2>/dev/null || true
           echo "After cleanup:" && df -h /
 
+      - name: Setup swap (coverage builds need extra memory)
+        shell: bash
+        run: |
+          sudo fallocate -l 4G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+
       - name: Build dependencies (if not cached)
         if: steps.cache_deps.outputs.cache-hit != 'true'
         shell: bash
@@ -102,13 +110,13 @@ jobs:
         shell: bash
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
-        run: cmake --build build_cov --target tests --parallel 2
+        run: cmake --build build_cov --target tests --parallel 1
 
       - name: Run tests with JUnit output
         shell: bash
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
-        run: ctest --test-dir build_cov --output-on-failure --output-junit build_cov/test-results.xml
+        run: ctest --test-dir build_cov --output-on-failure --output-junit build_cov/test-results.xml --timeout 3600
 
       - name: Upload test results
         if: always()
@@ -116,6 +124,7 @@ jobs:
         with:
           name: test-results-coverage
           path: build_cov/test-results.xml
+          if-no-files-found: warn
 
       - name: Generate coverage report
         if: always()
@@ -131,6 +140,7 @@ jobs:
         with:
           name: coverage-report
           path: build_cov/coverage/
+          if-no-files-found: warn
 
       - name: Upload coverage summary
         if: always()
@@ -138,3 +148,4 @@ jobs:
         with:
           name: coverage-summary
           path: build_cov/coverage-summary.txt
+          if-no-files-found: warn
