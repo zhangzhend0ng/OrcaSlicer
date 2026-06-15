@@ -4,6 +4,7 @@ add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_test_utils.hpp sla_test_utils.cpp
     sla_supptgen_tests.cpp
     sla_raycast_tests.cpp)
+target_link_options(${_TEST_NAME}_tests PRIVATE "-Wl,--no-as-needed")
 target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb OpenSSL::Crypto)
 if (WIN32)
     target_link_libraries(${_TEST_NAME}_tests bcrypt.lib crypt32.lib)

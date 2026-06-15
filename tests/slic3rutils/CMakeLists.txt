@@ -4,9 +4,11 @@ add_executable(${_TEST_NAME}_tests
     )
 
 if(TARGET libslic3r_gui)
-    target_link_libraries(${_TEST_NAME}_tests test_common libslic3r_gui libslic3r boost_libs TBB::tbb)
+    target_link_options(${_TEST_NAME}_tests PRIVATE "-Wl,--no-as-needed")
+target_link_libraries(${_TEST_NAME}_tests test_common libslic3r_gui libslic3r boost_libs TBB::tbb)
 else()
-    target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb)
+    target_link_options(${_TEST_NAME}_tests PRIVATE "-Wl,--no-as-needed")
+target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb)
 endif()
 if (MSVC)
     target_link_libraries(${_TEST_NAME}_tests Setupapi.lib)
