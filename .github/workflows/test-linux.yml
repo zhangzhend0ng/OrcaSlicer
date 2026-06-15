@@ -66,7 +66,7 @@ jobs:
             libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules pkgconf \
             libglu1-mesa-dev libcairo2-dev libgtk-3-dev libsoup2.4-dev libwebkit2gtk-4.1-dev \
             libgstreamer1.0-dev libgstreamer-plugins-good1.0-dev libgstreamer-plugins-base1.0-dev \
-            gstreamer1.0-plugins-bad wget sudo autoconf curl libunwind-dev texinfo ccache
+            gstreamer1.0-plugins-bad wget sudo autoconf curl libunwind-dev texinfo libblosc-dev ccache
 
       - name: Install dependencies from build_linux.sh
         shell: bash
@@ -107,10 +107,16 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DOPENVDB_USE_STATIC_LIBS=ON -DSLIC3R_GUI=OFF -DBUILD_TESTS=ON
 
       - name: Build tests
+        id: build-tests
         shell: bash
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
-        run: cmake --build build --target tests --parallel 1
+        run: |
+          cmake --build build --target tests --parallel 1
+          test -f build/tests/libslic3r_tests \
+            || test -f build/tests/slic3rutils_tests \
+            || test -f build/tests/libnest2d_tests \
+            || { echo "ERROR: No test binaries found in build/tests/"; exit 1; }
 
       - name: Detect changed modules
         id: changed
@@ -179,7 +185,7 @@ jobs:
           echo "filter=__SKIP__" >> "$GITHUB_OUTPUT"
 
       - name: Run tests
-        if: steps.filter.outputs.filter != '__SKIP__'
+        if: success() && steps.filter.outputs.filter != '__SKIP__'
         shell: bash
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
