@@ -2,10 +2,13 @@ get_filename_component(_TEST_NAME ${CMAKE_CURRENT_LIST_DIR} NAME)
 add_executable(${_TEST_NAME}_tests ${_TEST_NAME}_tests_main.cpp
     sla_print_tests.cpp
     sla_test_utils.hpp sla_test_utils.cpp
-    sla_supptgen_tests.cpp
     sla_raycast_tests.cpp)
+
+find_package(JPEG REQUIRED)
+find_package(PNG REQUIRED)
+find_package(ZLIB REQUIRED)
 target_link_options(${_TEST_NAME}_tests PRIVATE "-Wl,--no-as-needed")
-target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb OpenSSL::Crypto)
+target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb OpenSSL::Crypto clipper qhull mcut glu-libtess TBB::tbbmalloc JPEG::JPEG PNG::PNG ZLIB::ZLIB noise::noise qoi semver ${EXPAT_LIBRARIES} ${OCCT_LIBS})
 if (WIN32)
     target_link_libraries(${_TEST_NAME}_tests bcrypt.lib crypt32.lib)
 endif()

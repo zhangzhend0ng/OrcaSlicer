@@ -3,12 +3,15 @@ add_executable(${_TEST_NAME}_tests
     ${_TEST_NAME}_tests_main.cpp
     )
 
+find_package(JPEG REQUIRED)
+find_package(PNG REQUIRED)
+find_package(ZLIB REQUIRED)
 if(TARGET libslic3r_gui)
     target_link_options(${_TEST_NAME}_tests PRIVATE "-Wl,--no-as-needed")
-target_link_libraries(${_TEST_NAME}_tests test_common libslic3r_gui libslic3r boost_libs TBB::tbb)
+target_link_libraries(${_TEST_NAME}_tests test_common libslic3r_gui libslic3r boost_libs TBB::tbb clipper qhull mcut glu-libtess TBB::tbbmalloc JPEG::JPEG PNG::PNG ZLIB::ZLIB noise::noise qoi semver ${EXPAT_LIBRARIES} ${OCCT_LIBS})
 else()
     target_link_options(${_TEST_NAME}_tests PRIVATE "-Wl,--no-as-needed")
-target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb)
+target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb clipper qhull mcut glu-libtess TBB::tbbmalloc JPEG::JPEG PNG::PNG ZLIB::ZLIB noise::noise qoi semver ${EXPAT_LIBRARIES} ${OCCT_LIBS})
 endif()
 if (MSVC)
     target_link_libraries(${_TEST_NAME}_tests Setupapi.lib)

@@ -13,11 +13,15 @@ add_executable(${_TEST_NAME}_tests
 	test_printgcode.cpp
 	test_printobject.cpp
 	test_skirt_brim.cpp
-	test_support_material.cpp
-	test_trianglemesh.cpp
-	)
+\ttest_support_material.cpp
+\ttest_trianglemesh.cpp
+\t)
+
+find_package(JPEG REQUIRED)
+find_package(PNG REQUIRED)
+find_package(ZLIB REQUIRED)
 target_link_options(${_TEST_NAME}_tests PRIVATE "-Wl,--no-as-needed")
-target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb OpenSSL::Crypto)
+target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb OpenSSL::Crypto clipper qhull mcut glu-libtess TBB::tbbmalloc JPEG::JPEG PNG::PNG ZLIB::ZLIB noise::noise qoi semver ${EXPAT_LIBRARIES} ${OCCT_LIBS})
 if (WIN32)
     target_link_libraries(${_TEST_NAME}_tests bcrypt.lib)
 endif()
