@@ -140,7 +140,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Generate coverage report
-        if: always()
+        if: always() && steps.build-tests.outcome == 'success'
         shell: bash
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
@@ -148,7 +148,7 @@ jobs:
           cmake --build build_cov --target coverage 2>&1 | tee build_cov/coverage-summary.txt
 
       - name: Upload coverage report
-        if: always()
+        if: always() && steps.build-tests.outcome == 'success'
         uses: actions/upload-artifact@v5
         with:
           name: coverage-report
@@ -156,7 +156,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload coverage summary
-        if: always()
+        if: always() && steps.build-tests.outcome == 'success'
         uses: actions/upload-artifact@v5
         with:
           name: coverage-summary
