@@ -27,6 +27,36 @@ endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+# Common link libraries for all tests that depend on libslic3r.
+# libslic3r is a STATIC library; its PRIVATE dependencies are not propagated,
+# so every test executable must explicitly link them.
+set(TEST_LINK_LIBS
+    test_common
+    libslic3r
+    boost_libs
+    Boost::log
+    TBB::tbb
+    TBB::tbbmalloc
+    OpenSSL::Crypto
+    clipper
+    qhull
+    mcut
+    glu-libtess
+    JPEG::JPEG
+    PNG::PNG
+    ZLIB::ZLIB
+    noise::noise
+    qoi
+    semver
+    libslic3r_cgal
+    ${EXPAT_LIBRARIES}
+    ${OCCT_LIBS}
+    ${FREETYPE_LIBRARIES}
+)
+
+# --- end common link libs ---
+
+
 add_subdirectory(libnest2d)
 add_subdirectory(libslic3r)
 add_subdirectory(slic3rutils)
