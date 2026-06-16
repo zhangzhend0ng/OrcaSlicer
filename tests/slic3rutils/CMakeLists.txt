@@ -1,3 +1,9 @@
+# slic3rutils tests require libslic3r_gui (contains Http.cpp).
+# Skip entirely when GUI is disabled.
+if (NOT SLIC3R_GUI)
+    return()
+endif()
+
 get_filename_component(_TEST_NAME ${CMAKE_CURRENT_LIST_DIR} NAME)
 add_executable(${_TEST_NAME}_tests
     ${_TEST_NAME}_tests_main.cpp
