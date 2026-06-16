@@ -8,6 +8,7 @@ find_package(JPEG REQUIRED)
 find_package(PNG REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(libnoise REQUIRED)
+find_package(Qhull REQUIRED)
 target_link_options(${_TEST_NAME}_tests PRIVATE "-Wl,--no-as-needed")
 target_link_libraries(${_TEST_NAME}_tests test_common libslic3r boost_libs TBB::tbb OpenSSL::Crypto clipper qhull mcut glu-libtess TBB::tbbmalloc JPEG::JPEG PNG::PNG ZLIB::ZLIB noise::noise qoi semver ${EXPAT_LIBRARIES} ${OCCT_LIBS} libslic3r_cgal ${FREETYPE_LIBRARIES})
 if (WIN32)
@@ -15,6 +16,7 @@ if (WIN32)
 endif()
 if (MSVC)
     find_package(libnoise REQUIRED)
+find_package(Qhull REQUIRED)
 target_link_options(${_TEST_NAME}_tests PRIVATE
         "/WHOLEARCHIVE:$<TARGET_FILE:OpenSSL::Crypto>"
         "/DEFAULTLIB:bcrypt.lib"
