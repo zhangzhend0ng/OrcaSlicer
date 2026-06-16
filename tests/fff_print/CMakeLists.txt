@@ -13,9 +13,9 @@ add_executable(${_TEST_NAME}_tests
 	test_printgcode.cpp
 	test_printobject.cpp
 	test_skirt_brim.cpp
-\ttest_support_material.cpp
-\ttest_trianglemesh.cpp
-\t)
+	test_support_material.cpp
+	test_trianglemesh.cpp
+	)
 
 find_package(JPEG REQUIRED)
 find_package(PNG REQUIRED)
