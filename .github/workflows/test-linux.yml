@@ -104,7 +104,7 @@ jobs:
 
       - name: Configure CMake
         shell: bash
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DOPENVDB_USE_STATIC_LIBS=ON -DSLIC3R_GUI=OFF -DBUILD_TESTS=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DSLIC3R_STATIC=ON -DOPENVDB_USE_STATIC_LIBS=ON -DSLIC3R_GUI=OFF -DBUILD_TESTS=ON
 
       - name: Build tests
         id: build-tests
