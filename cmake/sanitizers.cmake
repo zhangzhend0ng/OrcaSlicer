@@ -31,6 +31,15 @@ option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan) — detect undefi
 
 include(CheckCXXCompilerFlag)
 
+# Note on global flag application: sanitizer instrumentation is added via
+# add_compile_options / add_link_options (directory-wide) rather than per-target
+# target_*() calls. This is deliberate: every translation unit and the final
+# executable must be instrumented for ASan/UBSan to be effective, so a
+# directory-global application is the correct intent here (not the uncontrolled
+# "global CMake" anti-pattern, which concerns flags that should be scoped but
+# are not). These options are only active when ENABLE_ASAN/ENABLE_UBSAN is ON,
+# which is opt-in and never set for release/production builds.
+
 # ── ASan ──────────────────────────────────────────────────────────────────────
 if(ENABLE_ASAN)
     # ASan is available on MSVC starting with Visual Studio 2019 16.9

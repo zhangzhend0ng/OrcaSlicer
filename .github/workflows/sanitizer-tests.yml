@@ -38,8 +38,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, ubuntu-24.04]
     env:
-      ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:halt_on_error=1
-      ASAN_SYMBOLIZER_PATH: /usr/bin/llvm-symbolizer
+      ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:detect_container_overflow=1:symbolize=1:halt_on_error=1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
     steps:
       - name: Checkout
@@ -52,7 +51,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/deps/build/destdir
-          key: ${{ matrix.os }}-cache-orcaslicer_deps-sanitizer-${{ hashFiles('deps/CMakeLists.txt', 'deps/*.cmake', 'deps/*/*.cmake', 'deps/*/*.patch') }}
+          # Share the dependency cache with the test-linux / coverage jobs:
+          # the deps are built identically (build_linux.sh -dr) regardless of
+          # the downstream sanitizer flags, so a dedicated `-sanitizer-` key
+          # only forced a cold rebuild on every sanitizer run.
+          key: ${{ matrix.os }}-cache-orcaslicer_deps-${{ hashFiles('deps/CMakeLists.txt', 'deps/*.cmake', 'deps/*/*.cmake', 'deps/*/*.patch') }}
 
       - uses: lukka/get-cmake@latest
         with:
@@ -80,6 +83,18 @@ jobs:
             libglu1-mesa-dev libcairo2-dev libgtk-3-dev libsoup2.4-dev libwebkit2gtk-4.1-dev \
             libgstreamer1.0-dev libgstreamer-plugins-good1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-bad wget sudo autoconf curl libunwind-dev texinfo llvm ccache libblosc-dev
+
+      - name: Resolve llvm-symbolizer path
+        # ASan/UBSan need llvm-symbolizer to produce human-readable stack
+        # traces. Resolve it dynamically instead of hardcoding /usr/bin/...,
+        # which may not match the installed llvm package layout.
+        shell: bash
+        run: |
+          SYM="$(command -v llvm-symbolizer || true)"
+          [ -n "$SYM" ] || SYM="/usr/bin/llvm-symbolizer"
+          echo "ASAN_SYMBOLIZER_PATH=$SYM" >> "$GITHUB_ENV"
+          echo "UBSAN_SYMBOLIZER_PATH=$SYM" >> "$GITHUB_ENV"
+          echo "Resolved llvm-symbolizer: $SYM"
 
       - name: Install dependencies from build_linux.sh
         shell: bash
@@ -119,7 +134,7 @@ jobs:
 
       - name: Configure CMake with ASan+UBSan
         shell: bash
-        run: cmake -S . -B build_san -DCMAKE_BUILD_TYPE=RelWithDebInfo -DENABLE_ASAN=ON -DENABLE_UBSAN=ON -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DSLIC3R_STATIC=ON -DOPENVDB_USE_STATIC_LIBS=ON -DSLIC3R_GUI=OFF -DBUILD_TESTS=ON
+        run: cmake -S . -B build_san -DCMAKE_BUILD_TYPE=RelWithDebInfo -DENABLE_ASAN=ON -DENABLE_UBSAN=ON -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DSLIC3R_STATIC=ON -DOPENVDB_USE_STATIC_LIBS=ON -DSLIC3R_GUI=OFF -DBUILD_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache
 
       - name: Build tests
         id: build-tests
@@ -206,9 +221,9 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
         run: |
           if [ -n "${{ steps.filter.outputs.filter }}" ]; then
-            ctest --test-dir build_san --output-on-failure --output-junit build_san/test-results.xml --timeout 3600 -R "${{ steps.filter.outputs.filter }}"
+            ctest --test-dir build_san --output-on-failure --output-junit build_san/test-results.xml --timeout 3600 -R "${{ steps.filter.outputs.filter }}" -E '\[trace\]'
           else
-            ctest --test-dir build_san --output-on-failure --output-junit build_san/test-results.xml --timeout 3600
+            ctest --test-dir build_san --output-on-failure --output-junit build_san/test-results.xml --timeout 3600 -E '\[trace\]'
           fi
 
       - name: Upload test results

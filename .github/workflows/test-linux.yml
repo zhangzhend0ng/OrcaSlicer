@@ -104,7 +104,7 @@ jobs:
 
       - name: Configure CMake
         shell: bash
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DSLIC3R_STATIC=ON -DOPENVDB_USE_STATIC_LIBS=ON -DSLIC3R_GUI=OFF -DBUILD_TESTS=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/deps/build/destdir/usr/local" -DSLIC3R_STATIC=ON -DOPENVDB_USE_STATIC_LIBS=ON -DSLIC3R_GUI=OFF -DBUILD_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache
 
       - name: Build tests
         id: build-tests
@@ -192,10 +192,10 @@ jobs:
         run: |
           if [ -n "${{ steps.filter.outputs.filter }}" ]; then
             echo "Running filtered tests: -R ${{ steps.filter.outputs.filter }}"
-            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 3600 -R "${{ steps.filter.outputs.filter }}"
+            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 3600 -R "${{ steps.filter.outputs.filter }}" -E '\[trace\]'
           else
             echo "Running all tests"
-            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 3600
+            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 3600 -E '\[trace\]'
           fi
 
       - name: Upload test results

@@ -27,6 +27,17 @@ endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+# Headless test builds (-DSLIC3R_GUI=OFF) exclude the GUI translation unit that
+# compiles the nanoSVG C implementation (src/slic3r/GUI/BitmapCache.cpp). Since
+# libslic3r references nsvgParseFromFile / nsvgParse / nsvgDelete, provide that
+# implementation here at the test-link level so every test executable links.
+# This keeps production sources untouched. See tests/nanosvg_impl.cpp.
+add_library(test_nanosvg_impl STATIC nanosvg_impl.cpp)
+# Link libslic3r PRIVATE so nanosvg_impl.cpp is compiled with the SAME nanoSVG
+# headers that libslic3r itself uses (avoids ODR/ABI drift between forks) and
+# so the include path resolves identically to src/libslic3r/Format/svg.cpp.
+target_link_libraries(test_nanosvg_impl PRIVATE libslic3r)
+
 # Common link libraries for all tests that depend on libslic3r.
 # libslic3r is a STATIC library; its PRIVATE dependencies are not propagated,
 # so every test executable must explicitly link them.
@@ -52,6 +63,7 @@ set(TEST_LINK_LIBS
     ${EXPAT_LIBRARIES}
     ${OCCT_LIBS}
     ${FREETYPE_LIBRARIES}
+    test_nanosvg_impl
 )
 
 # --- end common link libs ---
