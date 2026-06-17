@@ -40,12 +40,17 @@ jobs:
         with:
           lfs: 'true'
 
-      - name: Load cached dependencies
+      - name: Restore deps tarball
         id: cache_deps
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/deps/build/destdir
-          key: ubuntu-22.04-cache-orcaslicer_deps-${{ hashFiles('deps/CMakeLists.txt', 'deps/*.cmake', 'deps/*/*.cmake', 'deps/*/*.patch') }}
+          # Cache a SINGLE zstd tarball instead of the multi-million-file
+          # destdir tree (archiving the raw OCCT/OpenCV/boost headers never
+          # completed, so deps rebuilt every run). A single tarball restores/
+          # saves reliably; the key is repo-scoped and shared with the
+          # test-linux / sanitizer workflows (first to build serves the rest).
+          path: ${{ github.workspace }}/deps-destdir.tar.zst
+          key: ubuntu-22.04-deps-tarball-${{ hashFiles('deps/CMakeLists.txt', 'deps/*.cmake', 'deps/*/*.cmake', 'deps/*/*.patch', 'build_linux.sh') }}
 
       - uses: lukka/get-cmake@latest
         with:
@@ -89,18 +94,24 @@ jobs:
           sudo swapoff /swapfile 2>/dev/null || true
           sudo rm -f /swapfile
 
-      - name: Build dependencies (if not cached)
+      - name: Extract deps tarball (cache hit)
+        if: steps.cache_deps.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          mkdir -p deps/build
+          tar --zstd -x -f deps-destdir.tar.zst -C deps/build
+          rm -f deps-destdir.tar.zst
+
+      - name: Build dependencies (cache miss)
         if: steps.cache_deps.outputs.cache-hit != 'true'
         shell: bash
         run: |
           mkdir -p deps/build
           mkdir -p deps/build/destdir
           ./build_linux.sh -dr
-
-      - name: Fix permissions (post-build)
-        if: steps.cache_deps.outputs.cache-hit != 'true'
-        shell: bash
-        run: sudo chown $USER -R ./
+          sudo chown $USER -R ./
+          # Pack the freshly built destdir into a single tarball for reliable caching.
+          tar --zstd -c -f deps-destdir.tar.zst -C deps/build destdir
 
 
       - name: Setup ccache
