@@ -76,7 +76,7 @@ if(LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
         # stdout pollution (see .github/workflows/coverage.yml "Run tests" step).
         # VERBATIM ensures the regex is properly quoted in generated Makefile
         # rules (without it, the backslashes are consumed by the shell).
-        COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -E [=\[trace\]=]
+        COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -E "\\[trace\\]"
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             VERBATIM
 
