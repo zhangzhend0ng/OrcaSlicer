@@ -72,10 +72,13 @@ if(LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
         COMMAND ${LCOV_EXECUTABLE} --directory . --zerocounters --quiet
 
         # Run tests (re-run to collect fresh coverage data)
-        # -E "\[trace\]": skip ghost test names created by Catch2 v3 discovery
+        # -E \[trace\]: skip ghost test names created by Catch2 v3 discovery
         # stdout pollution (see .github/workflows/coverage.yml "Run tests" step).
-        COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -E "\\[trace\\]"
+        # VERBATIM ensures the regex is properly quoted in generated Makefile
+        # rules (without it, the backslashes are consumed by the shell).
+        COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -E [=\[trace\]=]
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            VERBATIM
 
         # Capture coverage data
         COMMAND ${LCOV_EXECUTABLE}
