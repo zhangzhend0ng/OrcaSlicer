@@ -205,10 +205,10 @@ jobs:
         run: |
           if [ -n "${{ steps.filter.outputs.filter }}" ]; then
             echo "Running filtered tests: -R ${{ steps.filter.outputs.filter }}"
-            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 3600 -R "${{ steps.filter.outputs.filter }}" -E '\[trace\]'
+            ctest --test-dir build --output-on-failure --output-junit "${{ github.workspace }}/build/test-results.xml" --timeout 3600 -R "${{ steps.filter.outputs.filter }}" -E '\[trace\]'
           else
             echo "Running all tests"
-            ctest --test-dir build --output-on-failure --output-junit build/test-results.xml --timeout 3600 -E '\[trace\]'
+            ctest --test-dir build --output-on-failure --output-junit "${{ github.workspace }}/build/test-results.xml" --timeout 3600 -E '\[trace\]'
           fi
 
       - name: Upload test results

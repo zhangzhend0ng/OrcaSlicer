@@ -148,7 +148,7 @@ jobs:
         # logging and cannot be suppressed without touching production sources,
         # so we exclude those pseudo-tests here. Real tests never contain a
         # literal "[trace]" token in their names.
-        run: ctest --test-dir build_cov --output-on-failure --output-junit build_cov/test-results.xml --timeout 3600 -E '\[trace\]'
+        run: ctest --test-dir build_cov --output-on-failure --output-junit "${{ github.workspace }}/build_cov/test-results.xml" --timeout 3600 -E '\[trace\]'
 
       - name: Upload test results
         if: always()

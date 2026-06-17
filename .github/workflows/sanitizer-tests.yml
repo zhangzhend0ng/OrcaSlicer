@@ -228,9 +228,9 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
         run: |
           if [ -n "${{ steps.filter.outputs.filter }}" ]; then
-            ctest --test-dir build_san --output-on-failure --output-junit build_san/test-results.xml --timeout 3600 -R "${{ steps.filter.outputs.filter }}" -E '\[trace\]'
+            ctest --test-dir build_san --output-on-failure --output-junit "${{ github.workspace }}/build_san/test-results.xml" --timeout 3600 -R "${{ steps.filter.outputs.filter }}" -E '\[trace\]'
           else
-            ctest --test-dir build_san --output-on-failure --output-junit build_san/test-results.xml --timeout 3600 -E '\[trace\]'
+            ctest --test-dir build_san --output-on-failure --output-junit "${{ github.workspace }}/build_san/test-results.xml" --timeout 3600 -E '\[trace\]'
           fi
 
       - name: Upload test results
