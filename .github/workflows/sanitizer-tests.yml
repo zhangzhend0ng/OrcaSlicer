@@ -241,7 +241,7 @@ jobs:
           path: build_san/test-results.xml
           if-no-files-found: warn
 
-      -       - name: Generate HTML report
+      - name: Generate HTML report
         if: always()
         shell: bash
         run: node scripts/junit-to-html.js build_san/test-results.xml -t "OrcaSlicer Sanitizer Tests" -o build_san/test-report.html

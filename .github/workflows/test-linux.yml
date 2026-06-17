@@ -219,7 +219,7 @@ jobs:
           path: build/test-results.xml
           if-no-files-found: warn
 
-      -       - name: Generate HTML report
+      - name: Generate HTML report
         if: always()
         shell: bash
         run: node scripts/junit-to-html.js build/test-results.xml -t "OrcaSlicer Linux Tests" -o build/test-report.html
