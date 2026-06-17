@@ -181,3 +181,16 @@ jobs:
           name: coverage-summary
           path: build_cov/coverage-summary.txt
           if-no-files-found: warn
+
+      -       - name: Generate HTML report
+        if: always()
+        shell: bash
+        run: node scripts/junit-to-html.js build_cov/test-results.xml -t "OrcaSlicer Coverage Tests" -o build_cov/test-report.html
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-report-${{ matrix.os }}
+          path: build_cov/test-report.html
+          if-no-files-found: warn

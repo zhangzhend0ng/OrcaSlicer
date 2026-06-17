@@ -218,3 +218,16 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: build/test-results.xml
           if-no-files-found: warn
+
+      -       - name: Generate HTML report
+        if: always()
+        shell: bash
+        run: node scripts/junit-to-html.js build/test-results.xml -t "OrcaSlicer Linux Tests" -o build/test-report.html
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-report-${{ matrix.os }}
+          path: build/test-report.html
+          if-no-files-found: warn
