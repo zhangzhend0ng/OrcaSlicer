@@ -113,9 +113,9 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
         run: |
           cmake --build build --target tests --parallel 1
-          test -f build/tests/libslic3r_tests \
-            || test -f build/tests/slic3rutils_tests \
-            || test -f build/tests/libnest2d_tests \
+          test -f build/tests/libslic3r/libslic3r_tests \
+            || test -f build/tests/fff_print/fff_print_tests \
+            || test -f build/tests/libnest2d/libnest2d_tests \
             || { echo "ERROR: No test binaries found in build/tests/"; exit 1; }
 
       - name: Detect changed modules
