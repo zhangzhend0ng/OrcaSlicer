@@ -32,7 +32,14 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # libslic3r references nsvgParseFromFile / nsvgParse / nsvgDelete, provide that
 # implementation here at the test-link level so every test executable links.
 # This keeps production sources untouched. See tests/nanosvg_impl.cpp.
-add_library(test_nanosvg_impl STATIC nanosvg_impl.cpp)
+# Use an OBJECT library (not STATIC): a STATIC archive's objects are only
+# pulled into a link when they resolve a symbol that is undefined *at the
+# point the archive is scanned*. Under -flto (RelWithDebInfo / sanitizer
+# builds) and CMake's link-order resolution, nanosvg_impl.o was never selected,
+# leaving nsvgParseFromFile/nsvgParse/nsvgDelete undefined. An OBJECT library's
+# .o is added to every target that links it unconditionally, regardless of
+# order or symbol state — exactly what is needed here.
+add_library(test_nanosvg_impl OBJECT nanosvg_impl.cpp)
 # Link libslic3r PRIVATE so nanosvg_impl.cpp is compiled with the SAME nanoSVG
 # headers that libslic3r itself uses (avoids ODR/ABI drift between forks) and
 # so the include path resolves identically to src/libslic3r/Format/svg.cpp.
