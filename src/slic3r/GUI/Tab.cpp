@@ -8,6 +8,7 @@
 #include "libslic3r/Model.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "WipeTowerDialog.hpp"
+#include "slic3r/App/PlaterAdapters.hpp"
 
 #include "Search.hpp"
 #include "OG_CustomCtrl.hpp"
@@ -68,23 +69,12 @@ static const std::vector<std::string> plate_keys = { "curr_bed_type", "skirt_sta
 
 static std::string bed_type_to_rule_key(BedType bed_type)
 {
-    switch (bed_type) {
-    case btPEI:  return "btPEI";
-    case btGESP: return "btGESP";
-    default:     return "";
-    }
+    return PlaterAdapters::bedTypeKey(static_cast<int>(bed_type));
 }
 
 static std::string nozzle_diameter_to_rule_key(double nozzle_diameter)
 {
-    std::ostringstream ss;
-    ss << std::fixed << std::setprecision(2) << nozzle_diameter;
-    std::string out = ss.str();
-    while (!out.empty() && out.back() == '0')
-        out.pop_back();
-    if (!out.empty() && out.back() == '.')
-        out.pop_back();
-    return out + "mm";
+    return PlaterAdapters::nozzleKey(nozzle_diameter);
 }
 
 static void validate_filament_hot_bed_nozzle_relation(wxWindow* parent)
@@ -2849,43 +2839,22 @@ void TabPrint::clear_pages()
 
 static std::vector<std::string> intersect(std::vector<std::string> const& l, std::vector<std::string> const& r)
 {
-    std::vector<std::string> t;
-    std::copy_if(r.begin(), r.end(), std::back_inserter(t), [&l](auto & e) { return std::find(l.begin(), l.end(), e) != l.end(); });
-    return t;
+    return PlaterAdapters::setIntersect(l, r);
 }
 
 static std::vector<std::string> concat(std::vector<std::string> const& l, std::vector<std::string> const& r)
 {
-    std::vector<std::string> t;
-    std::set_union(l.begin(), l.end(), r.begin(), r.end(), std::back_inserter(t));
-    return t;
+    return PlaterAdapters::setUnion(l, r);
 }
 
 static std::vector<std::string> substruct(std::vector<std::string> const& l, std::vector<std::string> const& r)
 {
-    std::vector<std::string> t;
-    std::copy_if(l.begin(), l.end(), std::back_inserter(t), [&r](auto & e) { return std::find(r.begin(), r.end(), e) == r.end(); });
-    return t;
+    return PlaterAdapters::setSubtract(l, r);
 }
 
 static DynamicPrintConfig resolved_model_config_for_tab(const DynamicPrintConfig& config)
 {
-    DynamicPrintConfig resolved(config);
-
-    if (const auto* extruder_opt = config.option<ConfigOptionInt>("extruder"); extruder_opt != nullptr && extruder_opt->value > 0) {
-        const int extruder = extruder_opt->value;
-        if (!resolved.has("wall_filament"))
-            resolved.set_key_value("wall_filament", new ConfigOptionInt(extruder));
-        if (!resolved.has("sparse_infill_filament"))
-            resolved.set_key_value("sparse_infill_filament", new ConfigOptionInt(extruder));
-        if (!resolved.has("solid_infill_filament"))
-            resolved.set_key_value("solid_infill_filament", new ConfigOptionInt(extruder));
-    }
-
-    if (!resolved.has("solid_infill_filament") && resolved.has("sparse_infill_filament"))
-        resolved.set_key_value("solid_infill_filament", new ConfigOptionInt(resolved.opt_int("sparse_infill_filament")));
-
-    return resolved;
+    return PlaterAdapters::resolveConfig(config);
 }
 
 static void sync_plate_bed_type_to_global(DynamicPrintConfig& config)

@@ -8,6 +8,7 @@
 #include "GUI_App.hpp"
 #include "I18N.hpp"
 #include "Plater.hpp"
+#include "slic3r/App/ConfigValidationModel.hpp"
 #include "ObjectDataViewModel.hpp"
 
 #include "OptionsGroup.hpp"
@@ -83,9 +84,7 @@ static wxString filament_menu_item_name(const int filament_id_1based, const int 
 
 static bool is_improper_category(const std::string& category, const int filaments_cnt, const bool is_object_settings = true)
 {
-    return  category.empty() ||
-        (filaments_cnt == 1 && (category == "Extruders" || category == "Wipe options")) ||
-        (!is_object_settings && category == "Support material");
+    return ConfigValidationModel::isImproperCategory(category, filaments_cnt, is_object_settings);
 }
 
 

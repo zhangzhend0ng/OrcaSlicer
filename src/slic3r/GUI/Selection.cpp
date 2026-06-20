@@ -13,6 +13,7 @@
 
 #include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/Model.hpp"
+#include "slic3r/App/GeometryValidationModel.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #if ENABLE_ENHANCED_PRINT_VOLUME_FIT
 #include "libslic3r/BuildVolume.hpp"
@@ -2834,26 +2835,18 @@ void Selection::render_sidebar_layers_hints(const std::string& sidebar_field, GL
 
 static bool is_left_handed(const Transform3d::ConstLinearPart& m)
 {
-    return m.determinant() < 0;
+    return GeometryValidationModel::isLeftHanded(m);
 }
 
 static bool is_left_handed(const Transform3d& m)
 {
-    return is_left_handed(m.linear());
+    return GeometryValidationModel::isLeftHanded(m);
 }
 
 #ifndef NDEBUG
 static bool is_rotation_xy_synchronized(const Transform3d &rot_xyz_from, const Transform3d &rot_xyz_to)
 {
-    const Eigen::AngleAxisd angle_axis((rot_xyz_from * rot_xyz_to.inverse()).rotation());
-    const Vec3d  axis = angle_axis.axis();
-    const double angle = angle_axis.angle();
-    if (std::abs(angle) < 1e-8)
-        return true;
-    assert(std::abs(axis.x()) < 1e-8);
-    assert(std::abs(axis.y()) < 1e-8);
-    assert(std::abs(std::abs(axis.z()) - 1.) < 1e-8);
-    return std::abs(axis.x()) < 1e-8 && std::abs(axis.y()) < 1e-8 && std::abs(std::abs(axis.z()) - 1.) < 1e-8;
+    return GeometryValidationModel::isRotationXYSynchronized(rot_xyz_from, rot_xyz_to);
 }
 
 static void verify_instances_rotation_synchronized(const Model &model, const GLVolumePtrs &volumes)
