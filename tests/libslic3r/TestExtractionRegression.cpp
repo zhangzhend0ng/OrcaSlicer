@@ -286,3 +286,13 @@ TEST_CASE("REGRESSION: shortenTimeString seconds only", "[Regression]") {
     auto s = PresetStringModel::shortenTimeString("45s");
     REQUIRE(s.find('s') != std::string::npos);
 }
+
+
+// ?? GCodeViewer move type / buffer ID round-trip ??
+
+TEST_CASE("REGRESSION: moveTypeToBufferId round trip", "[Regression]") {
+    int moveType = 5;
+    unsigned char id = ObjectValidationModel::moveTypeToBufferId(moveType);
+    int back = ObjectValidationModel::bufferIdToMoveType(id);
+    REQUIRE(back == moveType);
+}

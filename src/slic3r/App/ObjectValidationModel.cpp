@@ -66,4 +66,18 @@ int ObjectValidationModel::findClosestLayerIndex(
     return static_cast<int>(idx);
 }
 
+
+unsigned char ObjectValidationModel::moveTypeToBufferId(int moveType)
+{
+    // EMoveType::Retract is the baseline
+    constexpr int retract = 0; // EMoveType::Retract value
+    return static_cast<unsigned char>(moveType - retract);
+}
+
+int ObjectValidationModel::bufferIdToMoveType(unsigned char id)
+{
+    constexpr int retract = 0;
+    return retract + static_cast<int>(id);
+}
+
 } // namespace Slic3r

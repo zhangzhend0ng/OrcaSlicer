@@ -46,6 +46,10 @@ public:
     };
 
     MVVP::Property<std::vector<MeshWarning>> meshWarnings{{}};
+
+    // ?? From GCodeViewer.cpp: GCode move type ? buffer ID ??
+    static unsigned char moveTypeToBufferId(int moveType);
+    static int bufferIdToMoveType(unsigned char id);
 };
 
 } // namespace Slic3r
