@@ -79,6 +79,10 @@ set(SLIC3R_GUI_SOURCES
     App/CameraController.cpp
     App/CameraController.hpp
     App/NullProgressReporter.hpp
+    App/SelectionController.cpp
+    App/SelectionController.hpp
+    App/PlaterViewModel.hpp
+    App/CanvasViewModel.hpp
     GUI/CloneDialog.cpp
     GUI/CloneDialog.hpp
     GUI/ConfigManipulation.cpp
