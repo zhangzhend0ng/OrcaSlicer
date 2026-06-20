@@ -16,16 +16,7 @@ size_t ObjectValidationModel::totalFilamentsCount(size_t physicalCount)
 
 std::string ObjectValidationModel::getWarningIconName(const TriangleMeshStats& stats)
 {
-    // Original from GUI_ObjectList.cpp L529
-    if (stats.number_of_parts > 1)
-        return "warning_multiple_parts";
-    if (stats.manifold())
-        return "";
-    if (stats.open_edges > 0)
-        return "warning_open_edges";
-    if (stats.repaired_errors.degenerate_facets > 0)
-        return "warning_degenerate";
-    return "";
+    return stats.manifold() ? (stats.repaired() ? "obj_warning" : "") : "obj_warning";
 }
 
 bool ObjectValidationModel::canAddVolumesToObject(const ModelObject* object)

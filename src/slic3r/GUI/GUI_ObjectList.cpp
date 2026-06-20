@@ -14,6 +14,8 @@
 #include "Tab.hpp"
 #include "wxExtensions.hpp"
 #include "libslic3r/Model.hpp"
+#include "slic3r/App/ObjectValidationModel.hpp"
+#include "slic3r/App/ObjectValidationModel.hpp"
 #include "GLCanvas3D.hpp"
 #include "Selection.hpp"
 #include "PartPlate.hpp"
@@ -528,7 +530,7 @@ int ObjectList::get_repaired_errors_count(const int obj_idx, const int vol_idx /
 
 static std::string get_warning_icon_name(const TriangleMeshStats& stats)
 {
-    return stats.manifold() ? (stats.repaired() ? "obj_warning" : "") : "obj_warning";
+    return ObjectValidationModel::getWarningIconName(stats);
 }
 
 MeshErrorsInfo ObjectList::get_mesh_errors_info(const int obj_idx, const int vol_idx /*= -1*/, wxString* sidebar_info /*= nullptr*/, int* non_manifold_edges) const
