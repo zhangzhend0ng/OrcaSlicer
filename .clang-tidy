@@ -1,0 +1,36 @@
+# OrcaSlicer clang-tidy configuration
+# Phase 0 harness: catches common issues before they reach code review.
+
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-narrowing-conversions,
+  modernize-use-override,
+  modernize-use-nullptr,
+  modernize-use-emplace,
+  performance-*,
+  -performance-avoid-endl,
+  readability-*,
+  -readability-identifier-naming,
+  -readability-magic-numbers,
+  -readability-function-cognitive-complexity,
+  -readability-simplify-boolean-expr,
+  -readability-redundant-access-specifiers,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+
+CheckOptions:
+  - key: readability-braces-around-statements.ShortStatementLines
+    value: '2'
+  - key: modernize-use-override.IgnoreDestructors
+    value: 'true'
+
+HeaderFilterRegex: 'src/(libslic3r|slic3r)/.*'
+
+WarningsAsErrors: ''
