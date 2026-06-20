@@ -92,6 +92,10 @@ set(SLIC3R_GUI_SOURCES
     App/SettingsViewModel.hpp
     App/AccountViewModel.hpp
     App/PluginViewModel.hpp
+    App/TabViewModel.hpp
+    App/PrintTabViewModel.hpp
+    App/FilamentTabViewModel.hpp
+    App/PrinterTabViewModel.hpp
     App/AppViewModel.cpp
     App/AppViewModel.hpp
     App/PresetViewModel.hpp
