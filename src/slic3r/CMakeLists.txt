@@ -119,6 +119,8 @@ set(SLIC3R_GUI_SOURCES
     App/FilamentCompatibilityModel.hpp
     App/SearchModel.cpp
     App/SearchModel.hpp
+    App/SystemInfoModel.cpp
+    App/SystemInfoModel.hpp
     App/JobManager.cpp
     App/AppViewModel.cpp
     App/AppViewModel.hpp
