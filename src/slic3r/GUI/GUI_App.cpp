@@ -94,6 +94,7 @@
 #include "../Utils/Process.hpp"
 #include "../Utils/MacDarkMode.hpp"
 #include "../Utils/Http.hpp"
+#include "slic3r/App/GeometryValidationModel.hpp"
 #include "../Utils/InstanceID.hpp"
 #include "../Utils/UndoRedo.hpp"
 #include "slic3r/Config/Snapshot.hpp"
@@ -343,15 +344,7 @@ std::string VersionInfo::convert_short_version(std::string full_version)
 
 static std::string convert_studio_language_to_api(std::string lang_code)
 {
-    boost::replace_all(lang_code, "_", "-");
-    return lang_code;
-
-    /*if (lang_code == "zh_CN")
-        return "zh-hans";
-    else if (lang_code == "zh_TW")
-        return "zh-hant";
-    else
-        return "en";*/
+    return GeometryValidationModel::localeToApiFormat(lang_code);
 }
 
 #ifdef _WIN32
