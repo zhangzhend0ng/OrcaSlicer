@@ -28,7 +28,7 @@ struct SelectionState {
     std::optional<Vec3d> hovered_world_pos;
     bool                is_dragging{false};
 
-    bool operator==(const SelectionState&) const = default;
+    
 };
 
 /// Pure-C++ selection controller with MVVP interface.

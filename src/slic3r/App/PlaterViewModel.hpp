@@ -3,6 +3,7 @@
 
 #include "libslic3r/MVVP.hpp"
 #include "slic3r/App/UndoRedoController.hpp"
+#include "slic3r/App/ColorMixViewModel.hpp"
 
 #include <string>
 #include <vector>
@@ -89,10 +90,10 @@ public:
 private:
     void addModelDialog();
     void removeSelectedObject();
-    void arrangeAll();
-    void startSlice();
-    void cancelSlice();
-    void duplicateSelected();
+    void impl_arrangeAll();
+    void impl_startSlice();
+    void impl_cancelSlice();
+    void impl_duplicateSelected();
     void exportGCodeToFile();
     void sendToPrinterDevice();
     void updateUndoRedo();

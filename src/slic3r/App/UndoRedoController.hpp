@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <deque>
 
 namespace Slic3r {
 
@@ -19,17 +20,23 @@ public:
     /// Push an undoable action onto the stack.
     void push(Action doAction, Action undoAction, std::string description) {
         // Discard any redo history after current position
-        stack_.resize(current_ + 1);
-        stack_.push_back({std::move(doAction), std::move(undoAction), std::move(description)});
-        current_ = stack_.size() - 1;
+        while (static_cast<int>(stack_.size()) > current_ + 1)
+            stack_.pop_back();
+
+        Entry entry;
+        entry.redo        = std::move(doAction);
+        entry.undo        = std::move(undoAction);
+        entry.description = std::move(description);
+        stack_.push_back(std::move(entry));
+        current_ = static_cast<int>(stack_.size()) - 1;
         canUndo_.set(true);
         canRedo_.set(false);
     }
 
     /// Undo the last action.
     void undo() {
-        if (!canUndo_.get()) return;
-        stack_[current_].undo();
+        if (!canUndo_.get() || current_ < 0) return;
+        if (stack_[current_].undo) stack_[current_].undo();
         current_--;
         canUndo_.set(current_ >= 0);
         canRedo_.set(true);
@@ -37,10 +44,10 @@ public:
 
     /// Redo the last undone action.
     void redo() {
-        if (!canRedo_.get()) return;
+        if (!canRedo_.get() || current_ + 1 >= static_cast<int>(stack_.size())) return;
         current_++;
-        stack_[current_].redo();
-        canRedo_.set(current_ < static_cast<int>(stack_.size()) - 1);
+        if (stack_[current_].redo) stack_[current_].redo();
+        canRedo_.set(current_ + 1 < static_cast<int>(stack_.size()));
         canUndo_.set(true);
     }
 
@@ -53,8 +60,8 @@ public:
     }
 
     // Observable state for View binding
-    MVVP::Property<bool> canUndo_{false};
-    MVVP::Property<bool> canRedo_{false};
+    MVVP::Property<bool>        canUndo_{false};
+    MVVP::Property<bool>        canRedo_{false};
     MVVP::Property<std::string> lastAction_{""};
 
 private:
@@ -62,10 +69,8 @@ private:
         Action      undo;
         Action      redo;
         std::string description;
-        Entry(Action d, Action u, std::string desc)
-            : redo(std::move(d)), undo(std::move(u)), description(std::move(desc)) {}
     };
-    std::vector<Entry> stack_;
+    std::deque<Entry> stack_;
     int current_{-1};
 };
 

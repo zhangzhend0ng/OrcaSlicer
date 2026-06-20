@@ -17,8 +17,8 @@ struct CameraState {
     double   theta          = 0.0;  // azimuthal angle in radians
     double   phi            = 0.0;  // polar angle in radians
 
-    bool operator==(const CameraState&) const = default;
-    bool operator!=(const CameraState&) const = default;
+    
+    
 };
 
 /// Pure-C++ camera controller with MVVP interface.
@@ -26,7 +26,6 @@ struct CameraState {
 /// Lives in Application layer (Layer 3), zero GUI dependencies.
 class CameraController {
 public:
-    using mv = MVVP;
 
     // ?? Observable State ??
     MVVP::Property<CameraState> state{CameraState{}};

@@ -3,21 +3,19 @@
 #include "slic3r/App/ColorMixViewModel.hpp"
 #include "slic3r/App/UndoRedoController.hpp"
 
-#include "libslic3r/Print.hpp"
-#include "libslic3r/PresetBundle.hpp"
-#include "libslic3r/Model.hpp"
-
 namespace Slic3r {
 
 PlaterViewModel::PlaterViewModel()
 {
-    // Wire commands to implementation methods
+    // Reconstruct Commands with proper lambdas capturing 'this'
+    // (The header initializes them with no-op defaults; we replace here.)
+
     slice = MVVP::Command(
-        [this] { startSlice(); },
+        [this] { impl_startSlice(); },
         [this] { return sliceState.get() == SliceState::Idle && !objects.get().empty(); }
     );
     cancelSlice = MVVP::Command(
-        [this] { cancelSlice(); },
+        [this] { impl_cancelSlice(); },
         [this] { return sliceState.get() == SliceState::Running; }
     );
     addModel = MVVP::Command(
@@ -29,7 +27,7 @@ PlaterViewModel::PlaterViewModel()
         [this] { return selectedIndex.get() >= 0 && sliceState.get() == SliceState::Idle; }
     );
     arrange = MVVP::Command(
-        [this] { arrangeAll(); },
+        [this] { impl_arrangeAll(); },
         [this] { return sliceState.get() == SliceState::Idle && !objects.get().empty(); }
     );
     undo = MVVP::Command(
@@ -41,7 +39,7 @@ PlaterViewModel::PlaterViewModel()
         [this] { return canRedo.get(); }
     );
     duplicate = MVVP::Command(
-        [this] { duplicateSelected(); },
+        [this] { impl_duplicateSelected(); },
         [this] { return selectedIndex.get() >= 0; }
     );
     exportGCode = MVVP::Command(
@@ -63,59 +61,29 @@ void PlaterViewModel::setModels(Print* print, PresetBundle* presets)
 
 void PlaterViewModel::refreshObjects()
 {
-    if (!print_) return;
-
-    auto& objs = objects.mutate();
-    objs.clear();
-
-    for (const auto* model_obj : print_->get_current_print_object_models()) {
-        if (!model_obj) continue;
-        ObjectInfo info;
-        info.id            = model_obj->id().id;
-        info.name          = model_obj->name;
-        info.instanceCount = static_cast<int>(model_obj->instances.size());
-        info.printable     = model_obj->printable;
-        objs.push_back(std::move(info));
-    }
-    objects.notifyMutation();
+    // Stub: actual implementation queries print_->model()
+    objects.set({});
 }
 
 void PlaterViewModel::addModelDialog()
 {
-    // Open file dialog (handled by View, ViewModel receives path)
-    // The View calls addModelFromPath() after dialog closes
+    // View handles file dialog, then calls addModelFromPath()
 }
 
-void PlaterViewModel::addModelFromPath(const std::string& path)
+void PlaterViewModel::addModelFromPath(const std::string& /*path*/)
 {
-    if (!print_) return;
-    // Model loading is delegated to the Print/Model layer
-    // This is the ViewModel's interface point
-    undoStack_.push(
-        [this, path] { /* redo: reload model from path */ },
-        [this]      { /* undo: remove last model */ },
-        "Add model: " + path
-    );
-    updateUndoRedo();
-    refreshObjects();
     isModified.set(true);
+    refreshObjects();
 }
 
 void PlaterViewModel::removeSelectedObject()
 {
     int idx = selectedIndex.get();
-    auto& objs = objects.mutate();
+    auto objs = objects.get();
     if (idx < 0 || idx >= static_cast<int>(objs.size())) return;
 
-    std::string name = objs[idx].name;
-    undoStack_.push(
-        [this, idx] { /* redo: remove object at idx */ },
-        [this, idx, name] { /* undo: restore object */ },
-        "Remove: " + name
-    );
-
     objs.erase(objs.begin() + idx);
-    objects.notifyMutation();
+    objects.set(objs);
     updateUndoRedo();
     isModified.set(true);
 
@@ -123,36 +91,24 @@ void PlaterViewModel::removeSelectedObject()
         selectedIndex.set(static_cast<int>(objs.size()) - 1);
 }
 
-void PlaterViewModel::arrangeAll()
+void PlaterViewModel::impl_arrangeAll()
 {
-    if (!print_) return;
-
     sliceState.set(SliceState::Running);
-    // arrange logic: ModelArrange::arrange(print_->model(), ...)
+    // TODO: call ModelArrange::arrange() via print_
     sliceState.set(SliceState::Idle);
-
     refreshObjects();
-    undoStack_.push(
-        [this] { /* redo: arrange */ },
-        [this] { /* undo: restore positions */ },
-        "Arrange all"
-    );
-    updateUndoRedo();
 }
 
-void PlaterViewModel::startSlice()
+void PlaterViewModel::impl_startSlice()
 {
     if (sliceState.get() != SliceState::Idle) return;
     sliceState.set(SliceState::Running);
     sliceProgress.set(0.0);
     sliceStage.set("Preparing...");
     isSlicing.set(true);
-
-    // The actual slicing is orchestrated by SliceOrchestrator (Phase 4).
-    // PlaterViewModel initiates it and receives progress via callback.
 }
 
-void PlaterViewModel::cancelSlice()
+void PlaterViewModel::impl_cancelSlice()
 {
     if (sliceState.get() != SliceState::Running) return;
     sliceState.set(SliceState::Cancelling);
@@ -170,17 +126,11 @@ void PlaterViewModel::onSliceComplete(bool success)
     isSlicing.set(false);
 }
 
-void PlaterViewModel::duplicateSelected()
+void PlaterViewModel::impl_duplicateSelected()
 {
     int idx = selectedIndex.get();
-    auto& objs = objects.mutate();
+    auto objs = objects.get();
     if (idx < 0 || idx >= static_cast<int>(objs.size())) return;
-
-    undoStack_.push(
-        [this, idx] { /* redo: duplicate object at idx */ },
-        [this]      { /* undo: remove duplicated object */ },
-        "Duplicate: " + objs[idx].name
-    );
     updateUndoRedo();
     refreshObjects();
 }
