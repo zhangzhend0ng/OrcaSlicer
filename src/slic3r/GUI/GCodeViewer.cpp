@@ -1,4 +1,5 @@
 #include "libslic3r/libslic3r.h"
+#include "slic3r/App/ObjectValidationModel.hpp"
 #include "GCodeViewer.hpp"
 
 #include "libslic3r/BuildVolume.hpp"
@@ -95,38 +96,16 @@ static EMoveType buffer_type(unsigned char id) {
 // Equivalent to conversion to string with sprintf(buf, "%.2g", value) and conversion back to float, but faster.
 static float round_to_bin(const float value)
 {
-//    assert(value > 0);
-    constexpr float const scale    [5] = { 100.f,  1000.f,  10000.f,  100000.f,  1000000.f };
-    constexpr float const invscale [5] = { 0.01f,  0.001f,  0.0001f,  0.00001f,  0.000001f };
-    constexpr float const threshold[5] = { 0.095f, 0.0095f, 0.00095f, 0.000095f, 0.0000095f };
-    // Scaling factor, pointer to the tables above.
-    int                   i            = 0;
-    // While the scaling factor is not yet large enough to get two integer digits after scaling and rounding:
-    for (; value < threshold[i] && i < 4; ++ i) ;
-    return std::round(value * scale[i]) * invscale[i];
+    return ObjectValidationModel::roundToBin(value);
 }
 
 // Find an index of a value in a sorted vector, which is in <z-eps, z+eps>.
 // Returns -1 if there is no such member.
 static int find_close_layer_idx(const std::vector<double> &zs, double &z, double eps)
 {
-    if (zs.empty()) return -1;
-    auto it_h = std::lower_bound(zs.begin(), zs.end(), z);
-    if (it_h == zs.end()) {
-        auto it_l = it_h;
-        --it_l;
-        if (z - *it_l < eps) return int(zs.size() - 1);
-    } else if (it_h == zs.begin()) {
-        if (*it_h - z < eps) return 0;
-    } else {
-        auto it_l = it_h;
-        --it_l;
-        double dist_l = z - *it_l;
-        double dist_h = *it_h - z;
-        if (std::min(dist_l, dist_h) < eps) { return (dist_l < dist_h) ? int(it_l - zs.begin()) : int(it_h - zs.begin()); }
-    }
-    return -1;
+    return ObjectValidationModel::findClosestLayerIndex(zs, z, eps);
 }
+
 
 void GCodeViewer::VBuffer::reset()
 {

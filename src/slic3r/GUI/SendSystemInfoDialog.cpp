@@ -1,4 +1,5 @@
 #include "SendSystemInfoDialog.hpp"
+#include "slic3r/App/SystemInfoModel.hpp"
 
 #if __APPLE__
 #import <IOKit/IOKitLib.h>
@@ -258,29 +259,9 @@ static std::map<std::string, std::string> get_cpu_info_from_registry()
 #else // Apple, Linux, BSD
 static std::map<std::string, std::string> parse_lscpu_etc(const std::string& name, char delimiter)
 {
-    std::map<std::string, std::string> out;
-    constexpr size_t max_len = 1000;
-    char cline[max_len] = "";
-    FILE* fp = popen(name.data(), "r");
-    if (fp != NULL) {
-        while (fgets(cline, max_len, fp) != NULL) {
-            std::string line(cline);
-            line.erase(std::remove_if(line.begin(), line.end(),
-                [](char c) { return c == '\"' || c == '\r' || c == '\n'; }),
-                line.end());
-            size_t pos = line.find(delimiter);
-            if (pos < line.size() - 1) {
-                std::string key = line.substr(0, pos);
-                std::string value = line.substr(pos + 1);
-                boost::trim_all(key); // remove leading and trailing spaces
-                boost::trim_all(value);
-                out[key] = value;
-            }
-        }
-        pclose(fp);
-    }
-    return out;
+    return SystemInfoModel::parseKeyValueConfig(name, delimiter);
 }
+
 #endif
 
 

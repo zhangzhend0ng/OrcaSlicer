@@ -1,4 +1,5 @@
 #include "UnsavedChangesDialog.hpp"
+#include "slic3r/App/PresetStringModel.hpp"
 
 #include <cstddef>
 #include <string>
@@ -572,11 +573,9 @@ void DiffModel::Clear()
 
 static std::string get_pure_opt_key(std::string opt_key)
 {
-    const int pos = opt_key.find("#");
-    if (pos > 0)
-        boost::erase_tail(opt_key, opt_key.size() - pos);
-    return opt_key;
+    return PresetStringModel::pureOptionKey(opt_key);
 }
+
 
 // ----------------------------------------------------------------------------
 //                  DiffViewCtrl
@@ -1182,13 +1181,9 @@ wxString get_string_from_enum(const std::string& opt_key, const DynamicPrintConf
 #if 0
 static size_t get_id_from_opt_key(std::string opt_key)
 {
-    int pos = opt_key.find("#");
-    if (pos > 0) {
-        boost::erase_head(opt_key, pos + 1);
-        return static_cast<size_t>(atoi(opt_key.c_str()));
-    }
-    return 0;
+    return PresetStringModel::idFromOptionKey(opt_key);
 }
+
 #endif
 
 static wxString get_full_label(std::string opt_key, const DynamicPrintConfig& config)
