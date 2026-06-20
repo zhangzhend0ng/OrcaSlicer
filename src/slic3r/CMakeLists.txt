@@ -86,6 +86,19 @@ set(SLIC3R_GUI_SOURCES
     App/ObjectViewModel.hpp
     App/ColorMixViewModel.hpp
     App/UndoRedoController.hpp
+    App/AppViewModel.hpp
+    App/PresetViewModel.hpp
+    App/DeviceViewModel.hpp
+    App/SettingsViewModel.hpp
+    App/AccountViewModel.hpp
+    App/PluginViewModel.hpp
+    App/AppViewModel.cpp
+    App/AppViewModel.hpp
+    App/PresetViewModel.hpp
+    App/DeviceViewModel.hpp
+    App/SettingsViewModel.hpp
+    App/AccountViewModel.hpp
+    App/PluginViewModel.hpp
     App/PlaterViewModel.cpp
     GUI/CloneDialog.cpp
     GUI/CloneDialog.hpp
