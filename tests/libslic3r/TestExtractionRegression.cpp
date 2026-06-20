@@ -256,3 +256,33 @@ TEST_CASE("REGRESSION: presetIconName returns correct icon", "[Regression]") {
     REQUIRE(PresetStringModel::presetIconName(1, 0) == "spool");    // Filament
     REQUIRE(PresetStringModel::presetIconName(2, 0) == "printer");  // Printer FFF
 }
+
+
+// ?? decodePathExtra regression (from GUI_App.cpp L1372) ??
+
+TEST_CASE("REGRESSION: decodePathExtra handles empty input", "[Regression]") {
+    REQUIRE(GeometryValidationModel::decodePathExtra("") == "");
+}
+
+TEST_CASE("REGRESSION: decodePathExtra handles plain string", "[Regression]") {
+    // Non-UPX data returns as-is
+    REQUIRE(GeometryValidationModel::decodePathExtra("hello") == "hello");
+}
+
+
+// ?? shortenTimeString regression (from IMSlider.cpp) ??
+
+TEST_CASE("REGRESSION: shortenTimeString days format", "[Regression]") {
+    auto s = PresetStringModel::shortenTimeString("2d 3h 15m 30s");
+    REQUIRE(s == "2d3h15m");
+}
+
+TEST_CASE("REGRESSION: shortenTimeString hours format", "[Regression]") {
+    auto s = PresetStringModel::shortenTimeString("5h 10m 30s");
+    REQUIRE(s.find('h') != std::string::npos);
+}
+
+TEST_CASE("REGRESSION: shortenTimeString seconds only", "[Regression]") {
+    auto s = PresetStringModel::shortenTimeString("45s");
+    REQUIRE(s.find('s') != std::string::npos);
+}

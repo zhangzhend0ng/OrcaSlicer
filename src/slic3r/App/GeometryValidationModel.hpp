@@ -35,6 +35,10 @@ public:
     /// Convert locale code from underscore format to hyphen format.
     /// e.g., "zh_CN" -> "zh-CN"
     static std::string localeToApiFormat(std::string langCode);
+
+    /// Decode binary path data from extra string (UPX-encoded).
+    /// From GUI_App.cpp L1372. Pure byte manipulation, no wx types.
+    static std::string decodePathExtra(const std::string& extra);
 };
 
 } // namespace Slic3r

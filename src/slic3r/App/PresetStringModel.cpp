@@ -206,4 +206,29 @@ std::string PresetStringModel::presetIconName(int presetType, int printerTechnol
     }
 }
 
+
+std::string PresetStringModel::shortenTimeString(const std::string& time)
+{
+    int days = 0, hours = 0, minutes = 0, seconds = 0;
+    if (time.find('d') != std::string::npos)
+        sscanf_s(time.c_str(), "%dd %dh %dm %ds", &days, &hours, &minutes, &seconds);
+    else if (time.find('h') != std::string::npos)
+        sscanf_s(time.c_str(), "%dh %dm %ds", &hours, &minutes, &seconds);
+    else if (time.find('m') != std::string::npos)
+        sscanf_s(time.c_str(), "%dm %ds", &minutes, &seconds);
+    else if (time.find('s') != std::string::npos)
+        sscanf_s(time.c_str(), "%ds", &seconds);
+
+    char buffer[64];
+    if (days > 0)
+        sprintf_s(buffer, "%dd%dh%dm", days, hours, minutes);
+    else if (hours > 0)
+        sprintf_s(buffer, "%dh%dm%ds", hours, minutes, seconds);
+    else if (minutes > 0)
+        sprintf_s(buffer, "%dm%ds", minutes, seconds);
+    else
+        sprintf_s(buffer, "%ds", seconds);
+    return std::string(buffer);
+}
+
 } // namespace Slic3r

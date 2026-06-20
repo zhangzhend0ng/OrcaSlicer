@@ -40,4 +40,25 @@ std::string GeometryValidationModel::localeToApiFormat(std::string langCode)
     return langCode;
 }
 
+
+std::string GeometryValidationModel::decodePathExtra(const std::string& extra)
+{
+    // Original from GUI_App.cpp L1372
+    // Parses UPX-style encoded path data: marker [u][p][len_lo][len_hi]...[0x01]...data...
+    const char* p = extra.data();
+    const char* e = p + extra.length();
+    while (p + 4 < e) {
+        auto len = static_cast<uint16_t>(
+            (static_cast<uint16_t>(static_cast<unsigned char>(p[2]))) |
+            (static_cast<uint16_t>(static_cast<unsigned char>(p[3])) << 8));
+        if (p[0] == 'u' && p[1] == 'p' && len >= 5 &&
+            p + 4 + len < e && p[4] == '') {
+            return std::string(p + 9, p + 4 + len);
+        } else {
+            p += 4 + len;
+        }
+    }
+    return extra;
+}
+
 } // namespace Slic3r

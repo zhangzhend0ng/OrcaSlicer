@@ -79,6 +79,11 @@ public:
     /// Get icon name for preset type + printer technology.
     static std::string presetIconName(int presetType, int printerTechnology);
 
+    // ?? From IMSlider.cpp (L87) ??
+
+    /// Parse and shorten d/h/m/s time string (e.g. "2d 3h 15m 30s" -> "2d3h15m").
+    static std::string shortenTimeString(const std::string& time);
+
     static std::string firstNewPreset(
         const std::map<std::string, std::string>& oldData,
         const std::map<std::string, std::string>& newData);
