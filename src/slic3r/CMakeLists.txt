@@ -115,6 +115,8 @@ set(SLIC3R_GUI_SOURCES
     App/PrintJobModel.cpp
     App/PrintJobModel.hpp
     App/MixedFilamentPanel.hpp
+    App/FilamentCompatibilityModel.cpp
+    App/FilamentCompatibilityModel.hpp
     App/JobManager.cpp
     App/AppViewModel.cpp
     App/AppViewModel.hpp
