@@ -296,3 +296,24 @@ TEST_CASE("REGRESSION: moveTypeToBufferId round trip", "[Regression]") {
     int back = ObjectValidationModel::bufferIdToMoveType(id);
     REQUIRE(back == moveType);
 }
+
+
+// ?? 3D mouse input conversion (from Mouse3DController.cpp) ??
+
+TEST_CASE("REGRESSION: convertSpaceNavInput divides by 100", "[Regression]") {
+    REQUIRE(GeometryValidationModel::convertSpaceNavInput(100) == 1.0);
+    REQUIRE(GeometryValidationModel::convertSpaceNavInput(0) == 0.0);
+    REQUIRE(GeometryValidationModel::convertSpaceNavInput(-200) == -2.0);
+}
+
+TEST_CASE("REGRESSION: convert3DConnexionInput deadzone filters small", "[Regression]") {
+    // Deadzone 0.1 filters very small movements
+    double small = GeometryValidationModel::convert3DConnexionInput(10, 0, 0.1);
+    REQUIRE(small == 0.0);
+}
+
+TEST_CASE("REGRESSION: convert3DConnexionInput passes through large", "[Regression]") {
+    // Large input should not be filtered by deadzone 0.0
+    double large = GeometryValidationModel::convert3DConnexionInput(0, 2, 0.0);
+    REQUIRE(large > 0.1);
+}

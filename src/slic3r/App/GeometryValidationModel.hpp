@@ -39,6 +39,10 @@ public:
     /// Decode binary path data from extra string (UPX-encoded).
     /// From GUI_App.cpp L1372. Pure byte manipulation, no wx types.
     static std::string decodePathExtra(const std::string& extra);
+
+    // ?? From Mouse3DController.cpp: 3D mouse input conversion ??
+    static double convert3DConnexionInput(int coordLow, int coordHigh, double deadzone);
+    static double convertSpaceNavInput(int value);
 };
 
 } // namespace Slic3r

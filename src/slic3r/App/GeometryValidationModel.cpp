@@ -61,4 +61,19 @@ std::string GeometryValidationModel::decodePathExtra(const std::string& extra)
     return extra;
 }
 
+double GeometryValidationModel::convert3DConnexionInput(
+    int coordLow, int coordHigh, double deadzone)
+{
+    int value = coordLow | (coordHigh << 8);
+    if (value >= 32768)
+        value -= 65536;
+    double ret = static_cast<double>(value) / 350.0;
+    return (std::abs(ret) > deadzone) ? ret : 0.0;
+}
+
+double GeometryValidationModel::convertSpaceNavInput(int value)
+{
+    return static_cast<double>(value) / 100.0;
+}
+
 } // namespace Slic3r
