@@ -96,6 +96,11 @@ set(SLIC3R_GUI_SOURCES
     App/PrintTabViewModel.hpp
     App/FilamentTabViewModel.hpp
     App/PrinterTabViewModel.hpp
+    App/SliceOrchestrator.hpp
+    App/JobManager.hpp
+    App/IPlugin.hpp
+    App/PluginLoader.hpp
+    App/JobManager.cpp
     App/AppViewModel.cpp
     App/AppViewModel.hpp
     App/PresetViewModel.hpp
