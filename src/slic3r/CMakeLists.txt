@@ -100,6 +100,10 @@ set(SLIC3R_GUI_SOURCES
     App/JobManager.hpp
     App/IPlugin.hpp
     App/PluginLoader.hpp
+    App/MixedFilamentViewModel.cpp
+    App/MixedFilamentViewModel.hpp
+    App/ConfigValidationModel.cpp
+    App/ConfigValidationModel.hpp
     App/JobManager.cpp
     App/AppViewModel.cpp
     App/AppViewModel.hpp
