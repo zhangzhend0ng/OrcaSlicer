@@ -117,6 +117,8 @@ set(SLIC3R_GUI_SOURCES
     App/MixedFilamentPanel.hpp
     App/FilamentCompatibilityModel.cpp
     App/FilamentCompatibilityModel.hpp
+    App/SearchModel.cpp
+    App/SearchModel.hpp
     App/JobManager.cpp
     App/AppViewModel.cpp
     App/AppViewModel.hpp
