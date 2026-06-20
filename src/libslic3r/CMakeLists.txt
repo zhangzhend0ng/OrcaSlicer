@@ -178,6 +178,13 @@ set(lisbslic3r_sources
     FlushVolCalc.hpp
     ColorSpaceConvert.cpp
     ColorSpaceConvert.hpp
+    Ports/IProgressReporter.hpp
+    Ports/IModelArranger.hpp
+    Ports/IGCodeConsumer.hpp
+    Ports/IPlateDataProvider.hpp
+    Ports/IConfigResolver.hpp
+    Ports/INotificationSink.hpp
+    Ports/Ports.hpp
     Format/3mf.cpp
     Format/3mf.hpp
     Format/AMF.cpp
