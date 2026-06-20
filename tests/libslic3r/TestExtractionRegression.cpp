@@ -184,3 +184,55 @@ TEST_CASE("REGRESSION: undo/redo stack handles multiple pushes", "[Regression]")
     urc.undo(); REQUIRE(val == 0);
     REQUIRE_FALSE(urc.canUndo_.get());
 }
+
+// ?? isImproperCategory regression (from GUI_Factories.cpp L84) ??
+
+TEST_CASE("REGRESSION: isImproperCategory empty category is improper", "[Regression]") {
+    REQUIRE(ConfigValidationModel::isImproperCategory("", 2));
+}
+
+TEST_CASE("REGRESSION: isImproperCategory extruders hidden with 1 filament", "[Regression]") {
+    REQUIRE(ConfigValidationModel::isImproperCategory("Extruders", 1));
+    REQUIRE_FALSE(ConfigValidationModel::isImproperCategory("Extruders", 2));
+}
+
+TEST_CASE("REGRESSION: isImproperCategory wipe options hidden with 1 filament", "[Regression]") {
+    REQUIRE(ConfigValidationModel::isImproperCategory("Wipe options", 1));
+    REQUIRE_FALSE(ConfigValidationModel::isImproperCategory("Wipe options", 4));
+}
+
+TEST_CASE("REGRESSION: isImproperCategory support hidden for non-object", "[Regression]") {
+    REQUIRE_FALSE(ConfigValidationModel::isImproperCategory("Support material", 2, true));
+    REQUIRE(ConfigValidationModel::isImproperCategory("Support material", 2, false));
+}
+
+// ?? findNewPresets regression (from ConfigWizard.cpp) ??
+
+TEST_CASE("REGRESSION: findNewPresets detects added keys", "[Regression]") {
+    std::map<std::string, std::string> old = {{"a","1"},{"b","2"}};
+    std::map<std::string, std::string> nu  = {{"a","1"},{"b","2"},{"c","3"}};
+    auto added = PresetStringModel::findNewPresets(old, nu);
+    REQUIRE(added.size() == 1);
+    REQUIRE(added.count("c") == 1);
+}
+
+TEST_CASE("REGRESSION: findNewPresets detects changed values", "[Regression]") {
+    std::map<std::string, std::string> old = {{"a","1"}};
+    std::map<std::string, std::string> nu  = {{"a","2"}};
+    auto added = PresetStringModel::findNewPresets(old, nu);
+    REQUIRE(added.size() == 1);
+}
+
+TEST_CASE("REGRESSION: findNewPresets empty when identical", "[Regression]") {
+    std::map<std::string, std::string> old = {{"a","1"}};
+    std::map<std::string, std::string> nu  = {{"a","1"}};
+    auto added = PresetStringModel::findNewPresets(old, nu);
+    REQUIRE(added.empty());
+}
+
+TEST_CASE("REGRESSION: firstNewPreset returns first added", "[Regression]") {
+    std::map<std::string, std::string> old;
+    std::map<std::string, std::string> nu = {{"x","1"},{"y","2"}};
+    auto first = PresetStringModel::firstNewPreset(old, nu);
+    REQUIRE(!first.empty());
+}

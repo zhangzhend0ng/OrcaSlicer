@@ -55,6 +55,12 @@ public:
 
     MVVP::Property<std::vector<Warning>> warnings{{}};
     MVVP::Property<bool>                 hasWarnings{false};
+
+    /// Check if a settings category should be hidden based on context.
+    /// From GUI_Factories.cpp L84.
+    static bool isImproperCategory(const std::string& category,
+                                   int filamentCount,
+                                   bool isObjectSettings = true);
 };
 
 } // namespace Slic3r

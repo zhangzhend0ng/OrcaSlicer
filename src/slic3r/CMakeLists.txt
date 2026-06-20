@@ -108,6 +108,12 @@ set(SLIC3R_GUI_SOURCES
     App/GeometryValidationModel.hpp
     App/ObjectValidationModel.cpp
     App/ObjectValidationModel.hpp
+    App/PresetStringModel.cpp
+    App/PresetStringModel.hpp
+    App/PresetCompatibilityModel.cpp
+    App/PresetCompatibilityModel.hpp
+    App/PrintJobModel.cpp
+    App/PrintJobModel.hpp
     App/JobManager.cpp
     App/AppViewModel.cpp
     App/AppViewModel.hpp

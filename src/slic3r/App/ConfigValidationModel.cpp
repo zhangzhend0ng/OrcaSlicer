@@ -91,4 +91,13 @@ DynamicPrintConfig ConfigValidationModel::resolveModelConfig(
     return resolved;
 }
 
+
+bool ConfigValidationModel::isImproperCategory(
+    const std::string& category, int filamentCount, bool isObjectSettings)
+{
+    return category.empty() ||
+        (filamentCount == 1 && (category == "Extruders" || category == "Wipe options")) ||
+        (!isObjectSettings && category == "Support material");
+}
+
 } // namespace Slic3r
