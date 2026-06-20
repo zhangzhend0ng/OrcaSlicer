@@ -2,6 +2,7 @@
 #define slic3r_App_PlaterViewModel_hpp_
 
 #include "libslic3r/MVVP.hpp"
+#include "slic3r/App/UndoRedoController.hpp"
 
 #include <string>
 #include <vector>
@@ -12,7 +13,7 @@ namespace Slic3r {
 // Forward declarations
 class Print;
 class PresetBundle;
-struct Vec3d;
+class ColorMixViewModel;
 
 /// Information about a single object on the plate, for View consumption.
 struct ObjectInfo {
@@ -22,7 +23,6 @@ struct ObjectInfo {
     int         instanceCount{1};
     bool        printable{true};
     bool        isSelected{false};
-    bool        isVisible{true};
 };
 
 /// Layout state of the build plate.
@@ -47,7 +47,7 @@ enum class SliceState {
 /// Pure C++, independently testable, zero wxWidgets dependency.
 class PlaterViewModel {
 public:
-    using mv = MVVP;
+    PlaterViewModel();
 
     // ?? Observable State ??
     MVVP::Property<SliceState>              sliceState{SliceState::Idle};
@@ -61,52 +61,42 @@ public:
     MVVP::Property<bool>                    isSlicing{false};
     MVVP::Property<bool>                    isModified{false};
 
-    // ?? Commands ??
-    MVVP::Command addModel{
-        [this] { /* loadModelDialog */ },
-        [this] { return sliceState.get() == SliceState::Idle; }
-    };
-    MVVP::Command removeSelected{
-        [this] { /* removeSelectedObject */ },
-        [this] { return selectedIndex.get() >= 0 && sliceState.get() == SliceState::Idle; }
-    };
-    MVVP::Command arrange{
-        [this] { /* arrangeAll */ },
-        [this] { return sliceState.get() == SliceState::Idle && !objects.get().empty(); }
-    };
-    MVVP::Command slice{
-        [this] { /* startSlice */ },
-        [this] { return sliceState.get() == SliceState::Idle && !objects.get().empty(); }
-    };
-    MVVP::Command cancelSlice{
-        [this] { /* cancelSlice */ },
-        [this] { return sliceState.get() == SliceState::Running; }
-    };
-    MVVP::Command undo{
-        [this] { /* undo */ },
-        [this] { return canUndo.get(); }
-    };
-    MVVP::Command redo{
-        [this] { /* redo */ },
-        [this] { return canRedo.get(); }
-    };
-    MVVP::Command duplicate{
-        [this] { /* duplicate */ },
-        [this] { return selectedIndex.get() >= 0; }
-    };
-    MVVP::Command exportGCode{
-        [this] { /* exportGCode */ },
-        [this] { return sliceState.get() == SliceState::Done; }
-    };
-    MVVP::Command sendToPrinter{
-        [this] { /* sendToPrinter */ },
-        [this] { return sliceState.get() == SliceState::Done; }
-    };
+    // ?? Commands (initialized in constructor) ??
+    MVVP::Command addModel{[]{}, []{return true;}};
+    MVVP::Command removeSelected{[]{}, []{return true;}};
+    MVVP::Command arrange{[]{}, []{return true;}};
+    MVVP::Command slice{[]{}, []{return true;}};
+    MVVP::Command cancelSlice{[]{}, []{return true;}};
+    MVVP::Command undo{[]{}, []{return true;}};
+    MVVP::Command redo{[]{}, []{return true;}};
+    MVVP::Command duplicate{[]{}, []{return true;}};
+    MVVP::Command exportGCode{[]{}, []{return true;}};
+    MVVP::Command sendToPrinter{[]{}, []{return true;}};
+
+    // ?? Child ViewModels ??
+    std::unique_ptr<ColorMixViewModel> colorMixVM{std::make_unique<ColorMixViewModel>()};
+    UndoRedoController                  undoStack_;
 
     // ?? Model injection (called by App on startup) ??
     void setModels(Print* print, PresetBundle* presets);
 
+    // ?? Public interface for View callbacks ??
+    void addModelFromPath(const std::string& path);
+    void onSliceProgress(int percent, const std::string& stage);
+    void onSliceComplete(bool success);
+    void refreshObjects();
+
 private:
+    void addModelDialog();
+    void removeSelectedObject();
+    void arrangeAll();
+    void startSlice();
+    void cancelSlice();
+    void duplicateSelected();
+    void exportGCodeToFile();
+    void sendToPrinterDevice();
+    void updateUndoRedo();
+
     Print*         print_{nullptr};
     PresetBundle*  presets_{nullptr};
 };

@@ -83,6 +83,10 @@ set(SLIC3R_GUI_SOURCES
     App/SelectionController.hpp
     App/PlaterViewModel.hpp
     App/CanvasViewModel.hpp
+    App/ObjectViewModel.hpp
+    App/ColorMixViewModel.hpp
+    App/UndoRedoController.hpp
+    App/PlaterViewModel.cpp
     GUI/CloneDialog.cpp
     GUI/CloneDialog.hpp
     GUI/ConfigManipulation.cpp
