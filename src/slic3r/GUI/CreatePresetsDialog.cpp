@@ -1,4 +1,5 @@
 #include "CreatePresetsDialog.hpp"
+#include "slic3r/App/PresetStringModel.hpp"
 #include <boost/log/trivial.hpp>
 #include <vector>
 #include <set>
@@ -170,29 +171,18 @@ static std::set<char> special_key = {'\n', '\t', '\r', '\v', '@', ';'};
 
 static std::string remove_special_key(const std::string &str)
 {
-    std::string res_str;
-    for (char c : str) {
-        if (special_key.find(c) == special_key.end()) {
-            res_str.push_back(c);
-        }
-    }
-    return res_str;
+    return PresetStringModel::removeSpecialKeys(str);
 }
 
-static bool str_is_all_digit(const std::string &str) {
-    for (const char &c : str) {
-        if (!std::isdigit(c)) return false;
-    }
-    return true; 
+static bool str_is_all_digit(const std::string &str)
+{
+    return PresetStringModel::isAllDigits(str);
 }
 
 // Custom comparator for case-insensitive sorting
-static bool caseInsensitiveCompare(const std::string& a, const std::string& b) {
-    std::string lowerA = a;
-    std::string lowerB = b;
-    std::transform(lowerA.begin(), lowerA.end(), lowerA.begin(), ::tolower);
-    std::transform(lowerB.begin(), lowerB.end(), lowerB.begin(), ::tolower);
-    return lowerA < lowerB;
+static bool caseInsensitiveCompare(const std::string& a, const std::string& b)
+{
+    return PresetStringModel::caseInsensitiveCompare(a, b);
 }
 
 static bool delete_filament_preset_by_name(std::string delete_preset_name, std::string &selected_preset_name)
@@ -248,26 +238,12 @@ static bool delete_filament_preset_by_name(std::string delete_preset_name, std::
 
 static std::string get_curr_time(const char* format = "%Y_%m_%d_%H_%M_%S")
 {
-    std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
-
-    std::time_t time = std::chrono::system_clock::to_time_t(now);
-
-    std::tm            local_time = *std::localtime(&time);
-    std::ostringstream time_stream;
-    time_stream << std::put_time(&local_time, format);
-
-    std::string current_time = time_stream.str();
-    return current_time;
+    return PresetStringModel::currentTime(format);
 }
 
 static std::string get_curr_timestmp()
 {
-    return get_curr_time("%Y%m%d%H%M%S");
-    // std::time_t currentTime = std::time(nullptr);
-    // std::ostringstream oss;
-    // oss << currentTime;
-    // std::string timestampString = oss.str();
-    // return timestampString;
+    return PresetStringModel::currentTimestamp();
 }
 
 static void get_filament_compatible_printer(Preset* preset, vector<std::string>& printers)
@@ -338,22 +314,12 @@ static wxArrayString get_exist_vendor_choices(VendorMap& vendors)
 
 static std::string get_machine_name(const std::string &preset_name)
 {
-    size_t index_at = preset_name.find_last_of("@");
-    if (std::string::npos == index_at) {
-        return "";
-    } else {
-        return preset_name.substr(index_at + 1);
-    }
+    return PresetStringModel::extractMachineName(preset_name);
 }
 
 static std::string get_filament_name(std::string &preset_name)
 {
-    size_t index_at = preset_name.find_last_of("@");
-    if (std::string::npos == index_at) {
-        return preset_name;
-    } else {
-        return preset_name.substr(0, index_at - 1);
-    }
+    return PresetStringModel::extractFilamentName(preset_name);
 }
 
 static wxBoxSizer *create_preset_tree(wxWindow *parent, std::pair<std::string, std::vector<std::shared_ptr<Preset>>> printer_and_preset)
@@ -382,15 +348,7 @@ static wxBoxSizer *create_preset_tree(wxWindow *parent, std::pair<std::string, s
 
 static std::string get_vendor_name(std::string& preset_name)
 {
-    if (preset_name.empty()) return "";
-    std::string vendor_name = preset_name.substr(preset_name.find_first_not_of(' ')); //remove the name prefix space
-    size_t index_at = vendor_name.find(" ");
-    if (std::string::npos == index_at) {
-        return vendor_name;
-    } else {
-        vendor_name = vendor_name.substr(0, index_at);
-        return vendor_name;
-    }
+    return PresetStringModel::extractVendorName(preset_name);
 }
 
 static wxBoxSizer *create_select_filament_preset_checkbox(wxWindow *                                    parent,
@@ -446,88 +404,12 @@ static wxString get_curr_radio_type(std::vector<std::pair<RadioBox *, wxString>>
 
 static std::string calculate_md5(const std::string &input)
 {
-    unsigned char digest[MD5_DIGEST_LENGTH];
-    std::string   md5;
-
-    EVP_MD_CTX *mdContext = EVP_MD_CTX_new();
-    EVP_DigestInit(mdContext, EVP_md5());
-    EVP_DigestUpdate(mdContext, input.c_str(), input.length());
-    EVP_DigestFinal(mdContext, digest, nullptr);
-    EVP_MD_CTX_free(mdContext);
-
-    char hexDigest[MD5_DIGEST_LENGTH * 2 + 1];
-    for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) { sprintf(hexDigest + (i * 2), "%02x", digest[i]); }
-    hexDigest[MD5_DIGEST_LENGTH * 2] = '\0';
-
-    md5 = std::string(hexDigest);
-    return md5;
+    return PresetStringModel::md5Hash(input);
 }
 
 static std::string get_filament_id(std::string vendor_typr_serial)
 {
-    std::unordered_map<std::string, std::set<std::string>> filament_id_to_filament_name;
-
-    // temp filament presets
-    PresetBundle temp_preset_bundle;
-    temp_preset_bundle.load_system_filaments_json(Slic3r::ForwardCompatibilitySubstitutionRule::EnableSilent);
-    std::string dir_user_presets = wxGetApp().app_config->get("preset_folder");
-    if (dir_user_presets.empty()) {
-        temp_preset_bundle.load_user_presets(DEFAULT_USER_FOLDER_NAME, ForwardCompatibilitySubstitutionRule::EnableSilent);
-    } else {
-        temp_preset_bundle.load_user_presets(dir_user_presets, ForwardCompatibilitySubstitutionRule::EnableSilent);
-    }
-    const std::deque<Preset> &filament_presets = temp_preset_bundle.filaments.get_presets();
-
-    for (const Preset &preset : filament_presets) {
-        std::string preset_name = preset.name;
-        size_t      index_at    = preset_name.find_first_of('@');
-        if (index_at == std::string::npos) {
-            BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " filament preset name has no @ and name is: " << preset_name;
-            continue;
-        }
-        std::string filament_name = preset_name.substr(0, index_at - 1);
-        if (filament_name == vendor_typr_serial && preset.filament_id != "null")
-            return preset.filament_id;
-        filament_id_to_filament_name[preset.filament_id].insert(filament_name);
-    }
-    // global filament presets
-    PresetBundle *                                     preset_bundle               = wxGetApp().preset_bundle;
-    std::map<std::string, std::vector<Preset const *>> temp_filament_id_to_presets = preset_bundle->filaments.get_filament_presets();
-    for (std::pair<std::string, std::vector<Preset const *>> filament_id_to_presets : temp_filament_id_to_presets) {
-        if (filament_id_to_presets.first.empty()) continue;
-        for (const Preset *preset : filament_id_to_presets.second) {
-            std::string preset_name = preset->name;
-            size_t      index_at    = preset_name.find_first_of('@');
-            if (index_at == std::string::npos) {
-                BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " filament preset name has no @ and name is: " << preset_name;
-                continue;
-            }
-            std::string filament_name = preset_name.substr(0, index_at - 1);
-            if (filament_name == vendor_typr_serial && preset->filament_id != "null")
-                return preset->filament_id;
-            filament_id_to_filament_name[preset->filament_id].insert(filament_name);
-        }
-    }
-
-    std::string user_filament_id = "P" + calculate_md5(vendor_typr_serial).substr(0, 7);
-
-    while (filament_id_to_filament_name.find(user_filament_id) != filament_id_to_filament_name.end()) {//find same filament id
-        bool have_same_filament_name = false;
-        for (const std::string &name : filament_id_to_filament_name.find(user_filament_id)->second) {
-            if (name == vendor_typr_serial) {
-                have_same_filament_name = true;
-                break;
-            }
-        }
-        if (have_same_filament_name) {
-            break;
-        }
-        else { //Different names correspond to the same filament id
-            user_filament_id = "P" + calculate_md5(vendor_typr_serial + get_curr_time()).substr(0, 7);
-        }
-    }
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " filament name is: " << vendor_typr_serial << "and create filament_id is: " << user_filament_id;
-    return user_filament_id;
+    return PresetStringModel::filamentId(vendor_typr_serial);
 }
 
 static json get_config_json(const Preset* preset) {
@@ -584,27 +466,9 @@ static char* read_json_file(const std::string &preset_path)
     return json_contents;
 }
 
-static std::string get_printer_nozzle_diameter(std::string printer_name) {
-    size_t index = printer_name.find(" nozzle)");
-    if (std::string::npos == index) {
-        size_t index = printer_name.find(" nozzle");
-        if (std::string::npos == index) {
-            return "";
-        }
-        std::string nozzle           = printer_name.substr(0, index);
-        size_t      last_space_index = nozzle.find_last_of(" ");
-        if (std::string::npos == index) {
-            return "";
-        }
-        return nozzle.substr(last_space_index + 1);
-    } else {
-        std::string nozzle = printer_name.substr(0, index);
-        size_t      last_bracket_index = nozzle.find_last_of("(");
-        if (std::string::npos == index) {
-            return "";
-        }
-        return nozzle.substr(last_bracket_index + 1);
-    }
+static std::string get_printer_nozzle_diameter(std::string printer_name)
+{
+    return PresetStringModel::extractNozzleDiameter(printer_name);
 }
 
 static void adjust_dialog_in_screen(DPIDialog* dialog) {
