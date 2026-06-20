@@ -65,6 +65,23 @@ public:
     static std::string firstNewPreset(
         const std::map<std::string, std::string>& oldData,
         const std::map<std::string, std::string>& newData);
+
+    // ?? From UnsavedChangesDialog.cpp (L573, L1183) ??
+
+    /// Extract pure option key without extruder suffix (e.g. "wall_loops#2" -> "wall_loops").
+    static std::string pureOptionKey(std::string optKey);
+
+    /// Extract ID from option key suffix.
+    static size_t idFromOptionKey(std::string optKey);
+
+    // ?? From UnsavedChangesDialog.cpp (L56) ??
+
+    /// Get icon name for preset type + printer technology.
+    static std::string presetIconName(int presetType, int printerTechnology);
+
+    static std::string firstNewPreset(
+        const std::map<std::string, std::string>& oldData,
+        const std::map<std::string, std::string>& newData);
 };
 
 } // namespace Slic3r

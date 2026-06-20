@@ -173,4 +173,37 @@ std::string PresetStringModel::firstNewPreset(
     return added.empty() ? "" : *added.begin();
 }
 
+
+std::string PresetStringModel::pureOptionKey(std::string optKey)
+{
+    // Remove extruder suffix: "wall_loops#2" -> "wall_loops"
+    auto pos = optKey.find('#');
+    if (pos != std::string::npos)
+        optKey.erase(pos);
+    return optKey;
+}
+
+size_t PresetStringModel::idFromOptionKey(std::string optKey)
+{
+    auto pos = optKey.find('#');
+    if (pos == std::string::npos) return 0;
+    try {
+        return static_cast<size_t>(std::stoull(optKey.substr(pos + 1)));
+    } catch (...) {
+        return 0;
+    }
+}
+
+std::string PresetStringModel::presetIconName(int presetType, int printerTechnology)
+{
+    // Preset::Type: Print=0, Filament=1, Printer=2, etc.
+    // PrinterTechnology: ptFFF=0, ptSLA=1
+    switch (presetType) {
+    case 0: return "cog";                    // Print
+    case 1: return "spool";                  // Filament
+    case 2: return printerTechnology == 0 ? "printer" : "sla_printer";
+    default: return "cog";
+    }
+}
+
 } // namespace Slic3r

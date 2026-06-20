@@ -236,3 +236,23 @@ TEST_CASE("REGRESSION: firstNewPreset returns first added", "[Regression]") {
     auto first = PresetStringModel::firstNewPreset(old, nu);
     REQUIRE(!first.empty());
 }
+
+
+// ?? pureOptionKey regression (from UnsavedChangesDialog.cpp L573) ??
+
+TEST_CASE("REGRESSION: pureOptionKey strips extruder suffix", "[Regression]") {
+    REQUIRE(PresetStringModel::pureOptionKey("wall_loops#2") == "wall_loops");
+    REQUIRE(PresetStringModel::pureOptionKey("layer_height") == "layer_height");
+    REQUIRE(PresetStringModel::pureOptionKey("infill_density#1#2") == "infill_density");
+}
+
+TEST_CASE("REGRESSION: idFromOptionKey extracts index", "[Regression]") {
+    REQUIRE(PresetStringModel::idFromOptionKey("wall_loops#2") == 2);
+    REQUIRE(PresetStringModel::idFromOptionKey("layer_height") == 0);
+}
+
+TEST_CASE("REGRESSION: presetIconName returns correct icon", "[Regression]") {
+    REQUIRE(PresetStringModel::presetIconName(0, 0) == "cog");      // Print
+    REQUIRE(PresetStringModel::presetIconName(1, 0) == "spool");    // Filament
+    REQUIRE(PresetStringModel::presetIconName(2, 0) == "printer");  // Printer FFF
+}
