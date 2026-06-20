@@ -50,7 +50,7 @@ public:
     struct Warning {
         std::string key;
         std::string message;
-        enum Severity { Info, Warning, Error } severity{Warning};
+        enum Severity { Info, Warn, Error } severity{Warn};
     };
 
     MVVP::Property<std::vector<Warning>> warnings{{}};

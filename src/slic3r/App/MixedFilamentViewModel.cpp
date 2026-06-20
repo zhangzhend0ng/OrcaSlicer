@@ -79,11 +79,6 @@ std::string MixedFilamentViewModel::makeLabel(const MixedFilament& mf)
 
     addComponent(mf.component_a);
     addComponent(mf.component_b);
-    addComponent(mf.component_c);
-    addComponent(mf.component_d);
-    addComponent(mf.component_e);
-    addComponent(mf.component_f);
-
     return oss.str();
 }
 
@@ -108,8 +103,6 @@ std::vector<unsigned int> MixedFilamentViewModel::buildPreviewSequence(
     // Infill - alternate between components
     addIfNonZero(mf.component_a);
     addIfNonZero(mf.component_b);
-    addIfNonZero(mf.component_c);
-    addIfNonZero(mf.component_d);
 
     return seq;
 }

@@ -18,16 +18,16 @@ std::string PrintJobModel::jobStateToString(JobState state)
 
 bool PrintJobModel::isValidGCodePath(const std::string& path)
 {
-    // Check for .gcode or .gco extension
     if (path.size() < 6) return false;
     std::string lower = path;
     for (auto& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return lower.ends_with(".gcode") || lower.ends_with(".gco");
+    size_t len = lower.size();
+    return (len >= 6 && lower.compare(len - 6, 6, ".gcode") == 0) ||
+           (len >= 4 && lower.compare(len - 4, 4, ".gco") == 0);
 }
 
-std::string PrintJobModel::extractPrintTime(const std::string& /*gcodePath*/)
+std::string PrintJobModel::extractPrintTime(const std::string&)
 {
-    // Stub: real implementation parses GCode comments for estimated time
     return "00:00:00";
 }
 

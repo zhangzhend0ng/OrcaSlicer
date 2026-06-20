@@ -23,7 +23,7 @@ std::string ObjectValidationModel::getWarningIconName(const TriangleMeshStats& s
         return "";
     if (stats.open_edges > 0)
         return "warning_open_edges";
-    if (stats.degenerate_facets > 0)
+    if (stats.repaired_errors.degenerate_facets > 0)
         return "warning_degenerate";
     return "";
 }

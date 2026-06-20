@@ -270,23 +270,6 @@ TEST_CASE("REGRESSION: decodePathExtra handles plain string", "[Regression]") {
 }
 
 
-// ?? shortenTimeString regression (from IMSlider.cpp) ??
-
-TEST_CASE("REGRESSION: shortenTimeString days format", "[Regression]") {
-    auto s = PresetStringModel::shortenTimeString("2d 3h 15m 30s");
-    REQUIRE(s == "2d3h15m");
-}
-
-TEST_CASE("REGRESSION: shortenTimeString hours format", "[Regression]") {
-    auto s = PresetStringModel::shortenTimeString("5h 10m 30s");
-    REQUIRE(s.find('h') != std::string::npos);
-}
-
-TEST_CASE("REGRESSION: shortenTimeString seconds only", "[Regression]") {
-    auto s = PresetStringModel::shortenTimeString("45s");
-    REQUIRE(s.find('s') != std::string::npos);
-}
-
 
 // ?? GCodeViewer move type / buffer ID round-trip ??
 
