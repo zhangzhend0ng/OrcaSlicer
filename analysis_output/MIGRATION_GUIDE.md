@@ -53,6 +53,40 @@
 - TestTabViewModels.cpp (7), TestAppLayer.cpp (8)
 - TestMixedFilamentViewModel.cpp (7)
 
+
+
+## Extraction Status (2026-06-20)
+
+### Completed Extractions (28 pure functions from GUI files)
+
+| Module | Source File | Functions | Status |
+|--------|------------|-----------|--------|
+| MixedFilamentViewModel | Plater.cpp L3598-5540 | 13 | ? committed |
+| ConfigValidationModel | Tab.cpp L69-2891 | 6 | ? committed |
+| GeometryValidationModel | Selection.cpp L2835-2860 | 3 | ? committed |
+| GeometryValidationModel | GUI_App.cpp L344 | 1 | ? committed |
+| ObjectValidationModel | GUI_ObjectList.cpp L71-3906 | 3 | ? on disk |
+| ObjectValidationModel | GCodeViewer.cpp L96-111 | 2 | ? on disk |
+
+### Architecture Artifacts
+
+| Layer | Files | Description |
+|-------|-------|-------------|
+| MVVP Framework | MVVP.hpp | Property<T> + Command |
+| Ports (6) | libslic3r/Ports/ | IProgressReporter etc. |
+| ViewModels (15) | slic3r/App/ | Camera, Selection, Plater, Canvas, App, Preset, Device, Settings, Account, Plugin, Tab base + 3 subtypes, MixedFilament, ConfigValidation, GeometryValidation, ObjectValidation |
+| App Layer (4) | slic3r/App/ | SliceOrchestrator, JobManager, IPlugin, PluginLoader |
+| Adapters (3) | slic3r/App/ | PlaterAdapters, ViewBindingGuide, RefactoringWiring |
+| Tests (10 files) | tests/libslic3r/ | 80+ unit + regression tests |
+| Harness (4) | scripts/ | check_layer_violations, cycle_report, god_class_audit, harness_verify |
+
+### Key Metrics
+- Layer violations: 0
+- Cross-boundary cycles: 20 (slic3r::Utils layer, targeted for Phase 4)
+- God classes: 40 (ViewModels defined, wiring pending)
+- Extracted pure functions: 28 of ~345 (8%)
+- Unit tests: 80+ (all on pure ViewModels, zero wxWidgets needed)
+
 ## Migration Priority (by impact & safety)
 
 ### Tier 1: Already extractable (pure functions in GUI files)

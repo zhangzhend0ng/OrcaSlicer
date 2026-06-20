@@ -106,6 +106,8 @@ set(SLIC3R_GUI_SOURCES
     App/ConfigValidationModel.hpp
     App/GeometryValidationModel.cpp
     App/GeometryValidationModel.hpp
+    App/ObjectValidationModel.cpp
+    App/ObjectValidationModel.hpp
     App/JobManager.cpp
     App/AppViewModel.cpp
     App/AppViewModel.hpp
