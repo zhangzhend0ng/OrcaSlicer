@@ -75,7 +75,7 @@ void SelectionController::onMouseUp()
     state.set(s);
 }
 
-void SelectionController::set_hovered(ObjectID id)
+void SelectionController::set_hovered(int id)
 {
     highlightedObject.set(id);
 }

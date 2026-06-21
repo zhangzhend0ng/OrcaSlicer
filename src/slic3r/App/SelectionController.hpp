@@ -3,6 +3,7 @@
 
 #include "libslic3r/MVVP.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/ObjectID.hpp"
 
 #include <vector>
 #include <set>
@@ -10,8 +11,6 @@
 
 namespace Slic3r {
 
-/// ID for referencing scene objects during selection.
-using ObjectID = int;
 
 /// Selection mode.
 enum class SelectionMode {
@@ -38,7 +37,7 @@ class SelectionController {
 public:
     // ?? Observable State ??
     MVVP::Property<SelectionState> state{SelectionState{}};
-    MVVP::Property<ObjectID>       highlightedObject{-1};
+    MVVP::Property<ObjectID>  highlightedObject{ObjectID()};
     MVVP::Property<bool>           hasSelection{false};
 
     // ?? Discrete Commands ??
@@ -70,8 +69,9 @@ public:
     std::optional<ObjectID> hit_test(const Vec3d& ray_origin, const Vec3d& ray_dir) const;
 
     // ?? Hover ??
-    void set_hovered(ObjectID id);
+    void set_hovered(int id);
     void clear_hover();
+    void set_hovered_id(int id);
 
 private:
     void select_all();
