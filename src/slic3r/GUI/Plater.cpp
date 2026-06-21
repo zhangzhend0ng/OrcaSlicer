@@ -1,5 +1,6 @@
 #include "Plater.hpp"
 #include "slic3r/App/PlaterAdapters.hpp"
+#include "slic3r/App/PlaterAdapters.hpp"
 #include "MixedFilamentDialog.hpp"
 #include "MixedGradientSelector.hpp"
 #include "MixedColorMatchPanel.hpp"
@@ -8409,8 +8410,9 @@ struct Plater::priv
 
     MenuFactory menus;
 
-    // Phase 5A: MVVM adapter for mixed filament logic
     PlaterAdapters m_adapters;
+
+    // Phase 5A: MVVM adapter for mixed filament logic
 
     SelectMachineDialog* m_select_machine_dlg = nullptr;
     SendMultiMachinePage* m_send_multi_dlg = nullptr;
