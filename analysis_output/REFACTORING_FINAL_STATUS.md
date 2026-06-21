@@ -1,102 +1,63 @@
-# OrcaSlicer ????????
+# OrcaSlicer ??????
 
-## ??
+## ????
+
+```
+libslic3r.lib       ??
+libslic3r_cgal.lib  ??
+libslic3r_gui.lib   ??
+Snapmaker_Orca.dll  ??   ?1?????
+```
+
+## ???? (32 commits)
+
+| Phase | Commits | ?? |
+|-------|---------|------|
+| 0 | 3 | Harness + MVVP + .clang-tidy |
+| 1-2 | 2 | ColorSpaceConvert + 7 Ports?? |
+| 3A-E | 21 | 29 ViewModel/Model + View? + 60???? |
+| 4 | 1 | SliceOrchestrator + JobManager + IPlugin |
+| 5A | 5 | 28?????App?? |
+
+## ????
+
+| | ?? | ?? |
+|---|------|------|
+| ?? | 104 | +7,295 |
+| ?? | - | -535 |
+| ?? | - | +6,760 |
+
+## Phase 5A ????
+
+| GUI?? | ??? | ???? |
+|---------|--------|----------|
+| Tab.cpp | 6 | PlaterAdapters/ConfigValidationModel |
+| CreatePresetsDialog.cpp | 11 | PresetStringModel |
+| Selection.cpp | 3 | GeometryValidationModel |
+| GCodeViewer.cpp | 2 | ObjectValidationModel |
+| UnsavedChangesDialog.cpp | 2 | PresetStringModel |
+| GUI_Factories.cpp | 1 | ConfigValidationModel |
+| GUI_ObjectList.cpp | 1 | ObjectValidationModel |
+| SendSystemInfoDialog.cpp | 1 | SystemInfoModel |
+| GUI_App.cpp | 1 | GeometryValidationModel |
+| **??** | **28** | |
+
+## Harness
 
 | ?? | ?? |
 |------|------|
-| ??? | 25 |
-| ???? | 96+ |
-| ???? | ~7,400+ |
-| ????? | 60 (??13?GUI??) |
-| ViewModel/Model | 29 |
-| Ports ?? | 7 |
-| ???? | 19 |
-| ??+???? | 130+ |
 | Layer violations | 0 |
 | ??(libslic3r) | ?? |
+| ??(libslic3r_gui) | ?? |
+| ??(Snapmaker_Orca) | ?? |
+| God? | 40 (??) |
+| ????? | 20 (??) |
 
 ## ????
 
-### Layer 2 - Domain (libslic3r)
-| ?? | ?? |
-|------|------|
-| MVVP.hpp | Property<T> + Command ?? |
-| ColorSpaceConvert.{hpp,cpp} | ?????? |
-| Ports/ (7) | ???? |
-
-### Layer 3 - Application (slic3r/App) - ViewModels
-| ?? | ?? |
-|------|------|
-| CameraController | GLCanvas3D ???? |
-| SelectionController | GLCanvas3D ???? |
-| CanvasViewModel | GLCanvas3D ???? |
-| PlaterViewModel | Plater::priv ???? |
-| AppViewModel | GUI_App ???? |
-| PresetViewModel | GUI_App ???? |
-| DeviceViewModel | GUI_App ???? |
-| SettingsViewModel | GUI_App ?? |
-| AccountViewModel | GUI_App ?? |
-| PluginViewModel | GUI_App ?? |
-| TabViewModel (base) | Tab ?????? |
-| PrintTabViewModel | Tab ???? |
-| FilamentTabViewModel | Tab ???? |
-| PrinterTabViewModel | Tab ????? |
-| MixedFilamentViewModel | Plater.cpp ???? |
-
-### Layer 3 - Application (slic3r/App) - Models
-| ?? | ?? |
-|------|------|
-| ConfigValidationModel | Tab.cpp + GUI_Factories.cpp |
-| GeometryValidationModel | Selection.cpp + GUI_App.cpp + Mouse3DController.cpp |
-| ObjectValidationModel | GUI_ObjectList.cpp + GCodeViewer.cpp |
-| PresetStringModel | CreatePresetsDialog.cpp + UnsavedChangesDialog.cpp + IMSlider.cpp |
-| PresetCompatibilityModel | CreatePresetsDialog.cpp |
-| PrintJobModel | Jobs/PrintJob.cpp + SendJob.cpp |
-| FilamentCompatibilityModel | MixedColorMatchHelpers.cpp |
-| SearchModel | Search.cpp |
-| SystemInfoModel | SendSystemInfoDialog.cpp |
-
-### Layer 3 - Application ???
-| ?? | ?? |
-|------|------|
-| SliceOrchestrator | ?????? |
-| JobManager | ????????? |
-| IPlugin/PluginLoader | ????+???? |
-| UndoRedoController | ????? |
-| NullProgressReporter | ??/CLI?? |
-
-### Layer 4 - View ?
-| ?? | ?? |
-|------|------|
-| MixedFilamentPanel.hpp | ??? Property?wxPanel ???? |
-
-### ???/?? (6)
-| ?? | ?? |
-|------|------|
-| PlaterAdapters.hpp | ?????VM?? |
-| ViewBindingGuide.hpp | 5??????? |
-| EndToEndWiringExample.hpp | ??????? |
-| RefactoringWiring.hpp | ?????? |
-| MIGRATION_GUIDE.md | ??????? |
-| REFACTORING_MASTER_PLAN.md | ?????? |
-
-### Harness ?? (4)
-| ?? | ?? |
-|------|------|
-| check_layer_violations.py | ?????? |
-| cycle_report.py | ??????? |
-| god_class_audit.py | God??? |
-| harness_verify.ps1 | CI???? |
-
-## ????
-1.  Phase 0: Harness?? + MVVP??
-2.  Phase 2: ColorSpaceConvert?? + 6??
-3-8. Phase 3A-E: 15 ViewModel + 14 Model + View?
-9.  Phase 4: SliceOrchestrator + JobManager + IPlugin
-
-## ???
-1. GUI???????
-2. #define ORCA_REFACTOR_V2 ?????
-3. ?????ViewModel
-4. Golden GCode????
-5. ?????
+- MVVP ??: Property<T> + Command
+- 7 Ports ????
+- 29 ViewModel/Model ??
+- 19 ????, 100+ ??
+- 4 Harness ??
+- 6 ??/??
