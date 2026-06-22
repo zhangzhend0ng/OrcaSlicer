@@ -159,7 +159,7 @@ jobs:
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/deps/build/destdir/usr/local/lib:$LD_LIBRARY_PATH
         run: |
-          cmake --build build_san --target tests --parallel 1
+          cmake --build build_san --target tests --parallel $(nproc)
           test -f build_san/tests/libslic3r/libslic3r_tests \
             || test -f build_san/tests/fff_print/fff_print_tests \
             || test -f build_san/tests/libnest2d/libnest2d_tests \
