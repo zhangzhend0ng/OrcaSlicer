@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "GLToolbar.hpp"
+#include "slic3r/App/CameraController.hpp"
 #include "Event.hpp"
 #include "Selection.hpp"
 #include "Gizmos/GLGizmosManager.hpp"
@@ -586,6 +587,7 @@ private:
     mutable Vec3d m_rotation_center{ 0.0, 0.0, 0.0};
     //BBS store camera view
     Camera camera;
+    CameraController m_cameraCtrl;
 
     // Following variable is obsolete and it should be safe to remove it.
     // I just don't want to do it now before a release (Lukas Matena 24.3.2019)

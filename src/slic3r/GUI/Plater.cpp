@@ -1,5 +1,8 @@
 #include "Plater.hpp"
 #include "slic3r/App/PlaterAdapters.hpp"
+#include "slic3r/App/PlaterViewModel.hpp"
+#include "slic3r/App/CanvasViewModel.hpp"
+#include "slic3r/App/PlaterAdapters.hpp"
 #include "slic3r/App/PlaterAdapters.hpp"
 #include "MixedFilamentDialog.hpp"
 #include "MixedGradientSelector.hpp"
@@ -8410,7 +8413,11 @@ struct Plater::priv
 
     MenuFactory menus;
 
+    // MVVM wiring (Phase 5)
     PlaterAdapters m_adapters;
+    std::unique_ptr<PlaterViewModel> m_platerVM;
+    std::unique_ptr<CanvasViewModel> m_canvasVM;
+
 
     // Phase 5A: MVVM adapter for mixed filament logic
 
