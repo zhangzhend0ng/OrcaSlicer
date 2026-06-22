@@ -35,6 +35,7 @@
 #include "ConfigManipulation.hpp"
 #include "OptionsGroup.hpp"
 #include "libslic3r/Preset.hpp"
+#include "slic3r/App/TabViewModel.hpp"
 //BBS: GUI refactor
 #include "Notebook.hpp"
 #include "ParamsPanel.hpp"
