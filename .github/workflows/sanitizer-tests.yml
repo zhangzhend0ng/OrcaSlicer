@@ -78,7 +78,7 @@ jobs:
           SWAPFILE="/swapfile-$$"
           sudo swapoff "$SWAPFILE" 2>/dev/null || true
           sudo rm -f "$SWAPFILE"
-          sudo fallocate -l 4G "$SWAPFILE"
+          sudo fallocate -l 8G "$SWAPFILE"
           sudo chmod 600 "$SWAPFILE"
           sudo mkswap "$SWAPFILE"
           sudo swapon "$SWAPFILE"
