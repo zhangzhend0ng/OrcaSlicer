@@ -26,7 +26,7 @@ else()
     set(ENABLE_ASAN OFF CACHE BOOL "Enable AddressSanitizer (ASan) — detect memory errors" FORCE)
 endif()
 
-# UBSan: always opt-in due to -fno-sanitize-recover=all (breaks non-test binaries)
+# UBSan: always opt-in due to -fsanitize-recover=undefined (breaks non-test binaries)
 option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan) — detect undefined behavior" OFF)
 
 include(CheckCXXCompilerFlag)
@@ -68,7 +68,7 @@ if(ENABLE_UBSAN)
         add_compile_options(
             -fsanitize=undefined
             -fsanitize=signed-integer-overflow
-            -fno-sanitize-recover=all
+            -fsanitize-recover=undefined
         )
         add_link_options(-fsanitize=undefined)
 
