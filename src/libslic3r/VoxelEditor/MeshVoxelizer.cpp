@@ -6,61 +6,39 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
-#include <cstring>
 
 namespace Slic3r {
 
 VoxelGrid MeshVoxelizer::voxelize(const TriangleMesh& mesh) const
 {
     BoundingBoxf3 bbox = mesh.bounding_box();
-    // Pad slightly to avoid boundary artifacts.
     float pad = m_config.voxel_size_mm * 2.0f;
     bbox.min -= Vec3d(pad, pad, pad);
     bbox.max += Vec3d(pad, pad, pad);
 
     VoxelGrid grid = VoxelGrid::from_bbox(bbox, m_config.voxel_size_mm);
 
-    // First pass: mark voxels intersected by the mesh surface.
-    // Raycast along Z (from below) for each XY column.
-    for (int32_t y = 0; y < grid.size_y(); ++y) {
-        for (int32_t x = 0; x < grid.size_x(); ++x) {
-            Vec3d voxel_center = grid.voxel_to_world(x, y, 0);
-            Vec3d origin(voxel_center.x(), voxel_center.y(),
-                          bbox.min.z() - pad * 0.5f);
-            Vec3d direction(0.0, 0.0, 1.0);
+    // Ray origin: below the entire mesh.
+    double ray_origin_z = bbox.min.z() - pad * 0.5f;
 
-            // Supersample with multiple rays per column for anti-aliasing.
-            int intersections = count_intersections(origin, direction, mesh);
+    for (int32_t z = 0; z < grid.size_z(); ++z) {
+        for (int32_t y = 0; y < grid.size_y(); ++y) {
+            for (int32_t x = 0; x < grid.size_x(); ++x) {
+                Vec3d voxel_center = grid.voxel_to_world(x, y, z);
+                Vec3d origin(voxel_center.x(), voxel_center.y(), ray_origin_z);
+                Vec3d direction(0.0, 0.0, 1.0);
 
-            // Walk up the column and mark interior.
-            if (intersections % 2 == 1) {
-                // Find the z range that's inside by sampling.
-                bool inside = false;
-                for (int32_t z = 0; z < grid.size_z(); ++z) {
-                    Vec3d pt = grid.voxel_to_world(x, y, z);
-                    // Check if this z level is past the intersection boundary.
-                    Vec3d ray_origin(pt.x(), pt.y(), bbox.min.z() - pad * 0.5f);
-                    int hits = count_intersections(ray_origin, direction, mesh);
-                    bool new_inside = (hits % 2 == 1);
-                    if (new_inside && m_config.fill_interior)
+                // Only count intersections UP TO this voxel (plus a small epsilon).
+                double max_dist = voxel_center.z() - ray_origin_z + m_config.voxel_size_mm * 0.5;
+
+                if (m_config.grayscale) {
+                    float fill = supersample_voxel(voxel_center,
+                                                    m_config.voxel_size_mm, mesh);
+                    grid.at(x, y, z) = fill;
+                } else {
+                    int hits = count_intersections(origin, direction, max_dist, mesh);
+                    if (hits % 2 == 1)
                         grid.at(x, y, z) = 1.0f;
-                    inside = new_inside;
-                }
-            }
-
-            // Shell detection: mark voxels near the surface.
-            if (m_config.fill_interior) {
-                for (int32_t z = 0; z < grid.size_z(); ++z) {
-                    if (grid.at(x, y, z) > 0.0f) {
-                        // Check if this filled voxel is near an empty neighbor (surface).
-                        bool at_surface = false;
-                        for (int dz = -1; dz <= 1 && !at_surface; ++dz)
-                            for (int dy = -1; dy <= 1 && !at_surface; ++dy)
-                                for (int dx = -1; dx <= 1 && !at_surface; ++dx)
-                                    if (grid.at(x + dx, y + dy, z + dz) <= 0.0f)
-                                        at_surface = true;
-                        // Surface voxels keep value 1.0; interior can optionally be lower.
-                    }
                 }
             }
         }
@@ -86,7 +64,7 @@ bool MeshVoxelizer::ray_triangle_intersect(
     Vec3d h     = direction.cross(edge2);
     double a    = edge1.dot(h);
 
-    if (std::abs(a) < EPSILON) return false; // Ray parallel to triangle.
+    if (std::abs(a) < EPSILON) return false;
 
     double f = 1.0 / a;
     Vec3d  s = origin - v0.cast<double>();
@@ -104,10 +82,10 @@ bool MeshVoxelizer::ray_triangle_intersect(
 }
 
 int MeshVoxelizer::count_intersections(const Vec3d& origin, const Vec3d& direction,
+                                        double max_distance,
                                         const TriangleMesh& mesh) const
 {
     int count = 0;
-    double t_min = std::numeric_limits<double>::max();
 
     for (size_t fi = 0; fi < mesh.its.indices.size(); ++fi) {
         const auto& idx = mesh.its.indices[fi];
@@ -117,16 +95,8 @@ int MeshVoxelizer::count_intersections(const Vec3d& origin, const Vec3d& directi
 
         double t;
         if (ray_triangle_intersect(origin, direction, v0, v1, v2, t)) {
-            if (t > 1e-6) {
-                // Count unique intersections (avoid double-counting at edges).
-                bool duplicate = false;
-                if (std::abs(t - t_min) < 1e-4) duplicate = true;
-
-                if (!duplicate) {
-                    ++count;
-                    t_min = t;
-                }
-            }
+            if (t > 1e-6 && t < max_distance)
+                ++count;
         }
     }
     return count;
@@ -139,21 +109,19 @@ float MeshVoxelizer::supersample_voxel(const Vec3d& voxel_center, float voxel_si
     int samples = 0;
     int hits    = 0;
 
-    float half = voxel_size * 0.5f;
-
     for (int sz = 0; sz < n; ++sz) {
         for (int sy = 0; sy < n; ++sy) {
             for (int sx = 0; sx < n; ++sx) {
                 double offset_x = (n > 1) ? (sx / double(n - 1) - 0.5) * voxel_size : 0.0;
                 double offset_y = (n > 1) ? (sy / double(n - 1) - 0.5) * voxel_size : 0.0;
-                double offset_z = (n > 1) ? (sz / double(n - 1) - 0.5) * voxel_size : 0.0;
 
                 Vec3d origin(voxel_center.x() + offset_x,
                               voxel_center.y() + offset_y,
-                              voxel_center.z() - half * 2.0f);
+                              voxel_center.z() - voxel_size * 3.0f);
                 Vec3d direction(0.0, 0.0, 1.0);
+                double max_dist = voxel_size * 3.0f + voxel_size * 0.5;
 
-                int c = count_intersections(origin, direction, mesh);
+                int c = count_intersections(origin, direction, max_dist, mesh);
                 if (c % 2 == 1) ++hits;
                 ++samples;
             }

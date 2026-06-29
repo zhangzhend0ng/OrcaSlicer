@@ -154,17 +154,18 @@ Octree hollow(const Octree& tree, float wall_thickness_mm, float voxel_size)
     // For each filled voxel, check if it's within wall_thickness of the surface.
     int wall_voxels = static_cast<int>(std::ceil(wall_thickness_mm / voxel_size));
 
+    const VoxelGrid& cgrid = grid;
     for (int32_t z = 0; z < grid.size_z(); ++z)
         for (int32_t y = 0; y < grid.size_y(); ++y)
             for (int32_t x = 0; x < grid.size_x(); ++x) {
-                if (grid.at(x, y, z) < 0.5f) continue;
+                if (cgrid.at(x, y, z) < 0.5f) continue;
 
                 // Check if any neighbor within wall_voxels is empty (surface).
                 bool at_surface = false;
                 for (int dz = -wall_voxels; dz <= wall_voxels && !at_surface; ++dz)
                     for (int dy = -wall_voxels; dy <= wall_voxels && !at_surface; ++dy)
                         for (int dx = -wall_voxels; dx <= wall_voxels && !at_surface; ++dx)
-                            if (grid.at(x + dx, y + dy, z + dz) < 0.5f)
+                            if (cgrid.at(x + dx, y + dy, z + dz) < 0.5f)
                                 at_surface = true;
 
                 if (at_surface)
@@ -259,6 +260,7 @@ Octree smooth(const Octree& tree, int iterations, float voxel_size)
 
     for (int iter = 0; iter < iterations; ++iter) {
         VoxelGrid smoothed = grid; // copy
+        const VoxelGrid& cgrid = grid;
 
         for (int32_t z = 1; z < grid.size_z() - 1; ++z)
             for (int32_t y = 1; y < grid.size_y() - 1; ++y)
@@ -268,7 +270,7 @@ Octree smooth(const Octree& tree, int iterations, float voxel_size)
                     for (int dz = -1; dz <= 1; ++dz)
                         for (int dy = -1; dy <= 1; ++dy)
                             for (int dx = -1; dx <= 1; ++dx)
-                                sum += grid.at(x + dx, y + dy, z + dz);
+                                sum += cgrid.at(x + dx, y + dy, z + dz);
                     smoothed.at(x, y, z) = sum / 27.0f;
                 }
         grid = std::move(smoothed);

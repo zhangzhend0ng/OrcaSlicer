@@ -46,7 +46,7 @@ private:
                                  double& t) const;
 
     // Count ray-mesh intersections along a ray.
-    int count_intersections(const Vec3d& origin, const Vec3d& direction,
+    int count_intersections(const Vec3d& origin, const Vec3d& direction, double max_distance,
                              const TriangleMesh& mesh) const;
 
     // Voxelize a single horizontal slice for interior filling.

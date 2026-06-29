@@ -46,6 +46,7 @@ public:
     VoxelValue  at(int32_t x, int32_t y, int32_t z) const;
     VoxelValue& at(int32_t x, int32_t y, int32_t z);
 
+    VoxelValue safe_at(int32_t x, int32_t y, int32_t z) const { return at(x, y, z); }
     VoxelValue  at(const VoxelCoord& c) const { return at(c.x(), c.y(), c.z()); }
     VoxelValue& at(const VoxelCoord& c)       { return at(c.x(), c.y(), c.z()); }
 
