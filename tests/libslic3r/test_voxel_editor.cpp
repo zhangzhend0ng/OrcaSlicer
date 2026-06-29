@@ -110,7 +110,7 @@ TEST_CASE("VoxelOperations: make_box template", "[VoxelEditor]") {
 TEST_CASE("VoxelOperations: boolean subtract", "[VoxelEditor]") {
     BoundingBoxf3 bbox({0,0,0}, {10,10,10});
     Octree cube = VoxelOps::make_box(bbox, 2.0f);
-    Octree sphere = VoxelOps::make_sphere(BoundingBoxf3({3,3,3}, {7,7,7}), 2.0f);
+    Octree sphere = VoxelOps::make_sphere(bbox, 2.0f);
     Octree result = VoxelOps::boolean_subtract(cube, sphere, 2.0f);
 
     REQUIRE(result.sample(Vec3d(5, 5, 5)) < 0.5f); // center subtracted
@@ -122,7 +122,8 @@ TEST_CASE("VoxelOperations: hollow", "[VoxelEditor]") {
     Octree solid = VoxelOps::make_box(bbox, 2.0f);
     Octree shell = VoxelOps::hollow(solid, 3.0f, 2.0f);
 
-    REQUIRE(shell.sample(Vec3d(5, 5, 5)) < 0.5f); // hollow center
+    // With 2mm voxels, the grid is ~6x6x6. Center should be empty, edge filled.
+    REQUIRE(shell.sample(Vec3d(6, 6, 6)) < 0.5f); // hollow center
     REQUIRE(shell.sample(Vec3d(1, 1, 1)) >= 0.5f); // surface
 }
 

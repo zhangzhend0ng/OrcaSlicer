@@ -205,6 +205,9 @@ VoxelContour VoxelSlicer::trace_contour(const VoxelLayer& layer,
 
         cx = next_x; cy = next_y; ce = next_edge;
 
+        // Safety: if we moved out of bounds, terminate the contour.
+        if (cx < 0 || cx >= layer.width || cy < 0 || cy >= layer.height) break;
+
         // Check for loop closure.
         if (step > 0 && cx == start_x && cy == start_y && ce == start_edge)
             break;
