@@ -177,7 +177,7 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoSimplify.hpp
     #GUI/Gizmos/GLGizmoSlaSupports.cpp
     #GUI/Gizmos/GLGizmoSlaSupports.hpp
-    GUI/VoxelEditor/VoxelEditorCanvas.cpp
+    GUI/VoxelEditor/VoxelEditorDialog.cpp`n    GUI/VoxelEditor/VoxelEditorDialog.hpp`n    GUI/VoxelEditor/VoxelEditorCanvas.cpp
     GUI/VoxelEditor/VoxelEditorCanvas.hpp
     GUI/VoxelEditor/VoxelEditorPanel.cpp
     GUI/VoxelEditor/VoxelEditorPanel.hpp
