@@ -462,6 +462,7 @@ set(lisbslic3r_sources
     VoxelEditor/VoxelGrid.hpp VoxelEditor/VoxelGrid.cpp
     VoxelEditor/Octree.hpp VoxelEditor/Octree.cpp
     VoxelEditor/MeshVoxelizer.hpp VoxelEditor/MeshVoxelizer.cpp
+    VoxelEditor/VoxelSlicer.hpp VoxelEditor/VoxelSlicer.cpp
 )
 
 if (APPLE)
