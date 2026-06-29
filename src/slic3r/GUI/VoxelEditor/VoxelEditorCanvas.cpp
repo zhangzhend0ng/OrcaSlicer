@@ -433,8 +433,8 @@ bool VoxelEditorCanvas::ray_pick(double ox, double oy, double oz,
     if (len < 1e-6) return false;
     dx /= len; dy /= len; dz /= len;
 
-    double step = m_voxel_size * 0.5;
-    double max_dist = 200.0;
+    double step = 0.5; // fine step for accurate picking
+    double max_dist = 500.0;
     int n_steps = int(max_dist / step);
 
     for (int i = 0; i < n_steps; ++i) {

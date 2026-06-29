@@ -4,7 +4,7 @@
 #include <wx/glcanvas.h>
 #include <wx/timer.h>
 
-#include <memory>
+#include <memory>`n#include <functional>
 #include <vector>
 
 namespace Slic3r {
@@ -36,6 +36,8 @@ public:
 
     // Set the voxel size for rendering (mm per voxel).
     void set_voxel_size(float vs) { m_voxel_size = vs; }
+    void set_brush_size(float bs) { m_brush_size = bs; }
+    float brush_size() const { return m_brush_size; }
 
     // Camera control.
     const VoxelCamera& camera() const { return m_camera; }
@@ -82,6 +84,7 @@ private:
 
     std::shared_ptr<Octree> m_octree;
     float m_voxel_size = 1.0f;
+    float m_brush_size = 2.0f;
 
     VoxelCamera m_camera;
     Tool m_tool = Tool::None;
