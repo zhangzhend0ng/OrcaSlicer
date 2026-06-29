@@ -1,4 +1,4 @@
-﻿#ifndef slic3r_VoxelEditorDialog_hpp_
+#ifndef slic3r_VoxelEditorDialog_hpp_
 #define slic3r_VoxelEditorDialog_hpp_
 
 #include <wx/dialog.h>

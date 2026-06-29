@@ -38,6 +38,7 @@
 #include "InstanceCheck.hpp"
 #include "I18N.hpp"
 #include "GLCanvas3D.hpp"
+#include "slic3r/GUI/VoxelEditor/VoxelEditorDialog.hpp"
 #include "Plater.hpp"
 #include "WebViewDialog.hpp"
 #include "../Utils/Process.hpp"

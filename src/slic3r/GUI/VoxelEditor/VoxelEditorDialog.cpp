@@ -1,4 +1,4 @@
-﻿#include "slic3r/GUI/VoxelEditor/VoxelEditorDialog.hpp"
+#include "slic3r/GUI/VoxelEditor/VoxelEditorDialog.hpp"
 #include "slic3r/GUI/VoxelEditor/VoxelEditorPanel.hpp"
 #include "libslic3r/VoxelEditor/Octree.hpp"
 #include "libslic3r/VoxelEditor/VoxelGrid.hpp"
