@@ -177,7 +177,11 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoSimplify.hpp
     #GUI/Gizmos/GLGizmoSlaSupports.cpp
     #GUI/Gizmos/GLGizmoSlaSupports.hpp
-    GUI/Gizmos/GLGizmosManager.cpp
+    GUI/VoxelEditor/VoxelEditorCanvas.cpp
+    GUI/VoxelEditor/VoxelEditorCanvas.hpp
+    GUI/VoxelEditor/VoxelEditorPanel.cpp
+    GUI/VoxelEditor/VoxelEditorPanel.hpp
+	
     GUI/Gizmos/GLGizmosManager.hpp
     GUI/Gizmos/GLGizmoSVG.cpp
     GUI/Gizmos/GLGizmoSVG.hpp
