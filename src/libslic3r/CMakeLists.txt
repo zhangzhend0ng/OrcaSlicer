@@ -458,6 +458,10 @@ set(lisbslic3r_sources
     VariableWidth.hpp
     Zipper.cpp
     Zipper.hpp
+    VoxelEditor/VoxelTypes.hpp
+    VoxelEditor/VoxelGrid.hpp VoxelEditor/VoxelGrid.cpp
+    VoxelEditor/Octree.hpp VoxelEditor/Octree.cpp
+    VoxelEditor/MeshVoxelizer.hpp VoxelEditor/MeshVoxelizer.cpp
 )
 
 if (APPLE)
