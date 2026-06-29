@@ -66,7 +66,7 @@ public:
 private:
     void update_status_text();
     void push_undo();
-    Octree clipboard_or_empty() const;
+    const Octree& clipboard_or_empty() const;
 
     VoxelEditorCanvas* m_canvas = nullptr;
     std::shared_ptr<Octree> m_octree;

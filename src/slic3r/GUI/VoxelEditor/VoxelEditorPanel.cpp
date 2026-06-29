@@ -299,13 +299,13 @@ void VoxelEditorPanel::on_template_torus(wxCommandEvent&)
 
 // ===== Boolean operations =====
 
-Octree VoxelEditorPanel::clipboard_or_empty() const
+const Octree& VoxelEditorPanel::clipboard_or_empty() const
 {
     if (m_clipboard) return *m_clipboard;
-    // Return an empty octree with the same world bbox.
-    Octree empty;
-    if (m_octree) empty.set_world_bbox(m_octree->world_bbox());
-    return empty;
+    // Return a static empty octree (safe since it has matching bbox).
+    static Octree s_empty;
+    if (m_octree) s_empty.set_world_bbox(m_octree->world_bbox());
+    return s_empty;
 }
 
 void VoxelEditorPanel::on_boolean_union(wxCommandEvent&)
