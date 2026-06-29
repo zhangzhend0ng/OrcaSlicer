@@ -2991,25 +2991,18 @@ void MainFrame::init_menubar_as_editor()
         }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
-#else
-    m_menubar->Append(fileMenu, wxString::Format("&%s", _L("File")));
     // Voxel Editor
     editMenu->AppendSeparator();
     append_menu_item(editMenu, wxID_ANY, _L("Voxel Editor") + dots, _L("Open AI 3D Voxel Editor for current model"),
         [this](wxCommandEvent&) {
             if (!m_plater) return;
             auto dlg = new GUI::VoxelEditorDialog(this);
-            // If there is a selected model, load it
-            const auto& selection = m_plater->get_selection();
-            if (!selection.is_empty()) {
-                const auto* instance = selection.get_model_objects().front()->instances.front();
-                const auto& mesh = *selection.get_model_objects().front()->volumes.front()->mesh();
-                dlg->load_mesh(mesh);
-            }
             dlg->ShowModal();
             dlg->Destroy();
         },
         "", nullptr, [this]() { return m_plater && m_plater->is_view3D_shown(); }, this);
+#else
+    m_menubar->Append(fileMenu, wxString::Format("&%s", _L("File")));
 
     if (editMenu)
         m_menubar->Append(editMenu, wxString::Format("&%s", _L("Edit")));
