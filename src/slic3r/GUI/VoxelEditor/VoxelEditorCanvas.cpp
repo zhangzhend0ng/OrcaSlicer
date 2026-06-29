@@ -1,22 +1,15 @@
-#include "GUI/VoxelEditor/VoxelEditorCanvas.hpp"
-#include "VoxelEditor/Octree.hpp"
+#include "slic3r/GUI/VoxelEditor/VoxelEditorCanvas.hpp"
+#include "libslic3r/VoxelEditor/Octree.hpp"
 
 #include <wx/dcclient.h>
 
-#ifdef _WIN32
-#include <GL/gl.h>
-// GLU not available - using manual implementations
-#else
-#include <OpenGL/gl.h>
-#include <OpenGL/glu.h>
-#endif
-
 #include <cmath>
-#include <algorithm>`n#include <cstring>
+#include <algorithm>
+#include <cstring>
+#include <functional>
 
 namespace Slic3r {
 namespace GUI {
-
 wxBEGIN_EVENT_TABLE(VoxelEditorCanvas, wxGLCanvas)
     EVT_PAINT(VoxelEditorCanvas::OnPaint)
     EVT_SIZE(VoxelEditorCanvas::OnSize)
