@@ -1,5 +1,5 @@
 #include "slic3r/GUI/VoxelEditor/VoxelEditorDialog.hpp"
-#include "I18N.hpp"
+#include "../I18N.hpp"
 #include "slic3r/GUI/VoxelEditor/VoxelEditorPanel.hpp"
 #include "slic3r/GUI/VoxelEditor/VoxelEditorCanvas.hpp"
 #include "libslic3r/VoxelEditor/Octree.hpp"
