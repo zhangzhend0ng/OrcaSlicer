@@ -3,6 +3,8 @@
 #include "slic3r/GUI/VoxelEditor/VoxelEditorPanel.hpp"
 #include "slic3r/GUI/VoxelEditor/VoxelEditorCanvas.hpp"
 #include "libslic3r/VoxelEditor/Octree.hpp"
+#include "libslic3r/VoxelEditor/VoxelGrid.hpp"
+#include "libslic3r/VoxelEditor/MeshVoxelizer.hpp"
 #include "libslic3r/VoxelEditor/VoxelToMesh.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 
