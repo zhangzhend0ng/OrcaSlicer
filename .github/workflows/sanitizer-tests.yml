@@ -36,7 +36,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        # ubuntu-24.04 removed: under RelWithDebInfo + ASan + UBSan the four
+        # print.process()-heavy fff_print tests (init_print, Extrusion width,
+        # Model construction, Perimeter generation) hang for the full 1h
+        # per-test timeout each (>6h total) on GCC 13, while passing in ~0.6s
+        # on 22.04's GCC 11. Re-add when switching to clang or upstream fixes
+        # the instrumentation slowdown.
+        os: [ubuntu-22.04]
     env:
       # detect_leaks=0: LeakSanitizer is disabled. The test binaries set
       # program-lifetime globals (e.g. Slic3r::set_resources_dir() at
