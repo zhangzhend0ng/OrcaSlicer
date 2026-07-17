@@ -603,7 +603,7 @@ if (APPLE)
 endif ()
 
 if (TARGET OpenVDB::openvdb)
-    target_link_libraries(libslic3r PUBLIC OpenVDB::openvdb)
+    target_link_libraries(libslic3r PRIVATE OpenVDB::openvdb)
 endif()
 
 if(WIN32)

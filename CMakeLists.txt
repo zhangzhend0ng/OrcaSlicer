@@ -890,7 +890,6 @@ if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-option(ORCA_SKIP_ENC_CHECK "Skip encoding checks (useful for ASan/Coverage builds)" OFF)
 if(BUILD_TESTS)
     if(NOT TARGET tests)
         add_custom_target(tests)
