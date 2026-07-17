@@ -6,11 +6,6 @@ if (IS_CROSS_COMPILE)
     set(SLIC3R_ENC_CHECK OFF CACHE BOOL "" FORCE)
 endif ()
 
-if(ORCA_SKIP_ENC_CHECK)
-    set(SLIC3R_ENC_CHECK OFF CACHE BOOL "" FORCE)
-    message(STATUS "Encoding checks skipped (ORCA_SKIP_ENC_CHECK=ON)")
-endif()
-
 if (SLIC3R_ENC_CHECK)
     add_executable(encoding-check encoding-check.cpp)
 

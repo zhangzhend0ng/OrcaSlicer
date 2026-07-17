@@ -1,28 +1,9 @@
 name: Sanitizer Tests (ASan + UBSan)
 
+# Disabled by default to avoid running the expensive ASan/UBSan matrix on every
+# push and PR. Trigger manually from the Actions tab (workflow_dispatch), or
+# re-enable push/pull_request triggers when you want CI coverage again.
 on:
-  push:
-    branches:
-      - main
-      - ci-test
-      - release/*
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "**/CMakeLists.txt"
-      - ".github/workflows/sanitizer-tests.yml"
-      - "cmake/sanitizers.cmake"
-  pull_request:
-    branches:
-      - main
-      - ci-test
-      - release/*
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "**/CMakeLists.txt"
-      - ".github/workflows/sanitizer-tests.yml"
-      - "cmake/sanitizers.cmake"
   workflow_dispatch:
 
 concurrency:

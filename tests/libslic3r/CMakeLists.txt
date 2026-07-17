@@ -30,6 +30,10 @@ add_executable(${_TEST_NAME}_tests
 
 if (TARGET OpenVDB::openvdb)
     target_sources(${_TEST_NAME}_tests PRIVATE test_hollowing.cpp)
+    # libslic3r links OpenVDB PRIVATE, so its symbols don't propagate to test
+    # executables. test_hollowing.cpp references OpenVDB directly and must link
+    # it explicitly here.
+    target_link_libraries(${_TEST_NAME}_tests PRIVATE OpenVDB::openvdb)
 endif()
     
 find_package(JPEG REQUIRED)

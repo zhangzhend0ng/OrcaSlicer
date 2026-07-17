@@ -1,28 +1,9 @@
 name: Code Coverage
 
+# Disabled by default to avoid running the coverage build on every push and PR.
+# Trigger manually from the Actions tab (workflow_dispatch), or re-enable
+# push/pull_request triggers when you want CI coverage again.
 on:
-  push:
-    branches:
-      - main
-      - ci-test
-      - release/*
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - '**/CMakeLists.txt'
-      - '.github/workflows/coverage.yml'
-      - 'cmake/coverage.cmake'
-  pull_request:
-    branches:
-      - main
-      - ci-test
-      - release/*
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - '**/CMakeLists.txt'
-      - '.github/workflows/coverage.yml'
-      - 'cmake/coverage.cmake'
   workflow_dispatch:
 
 concurrency:

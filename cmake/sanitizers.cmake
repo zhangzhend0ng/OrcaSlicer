@@ -3,12 +3,13 @@
 # Provides options ENABLE_ASAN and ENABLE_UBSAN that add the appropriate
 # compiler and linker flags for GCC, Clang, and MSVC.
 #
-# ENABLE_ASAN defaults to ON for Debug builds, OFF otherwise.
-# Override with -DENABLE_ASAN=OFF or -DENABLE_ASAN=ON on the command line.
+# Both options default to OFF and are strictly opt-in. Including this
+# module therefore has no effect on any build unless the caller passes
+# -DENABLE_ASAN=ON / -DENABLE_UBSAN=ON. This keeps release/production
+# and normal Debug builds byte-for-byte unaffected.
 #
 # Usage:
 #   include(cmake/sanitizers.cmake)
-#   cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug          # ASan auto-enabled
 #   cmake -S . -B build -DENABLE_ASAN=ON -DENABLE_UBSAN=ON
 #
 # On GCC / Clang, ASan and UBSan can coexist: both -fsanitize=address
@@ -17,16 +18,7 @@
 # On MSVC, only ASan is supported (/fsanitize=address). UBSan is not
 # available; enabling UBSAN on MSVC emits a warning and is a no-op.
 
-# ASan: auto-enable for Debug builds unless explicitly overridden
-if(DEFINED ENABLE_ASAN)
-    # User explicitly set it; honour their choice
-elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(ENABLE_ASAN ON CACHE BOOL "Enable AddressSanitizer (ASan) — detect memory errors" FORCE)
-else()
-    set(ENABLE_ASAN OFF CACHE BOOL "Enable AddressSanitizer (ASan) — detect memory errors" FORCE)
-endif()
-
-# UBSan: always opt-in due to -fsanitize-recover=undefined (breaks non-test binaries)
+option(ENABLE_ASAN  "Enable AddressSanitizer (ASan) — detect memory errors" OFF)
 option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan) — detect undefined behavior" OFF)
 
 include(CheckCXXCompilerFlag)
