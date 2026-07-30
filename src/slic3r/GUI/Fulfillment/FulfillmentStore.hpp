@@ -35,18 +35,26 @@ struct FulfillmentEntry
     PlanKind     kind   = PlanKind::Unmet;
     HealthState  health = HealthState::Broken;
 
-    // The FULL recipe as returned by the solver (build_best_color_match_recipe)
-    // or edited via MixedFilamentDialog. Holds component_a/b, mix_b_percent,
-    // manual_pattern, gradient_component_ids/weights, preview_color, delta_e —
-    // i.e. everything MixedFilamentDialog can produce. We store it verbatim
-    // rather than projecting into bespoke fields, so no recipe information is
-    // lost (anti-reinvention: reuse the existing model, not a weaker copy).
+    // The recipe as returned by the solver (build_best_color_match_recipe) and
+    // edited via MixedFilamentDialog. Stores component_a/b, mix_b_percent,
+    // manual_pattern, gradient_component_ids/weights, preview_color, delta_e.
+    //
+    // NOTE (deliberate Phase-1 scope): we store MixedColorMatchRecipeResult, NOT
+    // Slic3r::MixedFilament, even though MixedFilament is the slice/edit
+    // authority. Reason: MixedFilament.component_a/b are GLOBAL physical
+    // filament IDs, which would pull in the ams_key↔global-ID alignment problem
+    // (PRD §9.2) — unneeded for Phase 1's show/edit/gate purposes, which only
+    // need "which device slots + ratio + preview + ΔE". recipe.component_a/b are
+    // palette-local indices (resolved to device slots via component_ams_keys
+    // below), so no global-ID dependency. When Phase 2 actually writes a recipe
+    // back into the slice pipeline, THAT is when we build the global-ID mapping
+    // and convert to MixedFilament. Do not store MixedFilament prematurely.
     MixedColorMatchRecipeResult recipe;
 
     // recipe.component_a/b are 1-based indices into the palette passed to the
-    // solver. To render / lock against real device slots we also keep the
-    // ams_key each component resolves to. Indexed by the same 1-based scheme
-    // (component_ams_keys[i-1] is the slot for component id i).
+    // solver. component_ams_keys[i-1] is the device ams_key for component id i,
+    // so rendering/locking can resolve recipe components to real slots without
+    // any global physical-filament-ID mapping.
     std::vector<int> component_ams_keys;
 
     bool         locked = false; // user-pinned; survives recompute (PRD §4.3)
@@ -101,6 +109,15 @@ public:
     // Class-A edits (PRD §5.2.1): write Fulfillment, never Design.
     void set_ratio(unsigned int design_extruder, int ratio_b_percent);
     void set_direct_slot(unsigned int design_extruder, int slot);
+    // Apply a recipe edited via MixedFilamentDialog. Component ids are
+    // palette-local (1-based into the entry's component_ams_keys). Marks the
+    // entry locked (an explicit edit is a user decision worth keeping, §6) and
+    // recomputes health/preview from the new recipe.
+    void apply_edited_recipe(unsigned int design_extruder,
+                             unsigned int component_a, unsigned int component_b, int mix_b_percent,
+                             const std::string& manual_pattern,
+                             const std::string& gradient_component_ids,
+                             const std::string& gradient_component_weights);
     void toggle_lock(unsigned int design_extruder);
     void reset_to_computed(unsigned int design_extruder); // undo manual edits on a row
     void reset_all();                                     // discard all manual edits

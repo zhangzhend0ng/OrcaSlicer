@@ -242,6 +242,36 @@ void FulfillmentStore::set_direct_slot(unsigned int design_extruder, int slot)
     }
 }
 
+void FulfillmentStore::apply_edited_recipe(unsigned int design_extruder,
+                                           unsigned int component_a, unsigned int component_b, int mix_b_percent,
+                                           const std::string& manual_pattern,
+                                           const std::string& gradient_component_ids,
+                                           const std::string& gradient_component_weights)
+{
+    for (FulfillmentEntry& e : m_entries) {
+        if (e.design_extruder != design_extruder) continue;
+        // Write the dialog's result into the recipe verbatim. component_a/b are
+        // palette-local (the dialog was given this entry's component slots as its
+        // palette), so they remain consistent with component_ams_keys.
+        e.recipe.valid = true;
+        e.recipe.component_a = component_a;
+        e.recipe.component_b = component_b;
+        e.recipe.mix_b_percent = std::clamp(mix_b_percent, 0, 100);
+        e.recipe.manual_pattern = manual_pattern;
+        e.recipe.gradient_component_ids = gradient_component_ids;
+        e.recipe.gradient_component_weights = gradient_component_weights;
+        // If the dialog produced a preview colour it carried it in the MixedFilament
+        // result, but MixedColorMatchRecipeResult.preview_color is recomputed at
+        // solve; we leave the prior preview here and mark the entry Tunable, since
+        // the user has now manually intervened (a precise ΔE refresh happens on the
+        // next solve against live device stock).
+        e.health = HealthState::Tunable;
+        e.locked = true;   // explicit edit = user decision worth keeping (§6)
+        e.stale = false;
+        return;
+    }
+}
+
 void FulfillmentStore::toggle_lock(unsigned int design_extruder)
 {
     for (FulfillmentEntry& e : m_entries) {

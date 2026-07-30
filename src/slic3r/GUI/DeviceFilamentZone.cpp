@@ -2,14 +2,17 @@
 
 #include "Fulfillment/FulfillmentSnapshots.hpp"
 #include "GUI_App.hpp"
+#include "MainFrame.hpp"
 #include "Plater.hpp"
 #include "DeviceManager.hpp"
+#include "MixedFilamentDialog.hpp" // reuse the existing mix editor (anti-reinvention)
 #include "Widgets/StaticBox.hpp"
 #include "Widgets/Label.hpp"
 #include "wxExtensions.hpp" // get_extruder_color_icon, ScalableButton
 
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/MixedFilament.hpp"
 
 #include <wx/sizer.h>
 #include <wx/stattext.h>
@@ -200,6 +203,34 @@ void DeviceFilamentZone::refresh_fulfilment()
     sum_label->SetForegroundColour(sum_color);
     sizer->Add(sum_label, 0, wxALL, FromDIP(8));
 
+    // Recovery actions (PRD §12.1): reset all manual edits, clear all locks.
+    // These are the panic buttons — the Fulfillment layer is derived, so the
+    // ultimate recovery is always "recompute from scratch", losing only overrides.
+    bool any_locked = false;
+    for (const FulfillmentEntry& e : m_store.entries()) if (e.locked) { any_locked = true; break; }
+    auto* action_row = new wxBoxSizer(wxHORIZONTAL);
+    auto* reset_btn = new wxButton(m_panel_fulfilment, wxID_ANY, _L("Reset all"));
+    reset_btn->SetToolTip(_L("Discard all manual edits and recompute recipes."));
+    reset_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+        m_store.reset_all();
+        if (auto* pb = wxGetApp().preset_bundle) {
+            auto design = snapshot_design_intent(*pb);
+            auto device = snapshot_device_stock(*pb);
+            m_store.solve(design, device);
+        }
+        refresh_fulfilment();
+    });
+    auto* clear_locks_btn = new wxButton(m_panel_fulfilment, wxID_ANY, _L("Clear locks"));
+    clear_locks_btn->SetToolTip(_L("Unlock every recipe."));
+    clear_locks_btn->Enable(any_locked);
+    clear_locks_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+        m_store.clear_all_locks();
+        refresh_fulfilment();
+    });
+    action_row->Add(reset_btn, 0, wxRIGHT, FromDIP(8));
+    action_row->Add(clear_locks_btn, 0);
+    sizer->Add(action_row, 0, wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(8));
+
     // Per-intent rows (single canvas, indexed by design intent — PRD §5.3).
     auto* grid = new wxFlexGridSizer(1, FromDIP(2), FromDIP(4));
     for (const FulfillmentEntry& e : m_store.entries())
@@ -266,10 +297,77 @@ void DeviceFilamentZone::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfill
     auto* plan_label = new wxStaticText(row, wxID_ANY, plan);
     plan_label->SetBackgroundColour(content_bg);
 
+    // Lock toggle (🔒) — class-A edit: pins this recipe so recompute keeps it
+    // (PRD §4.3, §6). Only meaningful when there's a resolvable recipe to pin.
+    const bool can_act = (e.kind != PlanKind::Unmet);
+
+    // Edit (⚙) — class-A edit: opens the EXISTING MixedFilamentDialog to tune the
+    // recipe (ratio/cycle/gradient/match). Reused, not re-implemented. Result is
+    // written to the Fulfillment store only — NEVER preset_bundle->mixed_filaments
+    // (PRD §3; the dialog's existing consumers do write there, this path diverges).
+    auto* edit_btn = new ScalableButton(row, wxID_ANY, "edit");
+    edit_btn->SetBackgroundColour(content_bg);
+    edit_btn->SetToolTip(_L("Edit this colour's mix recipe."));
+    edit_btn->Enable(can_act);
+    edit_btn->Bind(wxEVT_BUTTON, [this, e, can_act](wxCommandEvent&) {
+        if (!can_act) return;
+        PresetBundle* pb = wxGetApp().preset_bundle;
+        if (!pb) return;
+        auto device = snapshot_device_stock(*pb);
+
+        // Build the dialog palette from this recipe's component slots, in
+        // component_ams_keys order. The dialog returns component_a/b as 1-based
+        // indices into THIS palette, matching our recipe's semantics — so no
+        // global-physical-ID remap is needed (PRD §9.2 averted). Limitation:
+        // user can tune ratio/pattern among the already-chosen slots, not swap
+        // in a different slot from here (full re-solve covers that).
+        std::vector<std::string> palette;
+        palette.reserve(e.component_ams_keys.size());
+        for (int key : e.component_ams_keys) {
+            for (const PhysicalSlot& s : device)
+                if (s.ams_key == key) { palette.push_back(s.color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString()); break; }
+        }
+        if (palette.size() < 2) return; // dialog needs >= 2 colours
+
+        // Seed the dialog with the current recipe, expressed as a MixedFilament
+        // whose component ids are palette-local (1-based into `palette` above).
+        Slic3r::MixedFilament seed;
+        seed.component_a   = e.recipe.component_a;
+        seed.component_b   = e.recipe.component_b;
+        seed.mix_b_percent = e.recipe.mix_b_percent;
+        seed.manual_pattern          = e.recipe.manual_pattern;
+        seed.gradient_component_ids    = e.recipe.gradient_component_ids;
+        seed.gradient_component_weights= e.recipe.gradient_component_weights;
+
+        MixedFilamentDialog dlg(wxGetApp().mainframe, palette, seed);
+        if (dlg.ShowModal() != wxID_OK) return;
+        const Slic3r::MixedFilament& r = dlg.GetResult();
+
+        // Write back: recipe fields come straight from the dialog result
+        // (component ids stay palette-local, consistent with component_ams_keys).
+        // Then mark locked — an explicit edit is a user decision worth keeping.
+        m_store.apply_edited_recipe(e.design_extruder, r.component_a, r.component_b, r.mix_b_percent,
+                                    r.manual_pattern, r.gradient_component_ids, r.gradient_component_weights);
+        refresh_fulfilment();
+    });
+
+    auto* lock_btn = new ScalableButton(row, wxID_ANY, "lock_normal");
+    lock_btn->SetBackgroundColour(content_bg);
+    lock_btn->SetToolTip(e.locked ? _L("Locked — recipe kept on recompute. Click to unlock.")
+                                  : _L("Lock this recipe (keep on recompute)."));
+    lock_btn->Enable(can_act);
+    if (e.locked) lock_btn->SetBitmapDisabled(ScalableBitmap(lock_btn, "lock_normal").bmp()); // visual hint
+    lock_btn->Bind(wxEVT_BUTTON, [this, design_extruder = e.design_extruder](wxCommandEvent&) {
+        m_store.toggle_lock(design_extruder);
+        refresh_fulfilment();
+    });
+
     row_sizer->Add(swatch, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
     row_sizer->Add(status, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
     row_sizer->Add(type_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
     row_sizer->Add(plan_label, 1, wxALIGN_CENTER_VERTICAL);
+    row_sizer->Add(edit_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(4));
+    row_sizer->Add(lock_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(2));
     row->SetSizer(row_sizer);
 
     grid->Add(row, 0, wxEXPAND | wxBOTTOM, FromDIP(3));
