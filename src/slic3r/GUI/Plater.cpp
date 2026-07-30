@@ -15043,6 +15043,28 @@ int Plater::priv::update_print_required_data(Slic3r::DynamicPrintConfig config, 
 
 void Plater::priv::on_action_send_to_printer(bool isall)
 {
+    // Pre-print physical gate (PRD §6 Flow C, §5). Only blocks when the user has
+    // actually run a fulfilment match AND it surfaced unresolvable (broken) rows.
+    // If no match was ever run, we do NOT force one here — the gate speaks about
+    // detected gaps, and an un-run check is not a detected gap (no nagging).
+    Sidebar& sb = q->sidebar();
+    if (sb.fulfillment_store().has_solved()) {
+        const auto roll = sb.fulfillment_store().rollup();
+        if (roll.broken > 0) {
+            // Human-language report (PRD §5). OrcaSlicer has no plural-form
+            // macro, so the sentence is phrased to read correctly at any count.
+            wxString msg = wxString::Format(
+                _L("Send blocked: %d of your design colours cannot be fulfilled by this device's loaded filament."),
+                roll.broken);
+            if (roll.tunable > 0)
+                msg += wxString::Format(_L("\n(%d colour match(es) are approximate but accepted.)"), roll.tunable);
+            msg += "\n" + _L("Resolve the unmatched items in the Device Filaments panel, or load the missing filament, before sending.");
+            MessageDialog dlg(q, msg, _L("Pre-print check"), wxOK | wxICON_WARNING);
+            dlg.ShowModal();
+            return; // block the send
+        }
+    }
+
 	if (!m_send_to_sdcard_dlg) m_send_to_sdcard_dlg = new SendToPrinterDialog(q);
     if (isall) {
         m_send_to_sdcard_dlg->prepare(PLATE_ALL_IDX);
