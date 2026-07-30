@@ -36,7 +36,10 @@ public:
 
     int GetLastError() const { return m_error; }
 
-    static constexpr wxMediaState MEDIASTATE_BUFFERING = (wxMediaState) 6;
+    // Note: wxMediaState only has values 0..2; 6 is a sentinel for BUFFERING.
+    // Kept as a plain const (not constexpr) because 6 is out of wxMediaState's
+    // range and thus not a constant expression under newer clang in C++17.
+    static const wxMediaState MEDIASTATE_BUFFERING = (wxMediaState) 6;
 
 protected:
     void DoSetSize(int x, int y, int width, int height, int sizeFlags) override;
