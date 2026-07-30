@@ -7,6 +7,7 @@
 #include "../MixedColorMatchHelpers.hpp"
 #include "../MixedFilamentDialog.hpp"    // reuse the existing mix editor (anti-reinvention)
 #include "../DeviceManager.hpp"
+#include "../MsgDialog.hpp"
 #include "../Widgets/StaticBox.hpp"
 #include "../Widgets/Label.hpp"
 #include "../Widgets/Button.hpp"
@@ -276,6 +277,27 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     row_sizer->Add(edit_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(4));
     row_sizer->Add(lock_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(2));
     row->SetSizer(row_sizer);
+
+    // Resolve (PRD §5.2.1): a broken (type-gap) row is clickable to surface the
+    // two resolution paths. Class A = physical (load the filament); class B =
+    // design (change this intent's type). Class B is NOT performed in-canvas —
+    // it points the user to the Filaments list (Design View), per §5.2.1's rule
+    // that an intent-changing action must leave the canvas. No silent design write.
+    if (e.kind == PlanKind::Unmet) {
+        row->SetCursor(wxCursor(wxCURSOR_HAND));
+        row->Bind(wxEVT_LEFT_UP, [this, design_extruder = e.design_extruder,
+                                  type_str = e.design_type](wxMouseEvent&) {
+            const wxString type_wxs = type_str.empty() ? _L("(unknown type)") : wxString::FromUTF8(type_str);
+            wxString msg = wxString::Format(
+                _L("Design colour #%d needs %s, but no matching filament is loaded on this device."),
+                design_extruder + 1, type_wxs);
+            msg += "\n\n" + _L("Options:");
+            msg += "\n\u2022 " + _L("Load the filament into the device, then click Match again.");
+            msg += "\n\u2022 " + _L("Or change this design colour's filament type in the Filaments list above.");
+            MessageDialog dlg(this, msg, _L("Cannot fulfil this colour"), wxOK | wxICON_INFORMATION);
+            dlg.ShowModal();
+        });
+    }
 
     grid->Add(row, 0, wxEXPAND | wxBOTTOM, FromDIP(3));
 }
