@@ -263,9 +263,11 @@ Each step is independently verifiable; a failure localises cleanly.
 - [x] Canvas solves against **real device stock** (not CMYG), type-tiered,
       ΔE correct. *(solved in FulfillmentStore::solve_intent via the pure
       `build_best_color_match_recipe`, not `batch_match_model_colors` — see §8.)*
-- [ ] Fine-tune writes Fulfillment only; Design Layer (filament_colour/type)
-      byte-identical before/after (assert in debug builds). *(store + mutators
-      done; inline ⚙ editor not yet wired — Phase 1.5.)*
+- [x] Fine-tune writes Fulfillment only; Design Layer (filament_colour/type)
+      byte-identical before/after. *(Phase 1.5 done: ⚙ reuses MixedFilamentDialog,
+      writes Fulfillment store only via apply_edited_recipe; 🔒 lock +
+      reset/clear-locks wired. Design Layer untouched — sync_ams_list /
+      apply_batch_match are the only design-writers, unchanged.)*
 - [x] Locks survive recompute; drop on intent delete/type-change (PRD §4.3).
       *(caught & fixed a lock-clobbering bug in pre-UI self-review.)*
 - [x] Pre-print gate blocks on any broken row; no silent send.
@@ -307,34 +309,34 @@ Recorded so Phase 2 starts from reality, not the idealised plan.
    never-run match does not nag. This honours PRD §5 ("gaps spoken" = detected
    gaps) without turning every send into a forced-checkpoint.
 
-6. **Inline ⚙ fine-tune editor deferred (Phase 1.5).** Store mutators
-   (set_ratio/set_direct_slot/toggle_lock/reset/clear-locks) are implemented and
-   tested at the API level, but the per-row editor UI is not wired yet. The
-   lock/reset/clear path is reachable conceptually; the visible gap is the
-   editor invocation.
+6. **⚙ editor reuses `MixedFilamentDialog` (Phase 1.5 done).** The per-row ⚙
+   button pops the shipped MixedFilamentDialog (RATIO/CYCLE/MATCH/GRADIENT). The
+   dialog palette is the entry's current component slots (palette-local ids), so
+   the returned component ids map straight back to the recipe with no
+   global-physical-ID remap. Result is written via `apply_edited_recipe` (store
+   only, never `preset_bundle->mixed_filaments`). 🔒 lock + "Reset all" /
+   "Clear locks" are also wired. Limitation: ⚙ tunes ratio/pattern among the
+   already-chosen slots; swapping in a different slot requires a full re-solve
+   (the Match button) — recorded, acceptable for "fine-tune".
 
 7. **Solver is synchronous on UI thread in Phase 1.** `build_best_color_match_recipe`
    per intent is cheap for typical counts, so the async/worker-thread plumbing
    (PRD §12.3) was deferred. The 64-colour worst case remains an open perf item.
 
-## 9. Phase 1.5 / Phase 2 entry points
+## 9. Phase 1.5 (DONE) / Phase 2 (open)
 
-- **Phase 1.5 — reuse `MixedFilamentDialog`, do NOT build a new slider.** The
-  codebase already ships a mature mixing editor (`MixedFilamentDialog`,
-  RATIO/CYCLE/MATCH/GRADIENT modes, custom Figma-style slider, tri-picker,
-  gradient selector, live blend preview, compatibility warnings). The ⚙ action
-  on a canvas row must pop this dialog with **palette = the intent's same-type
-  device-stock colours** and **target = the design colour**, then write the
-  `GetResult()` `MixedFilament` back into the **FulfillmentStore** (NOT
-  `preset_bundle->mixed_filaments` — see §3 caveat). Existing call sites
-  (e.g. `Plater.cpp:6217`) write the result into `mixed_filaments`; the Phase-1.5
-  wiring must diverge there to honour §3. Also add 🔒 toggle + "reset row" /
-  "clear locks" buttons.
+- **Phase 1.5 — DONE.** Reused `MixedFilamentDialog` (no new slider built). ⚙
+  pops it with palette = the entry's component slots; result writes
+  `apply_edited_recipe` (store only). 🔒 lock + Reset all / Clear locks wired.
+  See deviation §8.6 for the palette-local-id rationale and the ⚙ swap-slot
+  limitation.
 
-- **Phase 2:** relocate `mixed_filaments` out of preset_bundle (this is what
-  makes MixedFilamentDialog's existing write-back safe to redirect); sever
-  legacy design-writes (sync_ams_list / apply_batch_match → Fulfillment); 3D
-  Expected View colour injection; Fulfillment persistence (3MF); async solver.
+- **Phase 2 (open):** relocate `mixed_filaments` out of preset_bundle (this is
+  what makes MixedFilamentDialog's existing write-back safe to redirect, and
+  what makes §3 structurally enforceable); sever legacy design-writes
+  (sync_ams_list / apply_batch_match → Fulfillment); 3D Expected View colour
+  injection; Fulfillment persistence (3MF); async solver; hoist the ΔE<1
+  threshold into a shared constant.
 
 > **§3 caveat (critical):** reusing MixedFilamentDialog is UI-correct, but its
 > current consumers write the recipe into `preset_bundle->mixed_filaments`
