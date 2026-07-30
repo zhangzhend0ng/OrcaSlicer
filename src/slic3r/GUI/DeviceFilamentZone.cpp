@@ -8,6 +8,7 @@
 #include "MixedFilamentDialog.hpp" // reuse the existing mix editor (anti-reinvention)
 #include "Widgets/StaticBox.hpp"
 #include "Widgets/Label.hpp"
+#include "Widgets/Button.hpp" // Button (consistent with other sidebar panels, not raw wxButton)
 #include "wxExtensions.hpp" // get_extruder_color_icon, ScalableButton
 
 #include "libslic3r/PresetBundle.hpp"
@@ -209,7 +210,8 @@ void DeviceFilamentZone::refresh_fulfilment()
     bool any_locked = false;
     for (const FulfillmentEntry& e : m_store.entries()) if (e.locked) { any_locked = true; break; }
     auto* action_row = new wxBoxSizer(wxHORIZONTAL);
-    auto* reset_btn = new wxButton(m_panel_fulfilment, wxID_ANY, _L("Reset all"));
+    auto* reset_btn = new Button(m_panel_fulfilment, _L("Reset all"));
+    reset_btn->SetStyle(ButtonStyle::Confirm, ButtonType::Compact);
     reset_btn->SetToolTip(_L("Discard all manual edits and recompute recipes."));
     reset_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         m_store.reset_all();
@@ -220,7 +222,8 @@ void DeviceFilamentZone::refresh_fulfilment()
         }
         refresh_fulfilment();
     });
-    auto* clear_locks_btn = new wxButton(m_panel_fulfilment, wxID_ANY, _L("Clear locks"));
+    auto* clear_locks_btn = new Button(m_panel_fulfilment, _L("Clear locks"));
+    clear_locks_btn->SetStyle(ButtonStyle::Confirm, ButtonType::Compact);
     clear_locks_btn->SetToolTip(_L("Unlock every recipe."));
     clear_locks_btn->Enable(any_locked);
     clear_locks_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {

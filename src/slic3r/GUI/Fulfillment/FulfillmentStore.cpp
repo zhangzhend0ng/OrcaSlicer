@@ -260,11 +260,12 @@ void FulfillmentStore::apply_edited_recipe(unsigned int design_extruder,
         e.recipe.manual_pattern = manual_pattern;
         e.recipe.gradient_component_ids = gradient_component_ids;
         e.recipe.gradient_component_weights = gradient_component_weights;
-        // If the dialog produced a preview colour it carried it in the MixedFilament
-        // result, but MixedColorMatchRecipeResult.preview_color is recomputed at
-        // solve; we leave the prior preview here and mark the entry Tunable, since
-        // the user has now manually intervened (a precise ΔE refresh happens on the
-        // next solve against live device stock).
+        // Honest ΔE: the user just changed the recipe, so the prior ΔE (computed
+        // against the OLD recipe) no longer applies. Invalidate it rather than
+        // show a stale number that contradicts the new recipe; the next Match
+        // re-solves and refreshes. Health is Tunable: the user has intervened, so
+        // the row is "user-accepted, pending re-verification".
+        e.recipe.delta_e = std::numeric_limits<double>::infinity();
         e.health = HealthState::Tunable;
         e.locked = true;   // explicit edit = user decision worth keeping (§6)
         e.stale = false;
