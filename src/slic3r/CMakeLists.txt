@@ -91,6 +91,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/DailyTips.hpp
     GUI/DesktopIntegrationDialog.cpp
     GUI/DesktopIntegrationDialog.hpp
+    GUI/DeviceFilamentZone.cpp
+    GUI/DeviceFilamentZone.hpp
     GUI/DeviceManager.cpp
     GUI/DeviceManager.hpp
     GUI/Downloader.cpp

@@ -145,6 +145,7 @@
 #include "RemovableDriveManager.hpp"
 #include "InstanceCheck.hpp"
 #include "NotificationManager.hpp"
+#include "DeviceFilamentZone.hpp"
 #include "PresetComboBoxes.hpp"
 #include "MsgDialog.hpp"
 #include "ProjectDirtyStateManager.hpp"
@@ -996,6 +997,8 @@ struct Sidebar::priv
     StaticBox*      m_panel_color_mix_title   = nullptr;
     wxPanel*        m_panel_color_mix_content = nullptr;
     wxScrolledWindow* m_scrolled_color_mix    = nullptr;
+    // Device filament zone (read-only mirror of the selected device's loaded AMS trays)
+    DeviceFilamentZone* m_device_filament_zone = nullptr;
     ScalableButton* m_color_mix_icon          = nullptr;
     ScalableButton* m_btn_add_color_mix       = nullptr;
     ScalableButton* m_btn_del_color_mix       = nullptr;
@@ -2994,6 +2997,13 @@ Sidebar::Sidebar(Plater *parent)
     // Initially hidden until 2+ filaments
     p->m_panel_mixed_filaments_title->Hide();
     p->m_panel_mixed_filaments_content->Hide();
+    }
+
+    // --- Device Filament Zone (read-only mirror of the device's loaded trays) ---
+    {
+        p->m_device_filament_zone = new DeviceFilamentZone(p->scrolled);
+        scrolled_sizer->Add(p->m_device_filament_zone, 0, wxEXPAND, 0);
+        p->m_device_filament_zone->refresh();
     }
 
     {
@@ -9116,6 +9126,11 @@ wxPanel* Sidebar::print_panel()
 wxPanel* Sidebar::filament_panel()
 {
     return p->m_panel_filament_content;
+}
+
+DeviceFilamentZone* Sidebar::device_filament_zone()
+{
+    return p->m_device_filament_zone;
 }
 
 ConfigOptionsGroup* Sidebar::og_freq_chng_params(const bool is_fff)

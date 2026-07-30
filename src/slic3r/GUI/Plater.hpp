@@ -69,6 +69,7 @@ namespace UndoRedo {
 namespace GUI {
 
 class MainFrame;
+class DeviceFilamentZone;
 class ConfigOptionsGroup;
 class ObjectSettings;
 class ObjectLayers;
@@ -193,6 +194,7 @@ public:
     wxPanel*                scrolled_panel();
     wxPanel* print_panel();
     wxPanel* filament_panel();
+    DeviceFilamentZone* device_filament_zone();
 
     ConfigOptionsGroup*     og_freq_chng_params(const bool is_fff);
     wxButton*               get_wiping_dialog_button();
