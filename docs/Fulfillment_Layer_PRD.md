@@ -564,6 +564,17 @@ If the Fulfillment Layer is not persisted, we repeat that failure.
   verbatim. Old files must open without data loss.
 - **Phase split:** persistence is a **Phase-2** concern (Phase 1 demo may keep
   the Fulfillment Layer in-memory only, clearly labelled as non-persistent).
+- **Round-3 audit — persistence deferred from the demo scope.** The Fulfilment
+  Layer is *derived* data: only the user's manual micro-edits + locks are worth
+  persisting (re-solve regenerates the rest). Those edits are **device-scoped**
+  (a recipe/lock against one AMS config is meaningless on another device), so
+  cross-device reuse is inherently limited. Meanwhile 3MF format changes carry
+  real risk (backward-compat, load-path coverage) disproportionate to a
+  non-core enhancement. Storage *design* is fixed (serialise the editable
+  subset into a 3MF `<metadata>` block via the existing `MetadataList` mechanism
+  in `Format/3mf.cpp`; on load, restore then mark stale if current device stock
+  differs) — but **implementation is deferred** until the demo's core loop is
+  validated on-device. Not a blocker for the expected experience.
 
 ### 12.3 Performance (solver cost, health-dot computation)
 

@@ -9,12 +9,9 @@ namespace Slic3r {
 namespace GUI {
 
 namespace {
-// ΔE below this means a direct (pure) match. MUST stay in sync with
-// K_REUSE_THRESHOLD (MixedFilamentBatchDialog.cpp:2357) — they express the same
-// "ΔE<1 → prefer pure filament" product rule. TODO(phase2): hoist both into
-// MixedColorMatchHelpers as a single shared constant so they cannot drift.
-constexpr double kDirectDeltaE = 1.0;
 // Above this a synthesised match is still "tunable" but no longer "perfect".
+// (The direct-match threshold is the shared kColorMatchDirectThreshold in
+// MixedColorMatchHelpers.hpp — used by name, no local copy.)
 constexpr double kTunableDeltaE = 5.0;
 
 // Pull a prior lock forward only if its owning intent is materially unchanged
@@ -106,7 +103,7 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
     }
 
     // ---- Pass 2: COLOUR MATCH among same-type slots ----
-    // Direct: closest slot within ΔE < kDirectDeltaE (pure filament preferred).
+    // Direct: closest slot within ΔE < kColorMatchDirectThreshold (pure filament preferred).
     const wxColour target(intent.color);
     const PhysicalSlot* best_direct = nullptr;
     double best_direct_de = std::numeric_limits<double>::max();
@@ -114,7 +111,7 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
         double de = color_delta_e00(target, s->color);
         if (de < best_direct_de) { best_direct_de = de; best_direct = s; }
     }
-    if (best_direct && best_direct_de < kDirectDeltaE) {
+    if (best_direct && best_direct_de < kColorMatchDirectThreshold) {
         // Express the direct match AS a recipe (single-component), so the entry
         // stores one canonical shape for all resolvable kinds.
         out.kind = PlanKind::Direct;
@@ -182,7 +179,7 @@ void FulfillmentStore::recompute_health_from_recipe(const DesignIntent& intent,
     const wxColour realised = e.recipe.preview_color;
     e.recipe.delta_e = realised.IsOk() && target.IsOk() ? color_delta_e00(target, realised)
                                                         : std::numeric_limits<double>::infinity();
-    e.health = (e.recipe.delta_e < kDirectDeltaE)  ? HealthState::Perfect
+    e.health = (e.recipe.delta_e < kColorMatchDirectThreshold)  ? HealthState::Perfect
              : (e.recipe.delta_e < kTunableDeltaE) ? HealthState::Tunable
                                                    : HealthState::Broken;
 }

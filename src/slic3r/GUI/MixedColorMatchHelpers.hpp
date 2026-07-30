@@ -22,6 +22,12 @@ namespace Slic3r { namespace GUI {
 
 // ---- Shared constants ----
 
+// ΔE below this means a direct (pure-filament) match is preferred over a mix.
+// Single source of truth — previously duplicated as FulfillmentStore::kDirectDeltaE
+// and MixedFilamentBatchDialog's local K_REUSE_THRESHOLD, risking drift.
+// Both now reference this. Mirrors the batch-match pass-1 "ΔE<1 → pure" rule.
+constexpr double kColorMatchDirectThreshold = 1.0;
+
 // Canonical preset name for the Full Spectrum (formerly "CMYW") recommended-mode
 // palette. Resolved at call time against the current printer's nozzle_diameter:
 // if a matching Full Spectrum preset exists for that nozzle, it is returned;

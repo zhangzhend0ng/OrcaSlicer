@@ -2354,7 +2354,9 @@ void MixedFilamentBatchDialog::launch_background_match()
         // Pass 1: map each model color to closest existing filament. Per case 11 / PRD 6.2.5,
         // a model color within ΔE<1 of an existing filament is mapped directly to it (pure
         // filament preferred over a mix) — strict <1 matches the product spec.
-        constexpr double K_REUSE_THRESHOLD = 1.0;
+        // Uses the shared kColorMatchDirectThreshold (also used by FulfillmentStore) so the
+        // two code paths cannot drift on this product rule.
+        constexpr double K_REUSE_THRESHOLD = kColorMatchDirectThreshold;
         for (const auto& mc : model_colors) {
             double best_de = std::numeric_limits<double>::max();
             size_t best_idx = 0;
