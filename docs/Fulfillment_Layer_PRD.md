@@ -355,6 +355,30 @@ The single canvas indexes by **design intent** and dissolves the device into
 each row's "plan" plus a bottom summary. **Design is always the subject; the
 device is always subordinate.**
 
+### 5.5 Implemented UX form (round-4)
+
+The expected UX form is now built and links clean. Concrete realisation:
+
+- **FulfillmentPanel** — a standalone sidebar panel (split out of
+  DeviceFilamentZone, which is now purely the physical-stock display). Holds the
+  canvas: title bar + Match trigger + colour-coded global health summary +
+  per-design-intent rows + Reset/Clear-locks.
+- **Per-intent row** — design swatch + shape+colour health glyph (✓/~/✗) + type
+  + human plan (`direct match (slot N)` / `mix slot X+Y @ Z%`) + **ΔE** (quantifies
+  the colour gap) + ⚙ edit (reuses `MixedFilamentDialog`) + 🔒 lock.
+- **Resolve** — a broken (type-gap) row is clickable and opens a dialog stating
+  the problem + the two paths (load filament / change design type in Filaments).
+  Class B (design edit) is pointed-to, not performed in-canvas (§5.2.1).
+- **Filaments title-bar health indicator** — an aggregate `N✓ M~ K✗` coloured
+  by worst state, refreshed on design/device change; click drills into the panel.
+  Deliberately a single bridge, not per-row dots (row build is high-churn).
+- **Dual-view (§5.2)** — NOT a 3D recolour. Design View = the existing Filaments
+  + design-coloured 3D (unchanged); the Expected side = the FulfillmentPanel
+  canvas. A full 3D Expected View (recolour the model in realised colours) is
+  the one remaining gap — its only clean injection point is the thumbnail path
+  (`render_thumbnail` accepts explicit colours), which is GL integration work
+  deferred from this round.
+
 ---
 
 ## 6. Core User Flows
