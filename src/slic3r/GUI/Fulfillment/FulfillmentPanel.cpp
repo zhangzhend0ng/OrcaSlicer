@@ -96,6 +96,7 @@ void FulfillmentPanel::on_match()
     }
     m_store.solve(design, device);
     refresh_fulfilment();
+    wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
 }
 
 void FulfillmentPanel::refresh_fulfilment()

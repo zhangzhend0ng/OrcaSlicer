@@ -1003,6 +1003,9 @@ struct Sidebar::priv
     DeviceFilamentZone* m_device_filament_zone = nullptr;
     // Fulfillment panel: the standalone Expected-View canvas (PRD §5.2/§5.3).
     FulfillmentPanel* m_fulfillment_panel = nullptr;
+    // Aggregate fulfilment-health indicator on the Filaments title bar (a
+    // low-churn bridge to the FulfillmentPanel — avoids per-row dot insertion).
+    wxStaticText* m_fulfillment_health_indicator = nullptr;
     // Fulfillment store: derived plan (design→device). In-memory for Phase 1.
     FulfillmentStore m_fulfillment_store;
     ScalableButton* m_color_mix_icon          = nullptr;
@@ -2289,6 +2292,23 @@ Sidebar::Sidebar(Plater *parent)
     scrolled_sizer->Add(spliter_2, 0, wxEXPAND);
 
     bSizer39->AddStretchSpacer(1);
+
+    // Aggregate fulfilment-health indicator (PRD §5 "light hint, on-demand
+    // detail"). Shows "N✓ M~ K✗" coloured by worst state; click scrolls to the
+    // FulfillmentPanel. Deliberately NOT a per-Filaments-row dot — row build is
+    // high-churn/double-column; a single title-bar bridge is lower-risk and the
+    // full per-intent detail already lives in the FulfillmentPanel.
+    p->m_fulfillment_health_indicator = new wxStaticText(p->m_panel_filament_title, wxID_ANY, "");
+    p->m_fulfillment_health_indicator->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
+        // Refresh and focus the FulfillmentPanel so the user can see the detail.
+        // (The sidebar scrolled area is a wxPanel with custom scrolling, so we
+        // don't drive scroll position directly; focus + refresh surfaces it.)
+        if (p->m_fulfillment_panel) {
+            p->m_fulfillment_panel->refresh_fulfilment();
+            p->m_fulfillment_panel->SetFocus();
+        }
+    });
+    bSizer39->Add(p->m_fulfillment_health_indicator, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(8));
 
     // BBS
     // add wiping dialog
@@ -8634,6 +8654,7 @@ void Sidebar::load_ams_list(std::string const &device, MachineObject* obj)
     p->m_fulfillment_store.mark_stale();
     if (p->m_device_filament_zone) p->m_device_filament_zone->refresh();
     if (p->m_fulfillment_panel) p->m_fulfillment_panel->refresh_fulfilment();
+    update_fulfillment_health_indicator();
 }
 
 void Sidebar::sync_ams_list()
@@ -10184,6 +10205,7 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
         Sidebar& sb = this->q->sidebar();
         sb.fulfillment_store().mark_stale();
         if (auto* panel = sb.fulfillment_panel()) panel->refresh_fulfilment();
+        sb.update_fulfillment_health_indicator();
     });
     main_frame->m_tabpanel->Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &priv::on_tab_selection_changing, this);
 
@@ -15060,6 +15082,27 @@ int Plater::priv::update_print_required_data(Slic3r::DynamicPrintConfig config, 
 {
     if (!m_select_machine_dlg) m_select_machine_dlg = new SelectMachineDialog(q);
     return m_select_machine_dlg->update_print_required_data(config, model, plate_data_list, file_name, file_path);
+}
+
+void Sidebar::update_fulfillment_health_indicator()
+{
+    if (!p->m_fulfillment_health_indicator) return;
+    if (!p->m_fulfillment_store.has_solved()) {
+        // No match run yet: neutral, no health claim (PRD §12.3 — don't assert
+        // state without a prior solve). Empty label keeps the slot unobtrusive.
+        p->m_fulfillment_health_indicator->SetLabel("");
+        p->m_fulfillment_health_indicator->UnsetToolTip();
+        return;
+    }
+    const auto roll = p->m_fulfillment_store.rollup();
+    // Shape+colour redundant glyph summary (PRD §12.5).
+    wxString txt = wxString::Format("%d\u2713 %d~ %d\u2717", roll.perfect, roll.tunable, roll.broken);
+    p->m_fulfillment_health_indicator->SetLabel(txt);
+    const wxColour c = roll.broken > 0 ? wxColour(198, 80, 80)
+                    : roll.tunable > 0 ? wxColour(200, 160, 60)
+                                       : wxColour(80, 160, 90);
+    p->m_fulfillment_health_indicator->SetForegroundColour(c);
+    p->m_fulfillment_health_indicator->SetToolTip(_L("Design vs device fulfilment. Click to view details."));
 }
 
 bool Plater::priv::fulfillment_gate_blocks()

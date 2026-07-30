@@ -200,6 +200,8 @@ public:
     FulfillmentPanel*   fulfillment_panel();
     // The derived fulfilment plan (design→device). Owned by the Sidebar.
     FulfillmentStore& fulfillment_store();
+    // Refresh the Filaments-title-bar health indicator from the store rollup.
+    void update_fulfillment_health_indicator();
 
     ConfigOptionsGroup*     og_freq_chng_params(const bool is_fff);
     wxButton*               get_wiping_dialog_button();
