@@ -309,9 +309,9 @@ Recorded so Phase 2 starts from reality, not the idealised plan.
 
 6. **Inline ⚙ fine-tune editor deferred (Phase 1.5).** Store mutators
    (set_ratio/set_direct_slot/toggle_lock/reset/clear-locks) are implemented and
-   tested at the API level, but the per-row slider/slot-picker UI is not wired
-   yet. The lock/reset/clear path is reachable conceptually; the ratio slider is
-   the visible gap.
+   tested at the API level, but the per-row editor UI is not wired yet. The
+   lock/reset/clear path is reachable conceptually; the visible gap is the
+   editor invocation.
 
 7. **Solver is synchronous on UI thread in Phase 1.** `build_best_color_match_recipe`
    per intent is cheap for typical counts, so the async/worker-thread plumbing
@@ -319,9 +319,26 @@ Recorded so Phase 2 starts from reality, not the idealised plan.
 
 ## 9. Phase 1.5 / Phase 2 entry points
 
-- **Phase 1.5:** wire the inline ⚙ editor (ratio slider, slot picker) to the
-  store mutators; add the 🔒 toggle + "reset row"/"clear locks" buttons to the
-  canvas. Lowest-risk, finishes the interaction spec.
-- **Phase 2:** relocate `mixed_filaments` out of preset_bundle; sever legacy
-  design-writes (sync_ams_list / apply_batch_match → Fulfillment); 3D Expected
-  View colour injection; Fulfillment persistence (3MF); async solver.
+- **Phase 1.5 — reuse `MixedFilamentDialog`, do NOT build a new slider.** The
+  codebase already ships a mature mixing editor (`MixedFilamentDialog`,
+  RATIO/CYCLE/MATCH/GRADIENT modes, custom Figma-style slider, tri-picker,
+  gradient selector, live blend preview, compatibility warnings). The ⚙ action
+  on a canvas row must pop this dialog with **palette = the intent's same-type
+  device-stock colours** and **target = the design colour**, then write the
+  `GetResult()` `MixedFilament` back into the **FulfillmentStore** (NOT
+  `preset_bundle->mixed_filaments` — see §3 caveat). Existing call sites
+  (e.g. `Plater.cpp:6217`) write the result into `mixed_filaments`; the Phase-1.5
+  wiring must diverge there to honour §3. Also add 🔒 toggle + "reset row" /
+  "clear locks" buttons.
+
+- **Phase 2:** relocate `mixed_filaments` out of preset_bundle (this is what
+  makes MixedFilamentDialog's existing write-back safe to redirect); sever
+  legacy design-writes (sync_ams_list / apply_batch_match → Fulfillment); 3D
+  Expected View colour injection; Fulfillment persistence (3MF); async solver.
+
+> **§3 caveat (critical):** reusing MixedFilamentDialog is UI-correct, but its
+> current consumers write the recipe into `preset_bundle->mixed_filaments`
+> (Design Layer). Until the Phase-2 relocation lands, Phase 1.5 must write the
+> dialog result into the FulfillmentStore only, and must NOT also push it into
+> `mixed_filaments` — otherwise mixing contaminates design (violates §3), the
+> exact failure this architecture exists to prevent.
