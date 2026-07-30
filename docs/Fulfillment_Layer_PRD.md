@@ -462,3 +462,102 @@ Two guarantees:
 - A user who fine-tunes a recipe, then triggers a recompute, **keeps** their
   fine-tune (and locked decisions).
 - No "silent colour substitution" path exists anywhere in the print flow.
+
+---
+
+## 12. Cross-Cutting Concerns (round-2 review additions)
+
+These were absent from the first draft and are required for a buildable,
+honest spec.
+
+### 12.1 Undo / recovery (the "I got it wrong" path)
+
+The current codebase's UndoRedo only snapshots the **Model** (painting), not
+`preset_bundle` or any filament state — see the explicit `// deliberately NO
+take_snapshot()` at `Plater.cpp:2403`. So neither layer inherits a working undo
+today. Required behaviour:
+
+- **Design-Layer edits** (user changes colour/type): integrate with existing
+  Model UndoRedo so Ctrl+Z reverts them. (Out of this PRD's scope to *fix* the
+  existing gap, but design edits must not make it worse.)
+- **Fulfillment-Layer edits** (recipe fine-tune, lock, manual slot assignment):
+  these are cheap and re-derivable, so they get a **dedicated in-layer history**
+  rather than the heavy Model UndoRedo stack. Two guaranteed recovery actions:
+  - **"Reset to computed"** — discards all manual edits on a row (or all rows),
+    restoring the last solver output. This is the panic button.
+  - **"Clear all locks"** — explicit, because §4.3 makes locks survive recompute,
+    so users need a way to wipe them deliberately (not only via the type-change
+    invalidation path).
+- Because the Fulfillment Layer is derived, **the ultimate recovery is always
+  "recompute from scratch"** — losing only manual overrides, never the design.
+  This must be a one-click action with a confirm, and is the safety net for any
+  confused state.
+
+### 12.2 Persistence (storage, cross-session, 3MF compat)
+
+This is the direct counter to the Bambu "studio forgets the AMS mapping" pain
+([forum #145120](https://forum.bambulab.com/t/why-does-bambu-studio-forget-what-filament-is-in-my-ams/145120)).
+If the Fulfillment Layer is not persisted, we repeat that failure.
+
+- **Where:** persisted **per-project** inside the 3MF (the mapping/recipe is a
+  property of *this design realised on a device profile*, not a global pref).
+  Locks are **project-scoped** (not device-scoped) so reopening the file restores
+  them. (Cross-device reuse remains a Non-Goal per §3.5.)
+- **Cross-session:** reopening a 3MF must restore the Fulfillment Layer as-saved,
+  then mark it stale if the *current* device's stock differs from when it was
+  saved (a device mismatch is detected at load, surfaced via the health dots — §5).
+- **3MF backward compat:** existing 3MF files carry mixing recipes inside the
+  preset_bundle blob. On load, these are **migrated** into the Fulfillment Layer
+  (one-time translation); the design-side filament colours/types are preserved
+  verbatim. Old files must open without data loss.
+- **Phase split:** persistence is a **Phase-2** concern (Phase 1 demo may keep
+  the Fulfillment Layer in-memory only, clearly labelled as non-persistent).
+
+### 12.3 Performance (solver cost, health-dot computation)
+
+`batch_match_model_colors` is slow enough to warrant a background thread,
+cancel token, and progress callback today — so "on-demand" must mean **off the
+UI thread**, with results marshalled back. Required boundaries:
+
+- **Health dot (§6 Flow A) must be cheap.** It answers only "can this intent be
+  satisfied?" — resolvable by a **cached** ΔE + type check against the *last*
+  solver result or device stock, **not** a per-frame solve. If no prior solve
+  exists, the dot shows only the type-availability check (cheap, O(slots)) and a
+  "colour match pending — press match" neutral state, not a live ΔE. This keeps
+  authoring responsive even at 64 design colours.
+- **Solve is debounced and cached:** triggered by an explicit user action (press
+  "match" / open canvas), runs on a worker thread, result cached until Design or
+  Physical changes mark it stale. No solve on every keystroke.
+- **Large-colour budget:** at the 64-colour cap, the solve remains async with a
+  progress bar and cancel (reuse the existing progress/cancel plumbing).
+
+### 12.4 Concurrency (MQTT vs user edit)
+
+`filament_ams_list` is an unlocked `std::map` shared between the MQTT parse
+thread and the UI thread today — a pre-existing hazard the Fulfillment Layer
+must not inherit blindly.
+
+- The Fulfillment Layer is **UI-thread-owned**: device updates from MQTT do not
+  write it directly; they post a flag ("physical stock changed") that the UI
+  thread consumes on its next idle tick to mark the layer stale and refresh
+  health dots. No cross-thread mutation of Fulfillment state.
+- **Editing during a device change:** if the user is mid-fine-tune when stock
+  changes, the in-progress edit is **not interrupted**. The change is validated
+  **at commit** (apply): if the target slot vanished, the row is flagged broken
+  per §4.3 and the user re-resolves. Interrupting a live drag with a modal is
+  worse than a delayed flag.
+
+### 12.5 Accessibility & edge inputs
+
+- Health dots must be **shape+colour redundant** (e.g. ✓/~/✗ glyph alongside
+  green/yellow/red), not colour-only — colour-blind users must read status.
+- The report and canvas use `_L()` localisation, including **plural forms**
+  ("1 fatal" vs "2 fatal items") — English-only examples in this doc are
+  illustrative.
+- **Degenerate inputs** must be defined, not crash:
+  - 0 device slots (all empty) → all rows red "no physical filament"; match is a
+    no-op.
+  - 0 design colours (no model / unpainted) → canvas empty, no solve.
+  - Single-colour design → single row, trivial direct match.
+  - No intersection between design types and device types → report fully red,
+    print blocked with guidance.
