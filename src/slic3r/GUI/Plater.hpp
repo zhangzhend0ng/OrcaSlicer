@@ -70,6 +70,7 @@ namespace GUI {
 
 class MainFrame;
 class DeviceFilamentZone;
+class FulfillmentStore;
 class ConfigOptionsGroup;
 class ObjectSettings;
 class ObjectLayers;
@@ -195,6 +196,8 @@ public:
     wxPanel* print_panel();
     wxPanel* filament_panel();
     DeviceFilamentZone* device_filament_zone();
+    // The derived fulfilment plan (design→device). Owned by the Sidebar.
+    FulfillmentStore& fulfillment_store();
 
     ConfigOptionsGroup*     og_freq_chng_params(const bool is_fff);
     wxButton*               get_wiping_dialog_button();

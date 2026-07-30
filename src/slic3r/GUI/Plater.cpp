@@ -146,6 +146,7 @@
 #include "InstanceCheck.hpp"
 #include "NotificationManager.hpp"
 #include "DeviceFilamentZone.hpp"
+#include "Fulfillment/FulfillmentStore.hpp"
 #include "PresetComboBoxes.hpp"
 #include "MsgDialog.hpp"
 #include "ProjectDirtyStateManager.hpp"
@@ -999,6 +1000,8 @@ struct Sidebar::priv
     wxScrolledWindow* m_scrolled_color_mix    = nullptr;
     // Device filament zone (read-only mirror of the selected device's loaded AMS trays)
     DeviceFilamentZone* m_device_filament_zone = nullptr;
+    // Fulfillment store: derived plan (design→device). In-memory for Phase 1.
+    FulfillmentStore m_fulfillment_store;
     ScalableButton* m_color_mix_icon          = nullptr;
     ScalableButton* m_btn_add_color_mix       = nullptr;
     ScalableButton* m_btn_del_color_mix       = nullptr;
@@ -3001,7 +3004,7 @@ Sidebar::Sidebar(Plater *parent)
 
     // --- Device Filament Zone (read-only mirror of the device's loaded trays) ---
     {
-        p->m_device_filament_zone = new DeviceFilamentZone(p->scrolled);
+        p->m_device_filament_zone = new DeviceFilamentZone(p->scrolled, p->m_fulfillment_store);
         scrolled_sizer->Add(p->m_device_filament_zone, 0, wxEXPAND, 0);
         p->m_device_filament_zone->refresh();
     }
@@ -8615,6 +8618,11 @@ void Sidebar::load_ams_list(std::string const &device, MachineObject* obj)
 
     for (auto c : p->combos_filament)
         c->update();
+
+    // Device stock changed → Fulfillment plan is now stale (PRD §7). Mark and
+    // refresh the device-zone's display (new stock rows + stale fulfilment hint).
+    p->m_fulfillment_store.mark_stale();
+    if (p->m_device_filament_zone) p->m_device_filament_zone->refresh();
 }
 
 void Sidebar::sync_ams_list()
@@ -9131,6 +9139,11 @@ wxPanel* Sidebar::filament_panel()
 DeviceFilamentZone* Sidebar::device_filament_zone()
 {
     return p->m_device_filament_zone;
+}
+
+FulfillmentStore& Sidebar::fulfillment_store()
+{
+    return p->m_fulfillment_store;
 }
 
 ConfigOptionsGroup* Sidebar::og_freq_chng_params(const bool is_fff)
@@ -10143,6 +10156,13 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
     this->q->Bind(EVT_FILAMENT_USAGE_CHANGED, [this](SimpleEvent&) {
         filament_usage_sync_pending = false;
         this->q->sync_filament_temp_mixing_notification();
+        // Design changed → Fulfillment plan is now stale (PRD §7). Mark and
+        // refresh the device-zone's fulfilment display so the health summary
+        // reflects the new design (no re-solve — that's on-demand via Match).
+        // Store & zone live on Sidebar; reach them via the sidebar accessor.
+        Sidebar& sb = this->q->sidebar();
+        sb.fulfillment_store().mark_stale();
+        if (auto* zone = sb.device_filament_zone()) zone->refresh_fulfilment();
     });
     main_frame->m_tabpanel->Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &priv::on_tab_selection_changing, this);
 
