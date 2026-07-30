@@ -8,6 +8,10 @@
 
 #include <wx/colour.h>
 
+#include "../MixedColorMatchHelpers.hpp" // MixedColorMatchRecipeResult (the
+                                        // canonical recipe model — do NOT
+                                        // re-define a parallel one)
+
 namespace Slic3r {
 namespace GUI {
 
@@ -31,17 +35,19 @@ struct FulfillmentEntry
     PlanKind     kind   = PlanKind::Unmet;
     HealthState  health = HealthState::Broken;
 
-    // Direct match: the physical slot (key into filament_ams_list) that
-    // satisfies this intent within ΔE < 1.0. -1 = none.
-    int          direct_slot = -1;
+    // The FULL recipe as returned by the solver (build_best_color_match_recipe)
+    // or edited via MixedFilamentDialog. Holds component_a/b, mix_b_percent,
+    // manual_pattern, gradient_component_ids/weights, preview_color, delta_e —
+    // i.e. everything MixedFilamentDialog can produce. We store it verbatim
+    // rather than projecting into bespoke fields, so no recipe information is
+    // lost (anti-reinvention: reuse the existing model, not a weaker copy).
+    MixedColorMatchRecipeResult recipe;
 
-    // Synthesised match: two same-type slots blended. -1 / empty = none.
-    int          synth_slot_a = -1;
-    int          synth_slot_b = -1;
-    int          synth_ratio_b_percent = 0; // 0..100 share of slot_b
-    wxColour     synth_preview_color;       // predicted realised colour
-
-    double       delta_e = std::numeric_limits<double>::infinity();
+    // recipe.component_a/b are 1-based indices into the palette passed to the
+    // solver. To render / lock against real device slots we also keep the
+    // ams_key each component resolves to. Indexed by the same 1-based scheme
+    // (component_ams_keys[i-1] is the slot for component id i).
+    std::vector<int> component_ams_keys;
 
     bool         locked = false; // user-pinned; survives recompute (PRD §4.3)
     bool         stale  = true;  // needs (re)solve

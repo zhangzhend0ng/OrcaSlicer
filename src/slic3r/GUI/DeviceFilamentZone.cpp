@@ -240,12 +240,20 @@ void DeviceFilamentZone::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfill
     // Type token.
     std::string type_str = e.design_type.empty() ? "?" : e.design_type;
 
-    // Plan description (human language — PRD §5 "gaps spoken").
+    // Plan description (human language — PRD §5 "gaps spoken"). Reads the full
+    // recipe + its ams_key mapping (no bespoke synth_* fields on the entry).
     wxString plan;
+    auto key_for = [&](unsigned int component_id) -> int {
+        // component_id is 1-based into component_ams_keys.
+        return (component_id >= 1 && component_id <= e.component_ams_keys.size())
+               ? e.component_ams_keys[component_id - 1] : -1;
+    };
     if (e.kind == PlanKind::Direct) {
-        plan = wxString::Format(_L("direct match (slot %d)"), e.direct_slot);
+        plan = wxString::Format(_L("direct match (slot %d)"), key_for(e.recipe.component_a));
     } else if (e.kind == PlanKind::Synthesised) {
-        plan = wxString::Format(_L("mix slot %d + %d @ %d%%"), e.synth_slot_a, e.synth_slot_b, e.synth_ratio_b_percent);
+        plan = wxString::Format(_L("mix slot %d + %d @ %d%%"),
+                                key_for(e.recipe.component_a), key_for(e.recipe.component_b),
+                                e.recipe.mix_b_percent);
     } else {
         plan = _L("no same-type stock — type gap");
     }

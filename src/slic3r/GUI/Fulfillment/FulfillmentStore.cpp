@@ -9,8 +9,10 @@ namespace Slic3r {
 namespace GUI {
 
 namespace {
-// ΔE below this means a direct (pure) match — mirrors batch_match pass-1
-// K_REUSE_THRESHOLD (MixedFilamentBatchDialog.cpp:2357, PRD §6 Flow B).
+// ΔE below this means a direct (pure) match. MUST stay in sync with
+// K_REUSE_THRESHOLD (MixedFilamentBatchDialog.cpp:2357) — they express the same
+// "ΔE<1 → prefer pure filament" product rule. TODO(phase2): hoist both into
+// MixedColorMatchHelpers as a single shared constant so they cannot drift.
 constexpr double kDirectDeltaE = 1.0;
 // Above this a synthesised match is still "tunable" but no longer "perfect".
 constexpr double kTunableDeltaE = 5.0;
@@ -98,14 +100,13 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
     if (same_type.empty()) {
         out.kind = PlanKind::Unmet;
         out.health = HealthState::Broken;
-        out.direct_slot = -1;
-        out.synth_slot_a = out.synth_slot_b = -1;
-        out.delta_e = std::numeric_limits<double>::infinity();
+        out.recipe = {}; // invalid recipe; delta_e stays infinity
+        out.component_ams_keys.clear();
         return;
     }
 
     // ---- Pass 2: COLOUR MATCH among same-type slots ----
-    // Direct: closest slot within ΔE < 1.0 (pure filament preferred).
+    // Direct: closest slot within ΔE < kDirectDeltaE (pure filament preferred).
     const wxColour target(intent.color);
     const PhysicalSlot* best_direct = nullptr;
     double best_direct_de = std::numeric_limits<double>::max();
@@ -114,47 +115,54 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
         if (de < best_direct_de) { best_direct_de = de; best_direct = s; }
     }
     if (best_direct && best_direct_de < kDirectDeltaE) {
+        // Express the direct match AS a recipe (single-component), so the entry
+        // stores one canonical shape for all resolvable kinds.
         out.kind = PlanKind::Direct;
         out.health = HealthState::Perfect;
-        out.direct_slot = best_direct->ams_key;
-        out.synth_slot_a = out.synth_slot_b = -1;
-        out.synth_preview_color = best_direct->color;
-        out.delta_e = best_direct_de;
+        out.recipe.valid = true;
+        out.recipe.component_a = 1;       // sole component = the matched slot
+        out.recipe.component_b = 1;       // degenerate (a==b) signals "single"
+        out.recipe.mix_b_percent = 0;
+        out.recipe.preview_color = best_direct->color;
+        out.recipe.delta_e = best_direct_de;
+        out.component_ams_keys.assign(1, best_direct->ams_key);
         return;
     }
 
-    // Synthesised: ask build_best_color_match_recipe for the best two-slot blend
-    // over the same-type palette. This helper is a pure function (verified: no
-    // preset_bundle/app_config reads), so feeding it our device-derived palette
-    // is safe and bypasses the batch_match audit task entirely (impl §4 caveat).
+    // Synthesised: ask build_best_color_match_recipe for the best blend over the
+    // same-type palette. Pure function (verified: no preset_bundle/app_config
+    // reads), so feeding it our device-derived palette is safe and bypasses the
+    // batch_match audit task entirely (impl §4 caveat).
+    //
+    // NOTE on the two orthogonal filters in play (NOT redundant):
+    //  · our `same_type` filter above = "design intent type vs slot type" — the
+    //    §4 hard constraint (I want PETG; only PLA slots → fatal). Design vs slot.
+    //  · check_compatible=true below = "can these two palette filaments mix" —
+    //    preset-level material compatibility (e.g. PLA+PETG disallowed). Slot vs slot.
+    // Both are required; neither subsumes the other.
     std::vector<std::string> palette;
     palette.reserve(same_type.size());
     for (const PhysicalSlot* s : same_type) palette.push_back(s->color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
 
-    MixedColorMatchRecipeResult recipe = build_best_color_match_recipe(
+    out.recipe = build_best_color_match_recipe(
         palette, target, /*min_component_percent=*/0, /*max_component_percent=*/100,
-        /*check_compatible=*/true); // same-type already filtered, but keep defensive
+        /*check_compatible=*/true);
 
-    if (recipe.valid) {
-        // component_a/b are 1-based indices into the palette we passed.
-        const unsigned int ia = recipe.component_a;
-        const unsigned int ib = recipe.component_b;
+    if (out.recipe.valid) {
         out.kind = PlanKind::Synthesised;
-        out.direct_slot = -1;
-        if (ia >= 1 && ia <= same_type.size()) out.synth_slot_a = same_type[ia - 1]->ams_key;
-        if (ib >= 1 && ib <= same_type.size()) out.synth_slot_b = same_type[ib - 1]->ams_key;
-        out.synth_ratio_b_percent = recipe.mix_b_percent;
-        out.synth_preview_color = recipe.preview_color;
-        out.delta_e = recipe.delta_e;
-        out.health = (recipe.delta_e < kTunableDeltaE) ? HealthState::Tunable : HealthState::Broken;
+        // Store the FULL recipe verbatim (component_a/b, mix_b_percent,
+        // manual_pattern, gradient_*, preview_color, delta_e) — no projection,
+        // so nothing the solver (or later MixedFilamentDialog) produces is lost.
+        out.component_ams_keys.clear();
+        out.component_ams_keys.reserve(same_type.size());
+        for (const PhysicalSlot* s : same_type) out.component_ams_keys.push_back(s->ams_key);
+        out.health = (out.recipe.delta_e < kTunableDeltaE) ? HealthState::Tunable : HealthState::Broken;
     } else {
-        // Same-type slots exist but no valid blend — treat as unmet (colour-wise
+        // Same-type slots exist but no valid blend — unmet (colour-wise
         // unreachable even with synthesis).
         out.kind = PlanKind::Unmet;
         out.health = HealthState::Broken;
-        out.direct_slot = -1;
-        out.synth_slot_a = out.synth_slot_b = -1;
-        out.delta_e = std::numeric_limits<double>::infinity();
+        out.component_ams_keys.clear();
     }
 }
 
@@ -162,26 +170,21 @@ void FulfillmentStore::recompute_health_from_recipe(const DesignIntent& intent,
                                                     const std::vector<PhysicalSlot>& device,
                                                     FulfillmentEntry& e)
 {
-    // Resolve the colour the locked recipe would actually produce, then ΔE vs
-    // the (possibly moved) design colour. Direct → the slot's colour;
-    // Synthesised → preview_color already stored; Unmet → stays broken.
-    const wxColour target(intent.color);
-    wxColour realised;
-    if (e.kind == PlanKind::Direct && e.direct_slot >= 0) {
-        for (const PhysicalSlot& s : device)
-            if (s.ams_key == e.direct_slot) { realised = s.color; break; }
-    } else if (e.kind == PlanKind::Synthesised) {
-        realised = e.synth_preview_color;
-    } else {
+    // Re-derive ΔE/health for a locked entry whose recipe is preserved but whose
+    // design colour snapshot moved. The recipe already carries its preview_color
+    // (the colour this recipe realises), so just recompute ΔE against the new
+    // target — no need to re-resolve components. Unmet stays broken.
+    if (e.kind == PlanKind::Unmet || !e.recipe.valid) {
         e.health = HealthState::Broken;
-        e.delta_e = std::numeric_limits<double>::infinity();
         return;
     }
-    e.delta_e = realised.IsOk() && target.IsOk() ? color_delta_e00(target, realised)
-                                                 : std::numeric_limits<double>::infinity();
-    e.health = (e.delta_e < kDirectDeltaE)  ? HealthState::Perfect
-             : (e.delta_e < kTunableDeltaE) ? HealthState::Tunable
-                                            : HealthState::Broken;
+    const wxColour target(intent.color);
+    const wxColour realised = e.recipe.preview_color;
+    e.recipe.delta_e = realised.IsOk() && target.IsOk() ? color_delta_e00(target, realised)
+                                                        : std::numeric_limits<double>::infinity();
+    e.health = (e.recipe.delta_e < kDirectDeltaE)  ? HealthState::Perfect
+             : (e.recipe.delta_e < kTunableDeltaE) ? HealthState::Tunable
+                                                   : HealthState::Broken;
 }
 
 void FulfillmentStore::mark_stale()
@@ -215,8 +218,8 @@ void FulfillmentStore::set_ratio(unsigned int design_extruder, int ratio_b_perce
 {
     ratio_b_percent = std::clamp(ratio_b_percent, 0, 100);
     for (FulfillmentEntry& e : m_entries) {
-        if (e.design_extruder == design_extruder && e.kind == PlanKind::Synthesised) {
-            e.synth_ratio_b_percent = ratio_b_percent;
+        if (e.design_extruder == design_extruder && e.recipe.valid) {
+            e.recipe.mix_b_percent = ratio_b_percent;
             return;
         }
     }
@@ -224,11 +227,16 @@ void FulfillmentStore::set_ratio(unsigned int design_extruder, int ratio_b_perce
 
 void FulfillmentStore::set_direct_slot(unsigned int design_extruder, int slot)
 {
+    // Class-A edit: force a direct (single-slot) realisation for this intent.
+    // Expressed as a degenerate recipe (component_a == component_b, ratio 0).
     for (FulfillmentEntry& e : m_entries) {
         if (e.design_extruder == design_extruder) {
             e.kind = PlanKind::Direct;
-            e.direct_slot = slot;
-            e.synth_slot_a = e.synth_slot_b = -1;
+            e.recipe.valid = true;
+            e.recipe.component_a = 1;
+            e.recipe.component_b = 1;
+            e.recipe.mix_b_percent = 0;
+            e.component_ams_keys.assign(1, slot);
             return;
         }
     }
