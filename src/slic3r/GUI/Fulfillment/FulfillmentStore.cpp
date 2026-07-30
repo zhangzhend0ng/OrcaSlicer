@@ -37,27 +37,39 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
     std::vector<FulfillmentEntry> next;
     next.reserve(design.size());
     for (const DesignIntent& intent : design) {
+        // Carry forward a prior entry for this intent (for its lock/recipe).
+        const FulfillmentEntry* prior = find(intent.design_extruder);
+
         FulfillmentEntry e;
         e.design_extruder = intent.design_extruder;
         e.design_color    = intent.color;
         e.design_type     = intent.type;
 
-        // Carry a prior lock if this intent is the same type as before.
-        if (const FulfillmentEntry* p = find(intent.design_extruder)) {
-            if (p->locked && lock_survives(*p, intent)) {
-                e.locked = true;
-                // Colour materially changed? Keep lock but flag stale so the
-                // user is prompted (PRD §4.3 soft-constraint path).
-                wxColour old_c(p->design_color);
-                wxColour new_c(intent.color);
-                if (old_c.IsOk() && new_c.IsOk() && color_delta_e00(old_c, new_c) > kTunableDeltaE)
-                    e.stale = true;
-                else
-                    e.stale = false;
-            }
+        // §4.3 / §6: a locked entry SURVIVES recompute — its recipe is the
+        // user's pinned decision and must NOT be overwritten by solve_intent.
+        // Only the design snapshot (colour/type above) is refreshed. The lock
+        // itself is dropped if the intent's type changed (hard-constraint
+        // space changed); a colour-only change keeps the lock but flags stale
+        // so the user is prompted (soft-constraint path).
+        const bool lock_survives_this = prior && prior->locked && lock_survives(*prior, intent);
+        if (lock_survives_this) {
+            e = *prior;                       // preserve the locked recipe wholesale
+            e.design_color = intent.color;    // refresh snapshot
+            e.design_type  = intent.type;
+            e.locked = true;
+            e.stale = false;
+            // Colour materially changed? Keep the locked recipe but flag stale.
+            wxColour old_c(prior->design_color);
+            wxColour new_c(intent.color);
+            if (old_c.IsOk() && new_c.IsOk() && color_delta_e00(old_c, new_c) > kTunableDeltaE)
+                e.stale = true;
+            // Re-derive health from the (possibly colour-shifted) intent vs the
+            // preserved recipe, so the dot still reflects current truth.
+            recompute_health_from_recipe(intent, device, e);
+        } else {
+            // Not locked (or lock invalidated): solve fresh.
+            solve_intent(intent, device, e);
         }
-
-        solve_intent(intent, device, e);
         next.push_back(std::move(e));
     }
     // Intent deleted → its entry (and lock) simply isn't copied forward.
@@ -144,6 +156,32 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
         out.synth_slot_a = out.synth_slot_b = -1;
         out.delta_e = std::numeric_limits<double>::infinity();
     }
+}
+
+void FulfillmentStore::recompute_health_from_recipe(const DesignIntent& intent,
+                                                    const std::vector<PhysicalSlot>& device,
+                                                    FulfillmentEntry& e)
+{
+    // Resolve the colour the locked recipe would actually produce, then ΔE vs
+    // the (possibly moved) design colour. Direct → the slot's colour;
+    // Synthesised → preview_color already stored; Unmet → stays broken.
+    const wxColour target(intent.color);
+    wxColour realised;
+    if (e.kind == PlanKind::Direct && e.direct_slot >= 0) {
+        for (const PhysicalSlot& s : device)
+            if (s.ams_key == e.direct_slot) { realised = s.color; break; }
+    } else if (e.kind == PlanKind::Synthesised) {
+        realised = e.synth_preview_color;
+    } else {
+        e.health = HealthState::Broken;
+        e.delta_e = std::numeric_limits<double>::infinity();
+        return;
+    }
+    e.delta_e = realised.IsOk() && target.IsOk() ? color_delta_e00(target, realised)
+                                                 : std::numeric_limits<double>::infinity();
+    e.health = (e.delta_e < kDirectDeltaE)  ? HealthState::Perfect
+             : (e.delta_e < kTunableDeltaE) ? HealthState::Tunable
+                                            : HealthState::Broken;
 }
 
 void FulfillmentStore::mark_stale()

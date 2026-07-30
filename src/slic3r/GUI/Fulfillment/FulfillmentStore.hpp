@@ -107,6 +107,13 @@ private:
                              const std::vector<PhysicalSlot>& device,
                              FulfillmentEntry& out);
 
+    // Re-derive health/delta_e for an entry whose recipe is already set (used
+    // when a locked recipe is preserved but the design colour snapshot moved,
+    // so the dot still reflects current truth). Does not change the recipe.
+    static void recompute_health_from_recipe(const DesignIntent& intent,
+                                             const std::vector<PhysicalSlot>& device,
+                                             FulfillmentEntry& e);
+
     std::vector<FulfillmentEntry> m_entries;
 };
 
