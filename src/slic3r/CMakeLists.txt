@@ -132,6 +132,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/filamentsync/SyncConfirmDialog.hpp
     GUI/filamentsync/SyncFilamentColorDialog.cpp
     GUI/filamentsync/SyncFilamentColorDialog.hpp
+    GUI/Fulfillment/FulfillmentPanel.cpp
+    GUI/Fulfillment/FulfillmentPanel.hpp
     GUI/Fulfillment/FulfillmentSnapshots.cpp
     GUI/Fulfillment/FulfillmentSnapshots.hpp
     GUI/Fulfillment/FulfillmentStore.cpp

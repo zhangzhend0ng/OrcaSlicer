@@ -70,6 +70,7 @@ namespace GUI {
 
 class MainFrame;
 class DeviceFilamentZone;
+class FulfillmentPanel;
 class FulfillmentStore;
 class ConfigOptionsGroup;
 class ObjectSettings;
@@ -196,6 +197,7 @@ public:
     wxPanel* print_panel();
     wxPanel* filament_panel();
     DeviceFilamentZone* device_filament_zone();
+    FulfillmentPanel*   fulfillment_panel();
     // The derived fulfilment plan (design→device). Owned by the Sidebar.
     FulfillmentStore& fulfillment_store();
 
