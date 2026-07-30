@@ -180,13 +180,51 @@ Are type and colour tiered? Is mismatch surfaced? Does it override user intent?
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 4.1 Key migration
+### 4.1 Layer-boundary correction (round-3 review — supersedes earlier draft)
 
-`MixedFilamentManager` (mixing recipes) currently lives in `PresetBundle`
-(Design Layer). **It must be relocated to the Fulfillment Layer.** While recipes
-remain inside the design container, §3 is mechanically unenforceable.
+An earlier draft of this section asserted `MixedFilamentManager` "must be
+relocated out of PresetBundle (Design Layer)" and that `apply_batch_match_to_model`
+"violates §3". **That was a misclassification.** Verified facts:
 
-### 4.2 Invariants (correctness criteria)
+- The slice engine (`PrintObjectSlice.cpp`, `GCode.cpp`, `LayerRegion.cpp`)
+  consumes **model-painting extruder_id** + **`mixed_filaments`** — and reads
+  **zero** AMS/tray info (no `ams_id`/`tray_id` in libslic3r). Physical-slot
+  resolution happens only at **send time** (`SelectMachine`, `AmsMappingPopup`).
+- `apply_batch_match_to_model` (`MixedColorMatchHelpers.cpp:1848`) only writes
+  the **`extruder`** config key (volume/object); it **never** writes
+  `filament_colour` or `filament_type`.
+
+So the correct layer boundaries are:
+
+| Layer | Holds | Writer |
+|---|---|---|
+| **Design** (sovereign) | `filament_colour`, `filament_type` (the colour×type *intent*) | user only |
+| **Mapping** (derivable) | model-painting `extruder` assignment; `mixed_filaments` (virtual-extruder mix definitions); `filament_extruder_map` (extruder→physical slot) | user + fulfilment system |
+| **Physical** | AMS slot contents | device only |
+
+The model-painting **extruder_id is a mapping** ("this part → which filament
+slot"), NOT design. Recolouring a face's *colour intent* is design; reassigning
+which extruder realises it is mapping. Therefore:
+
+- §1/§3 ("design immutable") mean **`filament_colour`/`filament_type` immutable**.
+  They are already never written by sync/match — §3 was never actually violated.
+- `mixed_filaments` belongs in the **Mapping Layer**, and staying in
+  `preset_bundle` is **correct** (the slice engine must read it). It does NOT
+  need relocation. The earlier "must relocate" claim is **retracted**.
+- `apply_batch_match_to_model` rewriting `extruder` is a **mapping-layer** write,
+  legitimate and required for mixing to take effect at slice time.
+
+This re-frames Phase 2 (see §10): the "sever legacy design-writes" and
+"relocate mixed_filaments" tasks were based on the misclassification and are
+**dropped**. Real Phase-2 work is 3D Expected-View colour injection (§5.2/§9.1)
+and persistence.
+
+### 4.2 Key migration
+
+(None required — see §4.1. The earlier "relocate MixedFilamentManager" item is
+retracted: `mixed_filaments` is mapping-layer data the slice engine depends on.)
+
+### 4.3 Invariants (correctness criteria)
 
 1. **The Design Layer is modified only by user actions.** After any sync,
    match, mix, or device update event, the Design Layer is byte-identical.
@@ -194,7 +232,7 @@ remain inside the design container, §3 is mechanically unenforceable.
    but a stale layer is recomputable in one action, and user-locked entries
    survive recompute.
 
-### 4.3 Lock scope and invalidation (definition — prevents "ghost locks")
+### 4.4 Lock scope and invalidation (definition — prevents "ghost locks")
 
 A lock (🔒) binds to a **(design-intent id, recipe)** pair, not to a free-floating
 recipe. A lock is meaningful only while its owning design intent exists and is
@@ -403,26 +441,37 @@ Two guarantees:
 
 ## 9. Engineering Notes (known hard parts; do not shake the architecture)
 
-1. **3D Expected View colour injection (§5.2):** the main 3D view reads colour
-   from `get_extruder_colors_from_plater_config()` unconditionally — no
-   injection point today. A full recoloured 3D Expected View needs "render by
-   Fulfillment-resolved colour". Real engineering cost, but architecturally now
-   legitimate (Fulfillment's job to produce the real colour), not a hack.
-   **Phase-1 bridge:** the *thumbnail* render path (`render_thumbnail_*`) already
-   accepts an explicit colour vector, so a small realised preview thumbnail is
-   feasible in Phase 1; the full live 3D Expected View is Phase 2. See §5.2
-   naming rule.
+1. **3D Expected View colour injection (§5.2) — audited, deferred.** A round-3
+   audit of the three candidate injection points found **none is clean**:
+   - `get_extruder_colors_from_plater_config()` (Plater) — shared by 10+ callers
+     incl. `GUI_ObjectList`/`GUI_ObjectTable` design-side colour display; injecting
+     expected colours here would recolour the user's *design* lists too.
+   - `get_extruders_colors()` free fn (3DScene.cpp:69) — also feeds the
+     `GLGizmoMmuSegmentation` painting tool's brush palette; injecting would
+     misrepresent the paints the user can apply.
+   - Per-volume render path — requires tracing each volume's colour resolution,
+     high blast radius.
+   All three would contaminate design-side UI. A correct implementation needs a
+   dedicated "view-mode-aware colour resolver" threaded only into the 3D *display*
+   path (not shared colour getters), which is a deeper render-pipeline change than
+   fits Phase 2's demo scope. **Deferred.** The canvas + report (Phase 1) already
+   conveys the expected realisation; the thumbnail path (`render_thumbnail_*`,
+   which DOES accept an explicit colour vector) remains a feasible lighter
+   bridge if a visual expected preview is later wanted.
 2. **Three-index alignment:** design extruder / AMS tray / `ConnectMachineInfo::index`
    are three numbering spaces; alignment is a Fulfillment-Layer responsibility.
-3. **Recipe relocation:** moving `mixed_filaments` out of `preset_bundle` touches
-   the slice pipeline and save/load paths — migration cost, mechanical.
-4. **Demo vs clean-slate — honest about Phase 1:** Phase 1 **cannot** enforce a
-   truly read-only Design Layer, because the functions that violate it —
-   `sync_ams_list`, `apply_batch_match_to_model` — are **this branch's own core
-   features**, deeply coupled into the sidebar, slice pipeline, and save/load.
-   A runtime read-only assertion would only fire *after* the violation (crash
-   the demo), not prevent it; and Colour Mixing Match must repaint the model by
-   design, so asserting "model painting never changes" would break the feature.
+3. **Recipe relocation — RETRACTED (round-3).** Earlier this listed moving
+   `mixed_filaments` out of `preset_bundle` as a migration cost. §4.1 showed
+   `mixed_filaments` is **mapping-layer** data the slice engine depends on
+   (`PrintObjectSlice.cpp`/`GCode.cpp`/`LayerRegion.cpp` read it); relocating it
+   would break slicing. It stays in `preset_bundle`. No migration.
+4. **Demo vs clean-slate — revised (round-3).** The earlier claim that Phase 1
+   "cannot enforce a read-only Design Layer because sync/match violate it" was
+   based on the same misclassification. §4.1 established those functions only
+   write mapping-layer `extruder`, never design `filament_colour`/`filament_type`.
+   So §3 holds as-is; no "severing" is needed and the Phase-1 caveat is simply
+   that design-immutability is upheld by convention in the new code (verified:
+   no design-field writes), not by a structural barrier.
    Therefore Phase 1's framing is explicit: it validates the **experience**
    (canvas, health dots, report) using **logical** layer separation in new code
    paths, while legacy sync/match paths continue to write design as today.
@@ -437,16 +486,19 @@ Two guarantees:
 - **Phase 1 — Fulfillment Canvas + health dots (experience validation):** the
   core experience. Design View gets health dots; Expected View gets the single
   canvas with type-tiered rows, real-stock recipe solve, per-row fine-tune +
-  lock, pre-print report. **Caveat:** the Design-Layer read-only invariant is
-  *not* structurally enforced this phase — legacy `sync_ams_list` /
-  `apply_batch_match_to_model` still write design as today; new fulfilment code
-  paths observe design read-only by convention. 3D Expected View deferred;
-  Expected View is canvas+report only (see §5.2 / §9.1 naming).
-- **Phase 2 — Architectural clean-up:** relocate `mixed_filaments` out of
-  `preset_bundle`; **sever legacy design-writing paths** (reroute/replace
-  `sync_ams_list` and `apply_batch_match_to_model` so they write Fulfillment,
-  not Design) to make the read-only invariant structurally true; add 3D
-  Expected View colour injection.
+  lock, pre-print report. **Caveat:** the Design-Layer invariant (§4.1:
+  `filament_colour`/`filament_type` immutable) holds by *convention* in new
+  fulfilment code paths; the round-3 review (§4.1) showed legacy
+  `sync_ams_list` / `apply_batch_match_to_model` only write **mapping-layer**
+  `extruder`, never the design colour/type — so §3 was never actually violated
+  and no "severing" is needed. 3D Expected View deferred; Expected View is
+  canvas+report only (see §5.2 / §9.1 naming).
+- **Phase 2 — Experience completion (revised after round-3 layer-boundary
+  review):** the earlier "relocate mixed_filaments / sever legacy design-writes"
+  tasks are **dropped** (based on a misclassification — §4.1). Real Phase-2 work:
+  (a) ~~3D Expected View colour injection~~ — **deferred**, see §9.1 audit
+  (no clean non-contaminating injection point); (b) Fulfillment-layer
+  persistence (3MF); (c) hoist the ΔE<1 threshold into a shared constant.
 - **Phase 3 — Device-zone refactor:** collapse the standalone DeviceFilamentZone
   into the canvas's summary + details drawer.
 
