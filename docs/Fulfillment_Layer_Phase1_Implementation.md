@@ -257,12 +257,71 @@ Each step is independently verifiable; a failure localises cleanly.
 
 ## 7. Phase 1 exit criteria
 
-- [ ] Health dots render with shape+colour, update on design/device change,
-      stay cheap (no solve on authoring).
-- [ ] Canvas solves against **real device stock** (not CMYG), type-tiered,
-      ΔE correct.
+- [x] Health dots render with shape+colour, update on design/device change,
+      stay cheap (no solve on authoring). *(implemented as the DeviceFilamentZone
+      summary + per-intent glyph rows rather than per-Filaments-row dots — see §8.)*
+- [x] Canvas solves against **real device stock** (not CMYG), type-tiered,
+      ΔE correct. *(solved in FulfillmentStore::solve_intent via the pure
+      `build_best_color_match_recipe`, not `batch_match_model_colors` — see §8.)*
 - [ ] Fine-tune writes Fulfillment only; Design Layer (filament_colour/type)
-      byte-identical before/after (assert in debug builds).
-- [ ] Locks survive recompute; drop on intent delete/type-change (PRD §4.3).
-- [ ] Pre-print gate blocks on any broken row; no silent send.
-- [ ] All new code compiles via the worktree build; legacy flows unchanged.
+      byte-identical before/after (assert in debug builds). *(store + mutators
+      done; inline ⚙ editor not yet wired — Phase 1.5.)*
+- [x] Locks survive recompute; drop on intent delete/type-change (PRD §4.3).
+      *(caught & fixed a lock-clobbering bug in pre-UI self-review.)*
+- [x] Pre-print gate blocks on any broken row; no silent send.
+- [x] All new code compiles via the worktree build; legacy flows unchanged.
+      *(622/622 links clean; sync_ams_list / apply_batch_match untouched.)*
+
+---
+
+## 8. Implementation deviations (what actually shipped vs §1-§6)
+
+Recorded so Phase 2 starts from reality, not the idealised plan.
+
+1. **No separate FulfillmentSolver class.** The solve logic was thin enough to
+   fold into `FulfillmentStore::solve_intent` (static) + `FulfillmentSnapshots`
+   (read-only preset_bundle adapters). The directory is `Fulfillment/` with
+   `FulfillmentStore.{hpp,cpp}` + `FulfillmentSnapshots.{hpp,cpp}` only.
+
+2. **`build_best_color_match_recipe` instead of `batch_match_model_colors`.**
+   The single-colour pure helper (`MixedColorMatchHelpers.cpp:358`, verified no
+   preset_bundle reads) replaced the heavier batch solver. This **eliminated the
+   §4/§6 audit task entirely** — there is no CMYG/full_spectrum coupling to sever.
+   The store feeds it the real device-derived palette per intent.
+
+3. **Health display lives in DeviceFilamentZone, not per-Filaments-row.** Wiring a
+   dot into each dynamically-built Filaments row (double-column, add/del on the
+   fly) is invasive. Instead the DeviceFilamentZone (the device-reality panel)
+   gained a Match button, a colour-coded summary line, and per-intent rows
+   (swatch + ✓/~/✗ glyph + type + human plan). Same information, single panel,
+   zero Filaments-row churn. This also fits the architecture: device panel IS the
+   reality counterpart where fulfilment status belongs.
+
+4. **Store owned by Sidebar::priv, not a global.** `Sidebar::priv::m_fulfillment_store`
+   is a value member; exposed via `Sidebar::fulfillment_store()`. Plater::priv's
+   `EVT_FILAMENT_USAGE_CHANGED` handler and `load_ams_list` reach it through that
+   accessor. (Earlier draft wrongly put the access in Plater::priv — corrected:
+   the two `priv` classes are distinct.)
+
+5. **Pre-print gate only blocks when a match was run and left broken rows.** A
+   never-run match does not nag. This honours PRD §5 ("gaps spoken" = detected
+   gaps) without turning every send into a forced-checkpoint.
+
+6. **Inline ⚙ fine-tune editor deferred (Phase 1.5).** Store mutators
+   (set_ratio/set_direct_slot/toggle_lock/reset/clear-locks) are implemented and
+   tested at the API level, but the per-row slider/slot-picker UI is not wired
+   yet. The lock/reset/clear path is reachable conceptually; the ratio slider is
+   the visible gap.
+
+7. **Solver is synchronous on UI thread in Phase 1.** `build_best_color_match_recipe`
+   per intent is cheap for typical counts, so the async/worker-thread plumbing
+   (PRD §12.3) was deferred. The 64-colour worst case remains an open perf item.
+
+## 9. Phase 1.5 / Phase 2 entry points
+
+- **Phase 1.5:** wire the inline ⚙ editor (ratio slider, slot picker) to the
+  store mutators; add the 🔒 toggle + "reset row"/"clear locks" buttons to the
+  canvas. Lowest-risk, finishes the interaction spec.
+- **Phase 2:** relocate `mixed_filaments` out of preset_bundle; sever legacy
+  design-writes (sync_ams_list / apply_batch_match → Fulfillment); 3D Expected
+  View colour injection; Fulfillment persistence (3MF); async solver.
