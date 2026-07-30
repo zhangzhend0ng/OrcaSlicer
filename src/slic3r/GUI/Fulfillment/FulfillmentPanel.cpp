@@ -21,6 +21,7 @@
 #include <wx/stattext.h>
 #include <wx/bmpbuttn.h>
 #include <wx/colour.h>
+#include <cmath>
 
 namespace Slic3r {
 namespace GUI {
@@ -210,6 +211,12 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
                                 e.recipe.mix_b_percent);
     } else {
         plan = _L("no same-type stock — type gap");
+    }
+    // Quantify the colour gap (PRD §5: speak the gap, with a number). Shown only
+    // when finite — infinity (unmet / just-edited) means "not computable", and
+    // printing it would mislead.
+    if (std::isfinite(e.recipe.delta_e)) {
+        plan += wxString::Format("  (\u0394E %.1f)", e.recipe.delta_e);
     }
 
     const bool can_act = (e.kind != PlanKind::Unmet);
