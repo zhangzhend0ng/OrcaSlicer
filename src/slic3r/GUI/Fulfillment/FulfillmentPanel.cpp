@@ -113,12 +113,18 @@ void FulfillmentPanel::on_match()
     if (!pb) return;
     auto design = snapshot_design_intent(*pb);
     auto device = snapshot_device_stock(*pb);
+    // NOTE: do NOT touch m_health_summary here — it is nullptr until
+    // refresh_fulfilment() runs the solved branch and creates it. On the initial
+    // (unsolved) display it doesn't exist, so SetLabel would null-deref.
     if (design.empty()) {
-        m_health_summary->SetLabel(_L("No design filaments to match."));
+        MessageDialog dlg(this, _L("No design filaments to match."), _L("Fulfillment"), wxOK | wxICON_INFORMATION);
+        dlg.ShowModal();
         return;
     }
     if (device.empty()) {
-        m_health_summary->SetLabel(_L("No device stock. Connect a printer and refresh."));
+        MessageDialog dlg(this, _L("No device filament info. Sync the printer from the Filaments section first, then Match."),
+                          _L("Fulfillment"), wxOK | wxICON_INFORMATION);
+        dlg.ShowModal();
         return;
     }
     m_store.solve(design, device);
