@@ -6,6 +6,7 @@
 #include "../MainFrame.hpp"
 #include "../MixedColorMatchHelpers.hpp"
 #include "../MixedFilamentDialog.hpp"    // reuse the existing mix editor (anti-reinvention)
+#include "../filamentsync/MachineFilamentPicker.hpp" // reuse the sync dialog's filament picker
 #include "../DeviceManager.hpp"
 #include "../MsgDialog.hpp"
 #include "../Widgets/StaticBox.hpp"
@@ -291,26 +292,65 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
 
     const bool can_act = (e.kind != PlanKind::Unmet);
 
-    // Edit (⚙) — reuse MixedFilamentDialog (anti-reinvention). Palette = this
-    // recipe's component slots (palette-local ids match recipe semantics).
-    auto* edit_btn = new ScalableButton(row, wxID_ANY, "edit");
-    edit_btn->SetBackgroundColour(content_bg);
-    edit_btn->SetToolTip(_L("Edit this colour's mix recipe."));
-    edit_btn->Enable(can_act);
-    edit_btn->Bind(wxEVT_BUTTON, [this, e, can_act](wxCommandEvent&) {
+    // "Select physical" — pops MachineFilamentPicker (the SAME picker the sync
+    // dialog uses) so the user can choose a device filament to use directly
+    // (Direct match) instead of the auto-computed recipe. This is the "use a
+    // physical filament" option the user asked for.
+    auto* phys_btn = new ScalableButton(row, wxID_ANY, "edit");
+    phys_btn->SetBackgroundColour(content_bg);
+    phys_btn->SetToolTip(_L("Choose a device filament to use for this colour."));
+    phys_btn->Enable(can_act);
+    phys_btn->Bind(wxEVT_BUTTON, [this, e, can_act, phys_btn](wxCommandEvent&) {
+        if (!can_act) return;
+        PresetBundle* pb = wxGetApp().preset_bundle;
+        if (!pb) return;
+        // Build the machine filament list (same as sync dialog / device zone).
+        std::vector<FilamentData> machine_list;
+        build_machine_filament_list(pb, machine_list);
+        if (machine_list.empty()) return;
+
+        // Filter to same-type filaments only.
+        std::vector<FilamentData> same_type_list;
+        for (const FilamentData& fd : machine_list) {
+            if (is_none_filament(fd)) continue;
+            if (fd.m_type.size() == e.design_type.size() &&
+                std::equal(fd.m_type.begin(), fd.m_type.end(), e.design_type.begin(),
+                           [](char a, char b) { return std::tolower(a) == std::tolower(b); }))
+                same_type_list.push_back(fd);
+        }
+        if (same_type_list.empty()) return;
+
+        unsigned int cur_idx = 0;
+        if (e.recipe.valid && e.recipe.component_a >= 1 && e.recipe.component_a <= same_type_list.size())
+            cur_idx = e.recipe.component_a - 1;
+
+        auto* picker = new MachineFilamentPicker(wxGetApp().mainframe, same_type_list, cur_idx);
+        picker->bindSelectionCallback([this, design_extruder = e.design_extruder](const FilamentData& data) {
+            m_store.set_direct_slot(design_extruder, static_cast<int>(data.m_index));
+            refresh_fulfilment();
+        });
+        wxPoint pos = phys_btn->GetScreenPosition();
+        pos.y += phys_btn->GetSize().y;
+        picker->popupAt(pos);
+    });
+
+    // "Mix" — opens MixedFilamentDialog for fine-tuning the mix recipe (ratio,
+    // gradient, pattern). Separate from "select physical" so the user has a
+    // clear choice between "use a physical filament directly" and "mix".
+    auto* mix_btn = new ScalableButton(row, wxID_ANY, "menu_filament");
+    mix_btn->SetBackgroundColour(content_bg);
+    mix_btn->SetToolTip(_L("Edit the mix recipe for this colour."));
+    mix_btn->Enable(can_act);
+    mix_btn->Bind(wxEVT_BUTTON, [this, e, can_act](wxCommandEvent&) {
         if (!can_act) return;
         PresetBundle* pb = wxGetApp().preset_bundle;
         if (!pb) return;
         auto device = snapshot_device_stock(*pb);
 
-        // Palette = ALL same-type device filaments (not just the current
-        // recipe's components), so the user can choose to use a physical
-        // filament directly OR mix — the choice the user asked for.
         std::vector<std::string> palette;
         std::vector<int>         palette_ams_keys;
         for (const PhysicalSlot& s : device) {
             if (!s.exists) continue;
-            // Case-insensitive type match (same as solve_intent's filter).
             if (s.type.size() == e.design_type.size() &&
                 std::equal(s.type.begin(), s.type.end(), e.design_type.begin(),
                            [](char a, char b) { return std::tolower(a) == std::tolower(b); })) {
@@ -319,13 +359,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
             }
         }
         if (palette.empty()) return;
-        // If only 1 same-type slot, the dialog needs >=2 colours to mix, but the
-        // user can still pick it as a direct match. Pad with a grey placeholder
-        // so the dialog opens; the user will select component_a = the real one.
-        if (palette.size() < 2) {
-            palette.push_back("#C8C8C8");
-            palette_ams_keys.push_back(-1);
-        }
+        if (palette.size() < 2) { palette.push_back("#C8C8C8"); palette_ams_keys.push_back(-1); }
 
         Slic3r::MixedFilament seed;
         seed.component_a              = e.recipe.component_a;
@@ -369,7 +403,8 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     row_sizer->Add(status, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
     row_sizer->Add(type_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
     row_sizer->Add(plan_label, 1, wxALIGN_CENTER_VERTICAL);
-    row_sizer->Add(edit_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(4));
+    row_sizer->Add(phys_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(4));
+    row_sizer->Add(mix_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(2));
     row_sizer->Add(lock_btn, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(2));
     row->SetSizer(row_sizer);
 
