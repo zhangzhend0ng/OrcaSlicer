@@ -11,6 +11,7 @@
 #include "../Widgets/StaticBox.hpp"
 #include "../Widgets/Label.hpp"
 #include "../Widgets/Button.hpp"
+#include "../Widgets/SegmentedToggle.hpp" // Design/Expected view switch
 #include "../wxExtensions.hpp"           // get_extruder_color_icon, ScalableButton
 
 #include "libslic3r/PresetBundle.hpp"
@@ -52,10 +53,9 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
 
     // Expected View toggle: render the 3D model in realised colours (what it'll
     // actually print as). Design-safe — render-only, never writes design.
-    // Icon MUST exist (a missing ScalableButton icon is a fatal throw). Verified
-    // present: color_palette.svg — same format as the other icons used here.
-    m_expected_view_btn = new ScalableButton(m_panel_title, wxID_ANY, "color_palette");
-    m_expected_view_btn->SetToolTip(_L("Toggle Expected View — show the model in the colours it will actually print as."));
+    // SegmentedToggle gives clear Design/Expected visual state (like Global/Object).
+    m_view_toggle = new SegmentedToggle(m_panel_title, {_L("Design"), _L("Expected")}, /*selectedIndex=*/0);
+    m_view_toggle->SetToolTip(_L("Switch between Design colours (what you chose) and Expected colours (what will actually print)."));
 
     auto* h_title     = new wxBoxSizer(wxHORIZONTAL);
     auto* white_left  = new wxPanel(m_panel_title, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(SidebarProps::ContentMargin()), -1));
@@ -65,7 +65,7 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
     h_title->AddSpacer(FromDIP(SidebarProps::ElementSpacing()));
     h_title->Add(title_label, 0, wxALIGN_CENTER_VERTICAL);
     h_title->AddStretchSpacer();
-    h_title->Add(m_expected_view_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
+    h_title->Add(m_view_toggle, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
     h_title->Add(m_match_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(8));
     auto* white_right = new wxPanel(m_panel_title, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(SidebarProps::ContentMargin()), -1));
     white_right->SetBackgroundColour(*wxWHITE);
@@ -80,17 +80,12 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
 
     m_match_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_match(); });
 
-    m_expected_view_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-        // Toggle Expected View. Only meaningful after a Match solved the store;
-        // if unsolved, the render fallback is the design colour anyway, so the
-        // toggle is safe but we hint the user to Match first.
+    m_view_toggle->bindSelectionCallback([this](int index) {
+        // index 0 = Design, 1 = Expected
         Plater* plater = wxGetApp().plater();
         if (!plater) return;
-        bool now_on = !plater->is_expected_view();
-        plater->set_expected_view(now_on);
-        // Visual feedback: pressed state hint via tooltip + bitmap tint is left
-        // to a future polish; the canvas repaint (in set_expected_view) shows it.
-        if (now_on && !m_store.has_solved()) {
+        plater->set_expected_view(index == 1);
+        if (index == 1 && !m_store.has_solved()) {
             MessageDialog dlg(this, _L("Expected View is on, but no match has been run yet. Press Match to see how your colours will actually print."),
                               _L("Expected View"), wxOK | wxICON_INFORMATION);
             dlg.ShowModal();
@@ -301,7 +296,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     auto* edit_btn = new ScalableButton(row, wxID_ANY, "edit");
     edit_btn->SetBackgroundColour(content_bg);
     edit_btn->SetToolTip(_L("Edit this colour's mix recipe."));
-    if (can_act) edit_btn->enable(); else edit_btn->disable();
+    edit_btn->Enable(can_act);
     edit_btn->Bind(wxEVT_BUTTON, [this, e, can_act](wxCommandEvent&) {
         if (!can_act) return;
         PresetBundle* pb = wxGetApp().preset_bundle;
@@ -337,7 +332,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     lock_btn->SetBackgroundColour(content_bg);
     lock_btn->SetToolTip(e.locked ? _L("Locked — recipe kept on recompute. Click to unlock.")
                                   : _L("Lock this recipe (keep on recompute)."));
-    if (can_act) lock_btn->enable(); else lock_btn->disable();
+    lock_btn->Enable(can_act);
     lock_btn->Bind(wxEVT_BUTTON, [this, design_extruder = e.design_extruder](wxCommandEvent&) {
         m_store.toggle_lock(design_extruder);
         refresh_fulfilment();
