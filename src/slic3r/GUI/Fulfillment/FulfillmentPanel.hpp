@@ -19,12 +19,13 @@
 
 class ScalableButton;
 class StaticBox;
-class SegmentedToggle;
 class wxFlexGridSizer;
 class wxStaticText;
 
 namespace Slic3r {
 namespace GUI {
+
+class SegmentedToggle;
 
 class FulfillmentPanel : public wxPanel
 {
