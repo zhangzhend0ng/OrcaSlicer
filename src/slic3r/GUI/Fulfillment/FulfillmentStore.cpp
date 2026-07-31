@@ -69,6 +69,11 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
         } else {
             // Not locked (or lock invalidated): solve fresh.
             solve_intent(intent, device, e);
+            // Fresh-solved entries are current (not stale). (FulfillmentEntry.stale
+            // defaults true; without this, has_solved() — which checks front().stale
+            // — would wrongly return false and refresh_fulfilment would show the
+            // hint instead of the solved rows.)
+            e.stale = false;
         }
         next.push_back(std::move(e));
     }
