@@ -12949,7 +12949,32 @@ unsigned int Plater::priv::update_background_process(bool force_validation, bool
         this->partplate_list.update_slice_context_to_current_plate(background_process);
         this->preview->update_gcode_result(partplate_list.get_current_slice_result());
     }
-    Print::ApplyStatus invalidated = background_process.apply(this->model, wxGetApp().preset_bundle->full_config());
+    // --- Fulfillment temporary mapping for slicing ---
+    // If the FulfillmentStore has solved recipes, override filament_colour and
+    // filament_type in the (temporary copy of) full_config so slicing uses the
+    // realised/expected filaments rather than the original design colours. This
+    // is a value-copy from full_config() → modifying it does NOT change
+    // preset_bundle (design layer stays untouched). The model painting's
+    // extruder_id is left as-is; only the colour/type each extruder resolves to
+    // changes. For mixed/synthesised recipes, the filament_colour is set to the
+    // recipe.preview_color so the slice reflects the realised appearance.
+    DynamicPrintConfig slice_config = wxGetApp().preset_bundle->full_config();
+    {
+        const FulfillmentStore& store = q->sidebar().fulfillment_store();
+        if (store.has_solved()) {
+            auto* colours = slice_config.option<ConfigOptionStrings>("filament_colour");
+            auto* types   = slice_config.option<ConfigOptionStrings>("filament_type");
+            if (colours && types) {
+                for (const FulfillmentEntry& e : store.entries()) {
+                    if (e.design_extruder >= colours->values.size()) continue;
+                    if (e.recipe.valid && e.recipe.preview_color.IsOk())
+                        colours->values[e.design_extruder] = e.recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
+                    // Type stays as design type (the recipe is same-type by construction).
+                }
+            }
+        }
+    }
+    Print::ApplyStatus invalidated = background_process.apply(this->model, slice_config);
     notify_filament_compatibility_after_apply();
 
     if ((invalidated == Print::APPLY_STATUS_CHANGED) || (invalidated == Print::APPLY_STATUS_INVALIDATED))
