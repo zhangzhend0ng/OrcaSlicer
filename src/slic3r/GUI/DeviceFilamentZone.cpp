@@ -61,10 +61,23 @@ DeviceFilamentZone::DeviceFilamentZone(wxWindow* parent) : wxPanel(parent, wxID_
     m_panel_content->SetBackgroundColour(content_bg);
     m_panel_content->SetSizer(new wxBoxSizer(wxVERTICAL));
 
-    // Refresh button: ONLY re-reads device state into filament_ams_list (read-only,
+    // Refresh button: re-reads device state into filament_ams_list (read-only,
     // no dialog, no design-side mutation). Deliberately NOT sync_ams_list().
+    // If no machine is explicitly selected, fall back to the first connected one
+    // so the user sees *something* without having to go pick a device first.
     m_refresh_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-        auto* obj = wxGetApp().getDeviceManager() ? wxGetApp().getDeviceManager()->get_selected_machine() : nullptr;
+        auto* dm = wxGetApp().getDeviceManager();
+        MachineObject* obj = dm ? dm->get_selected_machine() : nullptr;
+        if (!obj && dm) {
+            // No explicit selection — try the first machine in the user/local list.
+            auto lists = { dm->get_my_machine_list(), dm->get_local_machine_list() };
+            for (const auto& ml : lists) {
+                for (auto& kv : ml) {
+                    if (kv.second && kv.second->has_access_right()) { obj = kv.second; break; }
+                }
+                if (obj) break;
+            }
+        }
         if (obj)
             GUI::wxGetApp().sidebar().load_ams_list(obj->dev_id, obj);
         refresh();
