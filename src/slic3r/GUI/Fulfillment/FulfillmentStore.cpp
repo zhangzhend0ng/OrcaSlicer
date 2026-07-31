@@ -80,6 +80,7 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
     // Intent deleted → its entry (and lock) simply isn't copied forward.
     // (PRD §4.3: "design intent deleted → locks automatically dropped".)
     m_entries = std::move(next);
+    m_ever_solved = true;
 }
 
 void FulfillmentStore::solve_intent(const DesignIntent& intent,
@@ -288,6 +289,7 @@ void FulfillmentStore::toggle_lock(unsigned int design_extruder)
 void FulfillmentStore::reset_all()
 {
     for (FulfillmentEntry& e : m_entries) { e.locked = false; e.stale = true; }
+    m_ever_solved = false;
 }
 
 void FulfillmentStore::clear_all_locks()

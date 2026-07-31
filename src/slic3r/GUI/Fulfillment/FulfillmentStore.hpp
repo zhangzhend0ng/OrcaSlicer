@@ -104,7 +104,11 @@ public:
     const std::vector<FulfillmentEntry>& entries() const { return m_entries; }
     const FulfillmentEntry*              find(unsigned int design_extruder) const;
     HealthRollup                         rollup() const;
-    bool                                 has_solved() const { return !m_entries.empty() && !m_entries.front().stale; }
+    // "Has a solve ever been performed?" — independent of stale. Stale means the
+    // data MAY be out of date (design/device changed); it should NOT cause the UI
+    // to hide already-computed results. Without this decoupling, any model drag
+    // (which fires EVT_FILAMENT_USAGE_CHANGED) wipes the displayed plan.
+    bool                                 has_solved() const { return m_ever_solved; }
 
     // Class-A edits (PRD §5.2.1): write Fulfillment, never Design.
     void set_ratio(unsigned int design_extruder, int ratio_b_percent);
@@ -123,6 +127,10 @@ public:
     void clear_all_locks();                               // PRD §12.1 panic button
 
 private:
+    // Set true after the first solve(), never reset. Independent of stale flags
+    // so has_solved() stays true across model drags that mark entries stale.
+    bool m_ever_solved = false;
+
     // Resolves a single design intent against the device snapshot into `out`.
     // Type-first (hard constraint, PRD §4), then colour via build_best_color_match_recipe.
     static void solve_intent(const DesignIntent& intent,
