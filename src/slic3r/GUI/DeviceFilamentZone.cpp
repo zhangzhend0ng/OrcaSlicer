@@ -88,6 +88,31 @@ DeviceFilamentZone::DeviceFilamentZone(wxWindow* parent) : wxPanel(parent, wxID_
 
     SetSizer(root);
     Layout();
+
+    // Auto-refresh timer: poll device stock every 2s; refresh only when it
+    // changes. This picks up WCP sync data (m_connect_machine_info_list) without
+    // the user needing to click refresh, and also marks the fulfilment store
+    // stale so the FulfillmentPanel stays current.
+    Bind(wxEVT_TIMER, &DeviceFilamentZone::on_timer, this);
+    m_auto_timer.Start(2000);
+}
+
+void DeviceFilamentZone::on_timer(wxTimerEvent&)
+{
+    PresetBundle* pb = wxGetApp().preset_bundle;
+    if (!pb) return;
+    std::vector<FilamentData> machine_list;
+    build_machine_filament_list(pb, machine_list);
+    if (machine_list.size() != m_last_stock_count) {
+        m_last_stock_count = machine_list.size();
+        refresh();
+        // Also notify the fulfilment store that device data may have changed.
+        auto& store = wxGetApp().plater()->sidebar().fulfillment_store();
+        store.mark_stale();
+        if (auto* panel = wxGetApp().plater()->sidebar().fulfillment_panel())
+            panel->refresh_fulfilment();
+        wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
+    }
 }
 
 void DeviceFilamentZone::refresh()
