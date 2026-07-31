@@ -194,6 +194,30 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     swatch->SetBitmap(*get_extruder_color_icon(icon_color, swatch_label, FromDIP(24), FromDIP(16)));
     swatch->SetBackgroundColour(content_bg);
 
+    // Expected/realised colour swatch — the OTHER half of the side-by-side
+    // comparison (the user "needs to see the original design" next to what it'll
+    // actually print as). Source: recipe.preview_color (set by solve for Direct &
+    // Synthesised); grey + "–" when unmet (no realisation exists). No GL render
+    // needed — the predicted colour is already a recipe output.
+    std::string expected_hex;
+    std::string expected_label;
+    if (e.recipe.valid && e.recipe.preview_color.IsOk()) {
+        expected_hex   = e.recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
+        expected_label = "~"; // marks "this is the realised/expected colour"
+    } else {
+        expected_hex   = is_dark ? "#646468" : "#C8C8C8";
+        expected_label = "-";
+    }
+    auto* expected_swatch = new wxBitmapButton(row, wxID_ANY, wxNullBitmap, wxDefaultPosition,
+                                               wxSize(FromDIP(24), FromDIP(16)), wxBORDER_NONE);
+    expected_swatch->SetBitmap(*get_extruder_color_icon(expected_hex, expected_label, FromDIP(24), FromDIP(16)));
+    expected_swatch->SetBackgroundColour(content_bg);
+    expected_swatch->SetToolTip(_L("Expected realised colour (what will actually print)."));
+
+    // Arrow between the two swatches — makes the design→expected comparison explicit.
+    auto* arrow = new wxStaticText(row, wxID_ANY, L"\u2192");
+    arrow->SetBackgroundColour(content_bg);
+
     // Type token.
     std::string type_str = e.design_type.empty() ? "?" : e.design_type;
 
@@ -277,7 +301,9 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     auto* plan_label = new wxStaticText(row, wxID_ANY, plan);
     plan_label->SetBackgroundColour(content_bg);
 
-    row_sizer->Add(swatch, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
+    row_sizer->Add(swatch, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(2));
+    row_sizer->Add(arrow, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(2));
+    row_sizer->Add(expected_swatch, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
     row_sizer->Add(status, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
     row_sizer->Add(type_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
     row_sizer->Add(plan_label, 1, wxALIGN_CENTER_VERTICAL);
