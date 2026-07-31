@@ -358,6 +358,12 @@ wxDEFINE_EVENT(EVT_ADD_CUSTOM_FILAMENT, ColorEvent);
 
 // Nozzle diameter selection when multiple diameters are reported (e.g. U1 sync).
 // diameters_raw: list from device (may have duplicates or fewer than 4). Dedup and full-list logic inside.
+
+// Forward declaration: the definition lives below (outside the anonymous namespace)
+// so it is reachable both from anonymous-namespace helpers here and from the
+// filament-list builders that are also defined outside the anonymous namespace.
+std::string extract_base_filament_name(const std::string& full_name);
+
 namespace {
 class NozzleDiameterSelectDialog : public DPIDialog
 {
@@ -418,18 +424,6 @@ public:
     void on_dpi_changed(const wxRect& suggested_rect) override {}
 };
 
-std::string extract_base_filament_name(const std::string& full_name)
-{
-    std::string base = full_name;
-    size_t at_pos = base.find('@');
-    if (at_pos != std::string::npos) {
-        base = base.substr(0, at_pos);
-        base.erase(0, base.find_first_not_of(" \t\n\r"));
-        base.erase(base.find_last_not_of(" \t\n\r") + 1);
-    }
-    return base;
-}
-
 // Resolve a machine filament name to a matching local filament preset.
 // Filament presets follow the convention "BaseName @Model nozzle",
 // e.g. "Generic PA-CF @U1 0.4 nozzle".  Split by '@' to extract the
@@ -472,6 +466,20 @@ Preset* resolve_filament_preset(PresetBundle* preset_bundle,
     }
 
     return nullptr;
+}
+
+} // namespace
+
+std::string extract_base_filament_name(const std::string& full_name)
+{
+    std::string base = full_name;
+    size_t at_pos = base.find('@');
+    if (at_pos != std::string::npos) {
+        base = base.substr(0, at_pos);
+        base.erase(0, base.find_first_not_of(" \t\n\r"));
+        base.erase(base.find_last_not_of(" \t\n\r") + 1);
+    }
+    return base;
 }
 
 void build_design_filament_list(PresetBundle* preset_bundle, std::vector<FilamentData>& out_list)
@@ -541,8 +549,6 @@ void build_machine_filament_list(PresetBundle* preset_bundle, std::vector<Filame
         out_list.push_back(std::move(fd));
     }
 }
-
-} // namespace
 
 bool Plater::has_illegal_filename_characters(const wxString& wxs_name)
 {

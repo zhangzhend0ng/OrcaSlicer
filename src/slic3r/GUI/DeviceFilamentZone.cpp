@@ -1,8 +1,9 @@
 #include "DeviceFilamentZone.hpp"
 
 #include "GUI_App.hpp"
-#include "Plater.hpp"
+#include "Plater.hpp"                       // build_machine_filament_list
 #include "DeviceManager.hpp"
+#include "filamentsync/FilamentData.hpp"     // FilamentData, is_none_filament
 #include "Widgets/StaticBox.hpp"
 #include "Widgets/Label.hpp"
 #include "wxExtensions.hpp" // get_extruder_color_icon, ScalableButton
@@ -100,12 +101,17 @@ void DeviceFilamentZone::refresh()
     grid->AddGrowableCol(0);
     grid->AddGrowableCol(1);
 
-    PresetBundle* pb       = wxGetApp().preset_bundle;
-    const auto&   ams_list = pb ? pb->filament_ams_list : std::map<int, DynamicPrintConfig>{};
+    // Reuse build_machine_filament_list — the SAME function the sync dialog
+    // uses — so device filaments resolve identically (WCP source via
+    // m_connect_machine_info_list). Reading filament_ams_list directly missed
+    // WCP/Moonraker devices entirely.
+    PresetBundle* pb = wxGetApp().preset_bundle;
+    std::vector<FilamentData> machine_list;
+    if (pb) build_machine_filament_list(pb, machine_list);
 
-    if (ams_list.empty()) {
+    if (machine_list.empty()) {
         auto* hint = new Label(m_panel_content,
-            _L("No device filaments. Connect a printer in the Device page and click refresh."),
+            _L("No device filaments detected. Connect a printer, ensure it's selected in the Device page, then click refresh."),
             LB_PROPAGATE_MOUSE_EVENT);
         hint->SetBackgroundColour(content_bg);
         hint->Wrap(FromDIP(220));
@@ -117,12 +123,11 @@ void DeviceFilamentZone::refresh()
         return;
     }
 
-    for (const auto& kv : ams_list) {
-        const DynamicPrintConfig& cfg = kv.second;
-        std::string tray_name = cfg.opt_string("tray_name", 0u);
-        std::string type      = cfg.opt_string("filament_type", 0u);
-        std::string color     = cfg.opt_string("filament_colour", 0u);
-        bool        exists    = cfg.opt_bool("filament_exist", 0u);
+    for (const FilamentData& fd : machine_list) {
+        std::string tray_name = std::to_string(fd.m_index + 1);
+        std::string color     = fd.m_color.PrimaryColor();
+        std::string type      = fd.m_type;
+        bool        exists    = !is_none_filament(fd);
         add_tray_item(grid, tray_name, type, color, exists);
     }
 

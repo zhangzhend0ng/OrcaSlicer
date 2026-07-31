@@ -68,6 +68,13 @@ namespace UndoRedo {
 
 namespace GUI {
 
+// Filament-list builders (defined in Plater.cpp, also used by the filamentsync
+// sync dialog). Reused — not reimplemented — by the Fulfillment snapshots so the
+// device/design data sources stay identical to the existing sync flow.
+struct FilamentData;
+void build_design_filament_list(PresetBundle* preset_bundle, std::vector<FilamentData>& out_list);
+void build_machine_filament_list(PresetBundle* preset_bundle, std::vector<FilamentData>& out_list);
+
 class MainFrame;
 class DeviceFilamentZone;
 class FulfillmentPanel;
