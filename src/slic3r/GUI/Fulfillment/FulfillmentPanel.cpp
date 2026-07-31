@@ -30,7 +30,11 @@ namespace GUI {
 FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
     : wxPanel(parent, wxID_ANY), m_store(store)
 {
-    BOOST_LOG_TRIVIAL(info) << "FulfillmentPanel constructed, this=" << (void*)this;
+    // Bulletproof diagnostic: write a marker file (independent of the logging system)
+    // to prove whether this constructor runs at all.
+    FILE* f = fopen("/tmp/fulfillment_panel_ctor.txt", "w");
+    if (f) { fprintf(f, "ctor ran, this=%p\n", (void*)this); fclose(f); }
+    BOOST_LOG_TRIVIAL(warning) << "FulfillmentPanel constructed, this=" << (void*)this;
     const bool     is_dark    = wxGetApp().dark_mode();
     const wxColour content_bg = is_dark ? wxColour(45, 45, 49) : wxColour(255, 255, 255);
     const wxColour title_bg   = wxColour(248, 248, 248); // mirrors Sidebar title_bg
@@ -81,11 +85,11 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
     m_panel_content->SetSizer(new wxBoxSizer(wxVERTICAL));
 
     m_match_btn->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& e) {
-        BOOST_LOG_TRIVIAL(info) << "m_match_btn LEFT_DOWN received";
+        BOOST_LOG_TRIVIAL(warning) << "m_match_btn LEFT_DOWN received";
         e.Skip();
     });
     m_match_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-        BOOST_LOG_TRIVIAL(info) << "m_match_btn BUTTON event -> on_match";
+        BOOST_LOG_TRIVIAL(warning) << "m_match_btn BUTTON event -> on_match";
         on_match();
     });
 
@@ -119,11 +123,11 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
 void FulfillmentPanel::on_match()
 {
     PresetBundle* pb = wxGetApp().preset_bundle;
-    BOOST_LOG_TRIVIAL(info) << "FulfillmentPanel::on_match entered, pb=" << (void*)pb;
+    BOOST_LOG_TRIVIAL(warning) << "FulfillmentPanel::on_match entered, pb=" << (void*)pb;
     if (!pb) return;
     auto design = snapshot_design_intent(*pb);
     auto device = snapshot_device_stock(*pb);
-    BOOST_LOG_TRIVIAL(info) << "on_match design_count=" << design.size() << " device_count=" << device.size();
+    BOOST_LOG_TRIVIAL(warning) << "on_match design_count=" << design.size() << " device_count=" << device.size();
     // NOTE: do NOT touch m_health_summary here — it is nullptr until
     // refresh_fulfilment() runs the solved branch and creates it. On the initial
     // (unsolved) display it doesn't exist, so SetLabel would null-deref.
