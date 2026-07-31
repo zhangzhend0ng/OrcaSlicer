@@ -105,10 +105,17 @@ void DeviceFilamentZone::on_timer(wxTimerEvent&)
     if (!pb) return;
     std::vector<FilamentData> machine_list;
     build_machine_filament_list(pb, machine_list);
-    if (machine_list.size() != m_last_stock_count) {
-        m_last_stock_count = machine_list.size();
+
+    // Detect change by a lightweight fingerprint: count + each entry's
+    // type+colour. Size-only check misses content changes (e.g. a slot's
+    // filament loaded/unloaded keeps the same slot count).
+    std::string fingerprint;
+    for (const FilamentData& fd : machine_list)
+        fingerprint += std::to_string(fd.m_index) + "|" + fd.m_type + "|" + fd.m_color.PrimaryColor() + ";";
+
+    if (fingerprint != m_last_fingerprint) {
+        m_last_fingerprint = fingerprint;
         refresh();
-        // Also notify the fulfilment store that device data may have changed.
         auto& store = wxGetApp().plater()->sidebar().fulfillment_store();
         store.mark_stale();
         if (auto* panel = wxGetApp().plater()->sidebar().fulfillment_panel())

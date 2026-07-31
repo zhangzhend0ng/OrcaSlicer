@@ -42,7 +42,7 @@ private:
     ScalableButton* m_refresh_btn      = nullptr;
     wxPanel*        m_panel_content    = nullptr; // device tray rows
     wxTimer         m_auto_timer;
-    size_t          m_last_stock_count = size_t(-1); // last seen device stock size
+    std::string     m_last_fingerprint; // last seen device stock content fingerprint
 };
 
 } // namespace GUI
