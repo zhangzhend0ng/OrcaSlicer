@@ -52,7 +52,9 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
 
     // Expected View toggle: render the 3D model in realised colours (what it'll
     // actually print as). Design-safe — render-only, never writes design.
-    m_expected_view_btn = new ScalableButton(m_panel_title, wxID_ANY, "view");
+    // Icon MUST exist (a missing ScalableButton icon is a fatal throw). Verified
+    // present: color_palette.svg — same format as the other icons used here.
+    m_expected_view_btn = new ScalableButton(m_panel_title, wxID_ANY, "color_palette");
     m_expected_view_btn->SetToolTip(_L("Toggle Expected View — show the model in the colours it will actually print as."));
 
     auto* h_title     = new wxBoxSizer(wxHORIZONTAL);
