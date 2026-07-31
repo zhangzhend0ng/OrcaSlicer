@@ -249,17 +249,16 @@ void FulfillmentStore::apply_edited_recipe(unsigned int design_extruder,
                                            unsigned int component_a, unsigned int component_b, int mix_b_percent,
                                            const std::string& manual_pattern,
                                            const std::string& gradient_component_ids,
-                                           const std::string& gradient_component_weights)
+                                           const std::string& gradient_component_weights,
+                                           const std::vector<int>& component_ams_keys)
 {
     for (FulfillmentEntry& e : m_entries) {
         if (e.design_extruder != design_extruder) continue;
-        // Write the dialog's result into the recipe verbatim. component_a/b are
-        // palette-local (the dialog was given this entry's component slots as its
-        // palette), so they remain consistent with component_ams_keys.
         e.recipe.valid = true;
         e.recipe.component_a = component_a;
         e.recipe.component_b = component_b;
         e.recipe.mix_b_percent = std::clamp(mix_b_percent, 0, 100);
+        e.component_ams_keys = component_ams_keys; // update slot mapping for the new palette
         e.recipe.manual_pattern = manual_pattern;
         e.recipe.gradient_component_ids = gradient_component_ids;
         e.recipe.gradient_component_weights = gradient_component_weights;

@@ -303,13 +303,29 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
         if (!pb) return;
         auto device = snapshot_device_stock(*pb);
 
+        // Palette = ALL same-type device filaments (not just the current
+        // recipe's components), so the user can choose to use a physical
+        // filament directly OR mix — the choice the user asked for.
         std::vector<std::string> palette;
-        palette.reserve(e.component_ams_keys.size());
-        for (int key : e.component_ams_keys) {
-            for (const PhysicalSlot& s : device)
-                if (s.ams_key == key) { palette.push_back(s.color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString()); break; }
+        std::vector<int>         palette_ams_keys;
+        for (const PhysicalSlot& s : device) {
+            if (!s.exists) continue;
+            // Case-insensitive type match (same as solve_intent's filter).
+            if (s.type.size() == e.design_type.size() &&
+                std::equal(s.type.begin(), s.type.end(), e.design_type.begin(),
+                           [](char a, char b) { return std::tolower(a) == std::tolower(b); })) {
+                palette.push_back(s.color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
+                palette_ams_keys.push_back(s.ams_key);
+            }
         }
-        if (palette.size() < 2) return;
+        if (palette.empty()) return;
+        // If only 1 same-type slot, the dialog needs >=2 colours to mix, but the
+        // user can still pick it as a direct match. Pad with a grey placeholder
+        // so the dialog opens; the user will select component_a = the real one.
+        if (palette.size() < 2) {
+            palette.push_back("#C8C8C8");
+            palette_ams_keys.push_back(-1);
+        }
 
         Slic3r::MixedFilament seed;
         seed.component_a              = e.recipe.component_a;
@@ -323,7 +339,8 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
         if (dlg.ShowModal() != wxID_OK) return;
         const Slic3r::MixedFilament& r = dlg.GetResult();
         m_store.apply_edited_recipe(e.design_extruder, r.component_a, r.component_b, r.mix_b_percent,
-                                    r.manual_pattern, r.gradient_component_ids, r.gradient_component_weights);
+                                    r.manual_pattern, r.gradient_component_ids, r.gradient_component_weights,
+                                    palette_ams_keys);
         refresh_fulfilment();
     });
 

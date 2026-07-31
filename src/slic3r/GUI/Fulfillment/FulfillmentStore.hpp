@@ -121,7 +121,8 @@ public:
                              unsigned int component_a, unsigned int component_b, int mix_b_percent,
                              const std::string& manual_pattern,
                              const std::string& gradient_component_ids,
-                             const std::string& gradient_component_weights);
+                             const std::string& gradient_component_weights,
+                             const std::vector<int>& component_ams_keys);
     void toggle_lock(unsigned int design_extruder);
     void reset_all();                                     // discard all manual edits
     void clear_all_locks();                               // PRD §12.1 panic button
