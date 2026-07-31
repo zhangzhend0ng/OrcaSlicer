@@ -410,7 +410,24 @@ void GLVolume::render()
         return;
 
     ModelObjectPtrs&       model_objects = GUI::wxGetApp().model().objects;
+    // Expected View (PRD §5.2): when active, render the model in the colours it
+    // will actually print as (FulfillmentStore realised colours), not the design
+    // colours. This is the ONLY clean injection point — it's inside the per-volume
+    // render, so ObjectList colour display and the MmuSegmentation brush palette
+    // (which call get_extruders_colors() directly for their own purposes) are
+    // unaffected. Design Layer is never written; this is render-only.
     std::vector<ColorRGBA> colors        = get_extruders_colors();
+    if (GUI::wxGetApp().plater() && GUI::wxGetApp().plater()->is_expected_view()) {
+        const auto expected = GUI::wxGetApp().plater()->get_expected_render_colors();
+        if (!expected.empty()) {
+            colors.clear();
+            unsigned char rgba[4] = {};
+            for (const std::string& c : expected) {
+                GUI::BitmapCache::parse_color4(c, rgba);
+                colors.push_back({rgba[0] / 255.f, rgba[1] / 255.f, rgba[2] / 255.f, rgba[3] / 255.f});
+            }
+        }
+    }
 
     simple_render(shader, model_objects, colors);
 }
@@ -427,6 +444,17 @@ void GLVolume::render_with_outline(const GUI::Size& cnv_size)
 
     ModelObjectPtrs&       model_objects = GUI::wxGetApp().model().objects;
     std::vector<ColorRGBA> colors        = get_extruders_colors();
+    if (GUI::wxGetApp().plater() && GUI::wxGetApp().plater()->is_expected_view()) {
+        const auto expected = GUI::wxGetApp().plater()->get_expected_render_colors();
+        if (!expected.empty()) {
+            colors.clear();
+            unsigned char rgba[4] = {};
+            for (const std::string& c : expected) {
+                GUI::BitmapCache::parse_color4(c, rgba);
+                colors.push_back({rgba[0] / 255.f, rgba[1] / 255.f, rgba[2] / 255.f, rgba[3] / 255.f});
+            }
+        }
+    }
 
     const GUI::OpenGLManager::EFramebufferType framebuffers_type = GUI::OpenGLManager::get_framebuffers_type();
     if (framebuffers_type == GUI::OpenGLManager::EFramebufferType::Unknown) {

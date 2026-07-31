@@ -50,6 +50,11 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
     m_match_btn = new ScalableButton(m_panel_title, wxID_ANY, "sync_filament");
     m_match_btn->SetToolTip(_L("Match design colours to this device's stock (read-only, never changes your design)"));
 
+    // Expected View toggle: render the 3D model in realised colours (what it'll
+    // actually print as). Design-safe — render-only, never writes design.
+    m_expected_view_btn = new ScalableButton(m_panel_title, wxID_ANY, "view");
+    m_expected_view_btn->SetToolTip(_L("Toggle Expected View — show the model in the colours it will actually print as."));
+
     auto* h_title     = new wxBoxSizer(wxHORIZONTAL);
     auto* white_left  = new wxPanel(m_panel_title, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(SidebarProps::ContentMargin()), -1));
     white_left->SetBackgroundColour(*wxWHITE);
@@ -58,6 +63,7 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
     h_title->AddSpacer(FromDIP(SidebarProps::ElementSpacing()));
     h_title->Add(title_label, 0, wxALIGN_CENTER_VERTICAL);
     h_title->AddStretchSpacer();
+    h_title->Add(m_expected_view_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
     h_title->Add(m_match_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(8));
     auto* white_right = new wxPanel(m_panel_title, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(SidebarProps::ContentMargin()), -1));
     white_right->SetBackgroundColour(*wxWHITE);
@@ -71,6 +77,23 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
     m_panel_content->SetSizer(new wxBoxSizer(wxVERTICAL));
 
     m_match_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_match(); });
+
+    m_expected_view_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+        // Toggle Expected View. Only meaningful after a Match solved the store;
+        // if unsolved, the render fallback is the design colour anyway, so the
+        // toggle is safe but we hint the user to Match first.
+        Plater* plater = wxGetApp().plater();
+        if (!plater) return;
+        bool now_on = !plater->is_expected_view();
+        plater->set_expected_view(now_on);
+        // Visual feedback: pressed state hint via tooltip + bitmap tint is left
+        // to a future polish; the canvas repaint (in set_expected_view) shows it.
+        if (now_on && !m_store.has_solved()) {
+            MessageDialog dlg(this, _L("Expected View is on, but no match has been run yet. Press Match to see how your colours will actually print."),
+                              _L("Expected View"), wxOK | wxICON_INFORMATION);
+            dlg.ShowModal();
+        }
+    });
 
     root->AddSpacer(FromDIP(8));
     root->Add(m_panel_title, 0, wxEXPAND, 0);

@@ -45,6 +45,7 @@ private:
 
     StaticBox*      m_panel_title      = nullptr;
     ScalableButton* m_match_btn        = nullptr; // solve against device stock
+    ScalableButton* m_expected_view_btn = nullptr; // toggle 3D Expected View
     wxPanel*        m_panel_content    = nullptr; // summary + per-intent rows
     wxStaticText*   m_health_summary   = nullptr; // "N perfect / M tunable / K broken"
 };

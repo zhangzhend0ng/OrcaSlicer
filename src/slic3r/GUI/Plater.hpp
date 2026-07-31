@@ -579,6 +579,14 @@ public:
     // On activating the parent window.
     void on_activate();
     std::vector<std::string> get_extruder_colors_from_plater_config(const GCodeProcessorResult* const result = nullptr, bool include_mixed = true) const;
+    // Expected-View render colours: one realised colour per physical extruder,
+    // derived from the FulfillmentStore (recipe.preview_color). Falls back to the
+    // design colours when no match has been solved. Called per-frame from the
+    // GLVolume render path when Expected View is active (PRD §5.2).
+    std::vector<std::string> get_expected_render_colors() const;
+    // Toggle / query the Expected-View mode (model rendered in realised colours).
+    bool is_expected_view() const;
+    void set_expected_view(bool on);
     std::vector<std::string> get_colors_for_color_print(const GCodeProcessorResult* const result = nullptr) const;
 
     void update_menus();

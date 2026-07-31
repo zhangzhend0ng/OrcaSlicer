@@ -9537,6 +9537,9 @@ struct Plater::priv
     std::atomic<bool> filament_usage_sync_pending{false};
     bool filament_temp_mixing_notification_initialized = false;
     int filament_temp_mixing_notification_plate = -1;
+    // Expected-View mode: when true, GLVolume::render uses realised colours
+    // (PRD §5.2). Lives on Plater::priv (3D-render state), not Sidebar::priv.
+    bool m_expected_view_active = false;
     FilamentTempMixingState filament_temp_mixing_notification_state = FilamentTempMixingState::Compatible;
 
     MenuFactory menus;
@@ -22012,6 +22015,43 @@ std::vector<std::string> Plater::get_extruder_colors_from_plater_config(const GC
         return filament_colors;
     }
 }
+
+std::vector<std::string> Plater::get_expected_render_colors() const
+{
+    // Build one realised colour per physical extruder. If the store has solved
+    // an entry for that extruder, use its recipe.preview_color (the colour this
+    // design colour will actually print as); otherwise fall back to the design
+    // colour. Used per-frame by GLVolume::render when Expected View is on.
+    auto* pb = wxGetApp().preset_bundle;
+    if (!pb) return {};
+    const auto& cfg = pb->project_config;
+    if (!cfg.has("filament_colour")) return {};
+    const auto* design = cfg.option<ConfigOptionStrings>("filament_colour");
+    if (!design) return {};
+
+    std::vector<std::string> out;
+    out.reserve(design->values.size());
+    const FulfillmentStore& store = wxGetApp().plater()->sidebar().fulfillment_store();
+    for (size_t i = 0; i < design->values.size(); ++i) {
+        const FulfillmentEntry* e = store.find(static_cast<unsigned int>(i));
+        if (e && e->recipe.valid && e->recipe.preview_color.IsOk())
+            out.push_back(e->recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
+        else
+            out.push_back(design->values[i]); // no realisation yet → show design colour
+    }
+    return out;
+}
+
+bool Plater::is_expected_view() const { return p->m_expected_view_active; }
+
+void Plater::set_expected_view(bool on)
+{
+    if (p->m_expected_view_active == on) return;
+    p->m_expected_view_active = on;
+    // Force a repaint so the 3D scene picks up the new colour source.
+    if (p->view3D) p->view3D->get_canvas3d()->set_as_dirty();
+}
+
 
 /* Get vector of colors used for rendering of a Preview scene in "Color print" mode
  * It consists of extruder colors and colors, saved in model.custom_gcode_per_print_z
