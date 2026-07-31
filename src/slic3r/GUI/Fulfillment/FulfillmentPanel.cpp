@@ -30,6 +30,7 @@ namespace GUI {
 FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
     : wxPanel(parent, wxID_ANY), m_store(store)
 {
+    BOOST_LOG_TRIVIAL(info) << "FulfillmentPanel constructed, this=" << (void*)this;
     const bool     is_dark    = wxGetApp().dark_mode();
     const wxColour content_bg = is_dark ? wxColour(45, 45, 49) : wxColour(255, 255, 255);
     const wxColour title_bg   = wxColour(248, 248, 248); // mirrors Sidebar title_bg
@@ -79,7 +80,14 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
     m_panel_content->SetBackgroundColour(content_bg);
     m_panel_content->SetSizer(new wxBoxSizer(wxVERTICAL));
 
-    m_match_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { on_match(); });
+    m_match_btn->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& e) {
+        BOOST_LOG_TRIVIAL(info) << "m_match_btn LEFT_DOWN received";
+        e.Skip();
+    });
+    m_match_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+        BOOST_LOG_TRIVIAL(info) << "m_match_btn BUTTON event -> on_match";
+        on_match();
+    });
 
     m_expected_view_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         // Toggle Expected View. Only meaningful after a Match solved the store;
