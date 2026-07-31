@@ -3,6 +3,8 @@
 
 #include <wx/panel.h>
 
+namespace Slic3r { namespace GUI { struct FilamentData; } }
+
 class ScalableButton;
 class StaticBox;
 class wxFlexGridSizer;
@@ -30,9 +32,8 @@ public:
     void refresh();
 
 private:
-    // Builds one tray row for a single filament_ams_list entry.
-    void add_tray_item(wxFlexGridSizer* grid, const std::string& tray_name,
-                       const std::string& filament_type, const std::string& color_hex, bool exists);
+    // Builds one tray row from a device FilamentData (brand/model name + colour).
+    void add_tray_item(wxFlexGridSizer* grid, const std::string& slot_label, const FilamentData& fd);
 
     StaticBox*      m_panel_title   = nullptr;
     ScalableButton* m_refresh_btn   = nullptr;

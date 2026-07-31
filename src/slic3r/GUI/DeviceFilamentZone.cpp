@@ -124,11 +124,8 @@ void DeviceFilamentZone::refresh()
     }
 
     for (const FilamentData& fd : machine_list) {
-        std::string tray_name = std::to_string(fd.m_index + 1);
-        std::string color     = fd.m_color.PrimaryColor();
-        std::string type      = fd.m_type;
-        bool        exists    = !is_none_filament(fd);
-        add_tray_item(grid, tray_name, type, color, exists);
+        std::string slot_label = std::to_string(fd.m_index + 1);
+        add_tray_item(grid, slot_label, fd);
     }
 
     auto* wrap = new wxBoxSizer(wxVERTICAL);
@@ -138,27 +135,23 @@ void DeviceFilamentZone::refresh()
     Layout();
 }
 
-void DeviceFilamentZone::add_tray_item(wxFlexGridSizer* grid, const std::string& tray_name,
-                                       const std::string& filament_type, const std::string& color_hex, bool exists)
+void DeviceFilamentZone::add_tray_item(wxFlexGridSizer* grid, const std::string& slot_label, const FilamentData& fd)
 {
     const bool     is_dark    = wxGetApp().dark_mode();
     const wxColour content_bg = is_dark ? wxColour(45, 45, 49) : wxColour(255, 255, 255);
+    const bool     exists     = !is_none_filament(fd);
 
-    // Decide display color & label by state:
-    //  1. !exists            -> empty slot, grey block + "Empty"
-    //  2. exists but no type -> loaded but RFID not resolved, real color (or grey) + "Unknown"
-    //  3. otherwise          -> real color + type abbreviation
-    std::string icon_color;
-    std::string type_label = filament_type;
-    if (!exists) {
-        icon_color = is_dark ? "#646468" : "#C8C8C8";
-        type_label = "Empty";
-    } else {
-        icon_color = color_hex.empty() ? (is_dark ? "#646468" : "#C8C8C8") : color_hex;
-        if (type_label.empty())
-            type_label = "Unknown";
-    }
-    std::string swatch_label = tray_name.empty() ? std::string("?") : tray_name;
+    // Display colour: the filament's actual colour, or grey for empty slots.
+    std::string icon_color = exists ? fd.m_color.PrimaryColor()
+                                    : (is_dark ? "#646468" : "#C8C8C8");
+    if (icon_color.empty()) icon_color = is_dark ? "#646468" : "#C8C8C8";
+
+    // Display name: the full brand/model name (e.g. "Snapmaker PLA Matte") when
+    // loaded; "Empty" when not. This is what the user actually wants to see —
+    // the concrete vendor filament, not a hand-rolled type abbreviation.
+    std::string display_name = exists ? fd.m_name : "Empty";
+    if (display_name.empty()) display_name = exists ? fd.m_type : "Empty";
+    if (display_name.empty()) display_name = "Unknown";
 
     auto* row = new wxPanel(m_panel_content, wxID_ANY);
     row->SetBackgroundColour(content_bg);
@@ -166,14 +159,15 @@ void DeviceFilamentZone::add_tray_item(wxFlexGridSizer* grid, const std::string&
 
     auto* swatch = new wxBitmapButton(row, wxID_ANY, wxNullBitmap, wxDefaultPosition,
                                       wxSize(FromDIP(24), FromDIP(16)), wxBORDER_NONE);
-    swatch->SetBitmap(*get_extruder_color_icon(icon_color, swatch_label, FromDIP(24), FromDIP(16)));
+    swatch->SetBitmap(*get_extruder_color_icon(icon_color, slot_label, FromDIP(24), FromDIP(16)));
     swatch->SetBackgroundColour(content_bg);
 
-    auto* text = new Label(row, wxString::FromUTF8(type_label), LB_PROPAGATE_MOUSE_EVENT);
+    auto* text = new Label(row, wxString::FromUTF8(display_name), LB_PROPAGATE_MOUSE_EVENT);
     text->SetBackgroundColour(content_bg);
+    text->Wrap(FromDIP(180));
 
     row_sizer->Add(swatch, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
-    row_sizer->Add(text, 0, wxALIGN_CENTER_VERTICAL);
+    row_sizer->Add(text, 1, wxALIGN_CENTER_VERTICAL);
     row->SetSizer(row_sizer);
 
     grid->Add(row, 0, wxEXPAND | wxALL, FromDIP(2));
