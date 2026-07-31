@@ -203,6 +203,17 @@ void FulfillmentPanel::refresh_fulfilment()
     m_panel_content->SetSizer(sizer, true);
     m_panel_content->Layout();
     Layout();
+    // Notify the parent (sidebar scrolled area) to re-layout — without this the
+    // new rows are added but the scrolled sizer doesn't adjust its height, so
+    // the content is invisible until a resize/paint forces it (the 'only shows
+    // after dragging' symptom). This mirrors how on_filaments_change etc. call
+    // scrolled->Layout() / GetParent()->Layout().
+    wxWindow* parent = GetParent();
+    if (parent) {
+        parent->Layout();
+        // FitInside handles scrolled windows' virtual size recalculation.
+        if (auto* sw = wxDynamicCast(parent, wxScrolledWindow)) sw->FitInside();
+    }
 }
 
 void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const FulfillmentEntry& e)
