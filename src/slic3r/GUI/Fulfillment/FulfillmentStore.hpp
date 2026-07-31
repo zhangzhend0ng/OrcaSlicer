@@ -113,6 +113,10 @@ public:
     // Class-A edits (PRD §5.2.1): write Fulfillment, never Design.
     void set_ratio(unsigned int design_extruder, int ratio_b_percent);
     void set_direct_slot(unsigned int design_extruder, int slot);
+    // Direct match with full colour/delta_e/health (used when user picks a
+    // specific physical filament from MachineFilamentPicker).
+    void set_direct_with_color(unsigned int design_extruder, int slot,
+                               const wxColour& realised_color, const std::string& design_color_hex);
     // Apply a recipe edited via MixedFilamentDialog. Component ids are
     // palette-local (1-based into the entry's component_ams_keys). Marks the
     // entry locked (an explicit edit is a user decision worth keeping, §6) and

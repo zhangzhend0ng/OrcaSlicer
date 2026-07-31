@@ -325,9 +325,19 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
             cur_idx = e.recipe.component_a - 1;
 
         auto* picker = new MachineFilamentPicker(wxGetApp().mainframe, same_type_list, cur_idx);
-        picker->bindSelectionCallback([this, design_extruder = e.design_extruder](const FilamentData& data) {
-            m_store.set_direct_slot(design_extruder, static_cast<int>(data.m_index));
+        picker->bindSelectionCallback([this, design_extruder = e.design_extruder,
+                                       design_color = e.design_color](const FilamentData& data) {
+            // User picked a physical filament → set Direct match with full
+            // colour/delta_e/health update + force UI repaint.
+            m_store.set_direct_with_color(design_extruder, static_cast<int>(data.m_index),
+                                          wxColour(data.m_color.PrimaryColor()), design_color);
             refresh_fulfilment();
+            wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
+            Plater* plater = wxGetApp().plater();
+            if (plater && plater->is_expected_view()) {
+                plater->set_expected_view(false);
+                plater->set_expected_view(true);
+            }
         });
         wxPoint pos = phys_btn->GetScreenPosition();
         pos.y += phys_btn->GetSize().y;

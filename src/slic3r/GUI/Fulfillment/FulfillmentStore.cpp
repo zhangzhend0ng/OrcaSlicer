@@ -230,8 +230,6 @@ void FulfillmentStore::set_ratio(unsigned int design_extruder, int ratio_b_perce
 
 void FulfillmentStore::set_direct_slot(unsigned int design_extruder, int slot)
 {
-    // Class-A edit: force a direct (single-slot) realisation for this intent.
-    // Expressed as a degenerate recipe (component_a == component_b, ratio 0).
     for (FulfillmentEntry& e : m_entries) {
         if (e.design_extruder == design_extruder) {
             e.kind = PlanKind::Direct;
@@ -242,6 +240,32 @@ void FulfillmentStore::set_direct_slot(unsigned int design_extruder, int slot)
             e.component_ams_keys.assign(1, slot);
             return;
         }
+    }
+}
+
+void FulfillmentStore::set_direct_with_color(unsigned int design_extruder, int slot,
+                                             const wxColour& realised_color, const std::string& design_color_hex)
+{
+    for (FulfillmentEntry& e : m_entries) {
+        if (e.design_extruder != design_extruder) continue;
+        e.kind = PlanKind::Direct;
+        e.recipe.valid = true;
+        e.recipe.component_a = 1;
+        e.recipe.component_b = 1;
+        e.recipe.mix_b_percent = 0;
+        e.recipe.preview_color = realised_color;
+        // Compute ΔE vs the design colour.
+        wxColour dc(design_color_hex);
+        e.recipe.delta_e = (dc.IsOk() && realised_color.IsOk())
+                         ? color_delta_e00(dc, realised_color)
+                         : std::numeric_limits<double>::infinity();
+        e.health = (e.recipe.delta_e < kColorMatchDirectThreshold) ? HealthState::Perfect
+                 : (e.recipe.delta_e < kTunableDeltaE)             ? HealthState::Tunable
+                                                                  : HealthState::Broken;
+        e.component_ams_keys.assign(1, slot);
+        e.locked = true;   // user explicitly chose this filament
+        e.stale = false;
+        return;
     }
 }
 
