@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <boost/algorithm/string/predicate.hpp> // boost::iequals
 
 namespace Slic3r {
 namespace GUI {
@@ -87,10 +88,9 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
     for (const PhysicalSlot& s : device) {
         if (!s.exists) continue;
         if (intent.type.empty() || s.type.empty()) continue; // unknown type = cannot confirm match
-        // Case-insensitive compare on type token (PLA vs pla).
-        if (s.type.size() == intent.type.size() &&
-            std::equal(s.type.begin(), s.type.end(), intent.type.begin(),
-                       [](char a, char b) { return std::tolower(a) == std::tolower(b); }))
+        // Case-insensitive type match (PLA vs pla). boost::iequals avoids the
+        // fragile std::equal-with-second-sequence-length pitfall.
+        if (boost::iequals(s.type, intent.type))
             same_type.push_back(&s);
     }
 
@@ -275,21 +275,6 @@ void FulfillmentStore::toggle_lock(unsigned int design_extruder)
     for (FulfillmentEntry& e : m_entries) {
         if (e.design_extruder == design_extruder) {
             e.locked = !e.locked;
-            return;
-        }
-        }
-}
-
-void FulfillmentStore::reset_to_computed(unsigned int design_extruder)
-{
-    // Phase 1 simplest honest semantics: mark the row stale and clear its lock
-    // so the next solve recomputes it cleanly. (A full per-row re-solve would
-    // require re-running solve_intent here with the last snapshots; deferred —
-    // the "recompute all" button covers the common case.)
-    for (FulfillmentEntry& e : m_entries) {
-        if (e.design_extruder == design_extruder) {
-            e.locked = false;
-            e.stale = true;
             return;
         }
     }

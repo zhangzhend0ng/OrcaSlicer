@@ -423,7 +423,9 @@ void GLVolume::render()
             colors.clear();
             unsigned char rgba[4] = {};
             for (const std::string& c : expected) {
-                GUI::BitmapCache::parse_color4(c, rgba);
+                // Skip malformed colour strings instead of pushing garbage (parse_color4
+                // leaves rgba untouched on failure); fall back to design colour for that slot.
+                if (!GUI::BitmapCache::parse_color4(c, rgba)) { colors.push_back({0.6f, 0.6f, 0.6f, 1.f}); continue; }
                 colors.push_back({rgba[0] / 255.f, rgba[1] / 255.f, rgba[2] / 255.f, rgba[3] / 255.f});
             }
         }
@@ -450,7 +452,9 @@ void GLVolume::render_with_outline(const GUI::Size& cnv_size)
             colors.clear();
             unsigned char rgba[4] = {};
             for (const std::string& c : expected) {
-                GUI::BitmapCache::parse_color4(c, rgba);
+                // Skip malformed colour strings instead of pushing garbage (parse_color4
+                // leaves rgba untouched on failure); fall back to design colour for that slot.
+                if (!GUI::BitmapCache::parse_color4(c, rgba)) { colors.push_back({0.6f, 0.6f, 0.6f, 1.f}); continue; }
                 colors.push_back({rgba[0] / 255.f, rgba[1] / 255.f, rgba[2] / 255.f, rgba[3] / 255.f});
             }
         }

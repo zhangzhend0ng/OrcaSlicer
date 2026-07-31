@@ -119,7 +119,6 @@ public:
                              const std::string& gradient_component_ids,
                              const std::string& gradient_component_weights);
     void toggle_lock(unsigned int design_extruder);
-    void reset_to_computed(unsigned int design_extruder); // undo manual edits on a row
     void reset_all();                                     // discard all manual edits
     void clear_all_locks();                               // PRD §12.1 panic button
 

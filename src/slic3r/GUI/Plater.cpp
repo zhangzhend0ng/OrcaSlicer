@@ -22018,10 +22018,9 @@ std::vector<std::string> Plater::get_extruder_colors_from_plater_config(const GC
 
 std::vector<std::string> Plater::get_expected_render_colors() const
 {
-    // Build one realised colour per physical extruder. If the store has solved
-    // an entry for that extruder, use its recipe.preview_color (the colour this
-    // design colour will actually print as); otherwise fall back to the design
-    // colour. Used per-frame by GLVolume::render when Expected View is on.
+    // Build one realised colour per physical extruder. O(N) over entries once
+    // (NOT O(N²): this is called per render frame, so a linear find() per
+    // extruder would be quadratic). Map entries by design_extruder, then emit.
     auto* pb = wxGetApp().preset_bundle;
     if (!pb) return {};
     const auto& cfg = pb->project_config;
@@ -22029,13 +22028,18 @@ std::vector<std::string> Plater::get_expected_render_colors() const
     const auto* design = cfg.option<ConfigOptionStrings>("filament_colour");
     if (!design) return {};
 
+    // Build an index by extruder id (entries are not guaranteed sorted).
+    const FulfillmentStore& store = wxGetApp().plater()->sidebar().fulfillment_store();
+    std::unordered_map<unsigned int, const FulfillmentEntry*> by_extruder;
+    for (const FulfillmentEntry& e : store.entries())
+        by_extruder[e.design_extruder] = &e;
+
     std::vector<std::string> out;
     out.reserve(design->values.size());
-    const FulfillmentStore& store = wxGetApp().plater()->sidebar().fulfillment_store();
     for (size_t i = 0; i < design->values.size(); ++i) {
-        const FulfillmentEntry* e = store.find(static_cast<unsigned int>(i));
-        if (e && e->recipe.valid && e->recipe.preview_color.IsOk())
-            out.push_back(e->recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
+        auto it = by_extruder.find(static_cast<unsigned int>(i));
+        if (it != by_extruder.end() && it->second->recipe.valid && it->second->recipe.preview_color.IsOk())
+            out.push_back(it->second->recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
         else
             out.push_back(design->values[i]); // no realisation yet → show design colour
     }

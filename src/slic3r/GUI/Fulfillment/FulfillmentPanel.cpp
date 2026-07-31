@@ -226,7 +226,10 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     // needed — the predicted colour is already a recipe output.
     std::string expected_hex;
     std::string expected_label;
-    if (e.recipe.valid && e.recipe.preview_color.IsOk()) {
+    // Show the realised colour only when the recipe is valid AND its ΔE is finite
+    // (a freshly hand-edited recipe has delta_e=inf until re-solved, so its stored
+    // preview_color is stale — showing it would contradict the new recipe).
+    if (e.recipe.valid && e.recipe.preview_color.IsOk() && std::isfinite(e.recipe.delta_e)) {
         expected_hex   = e.recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
         expected_label = "~"; // marks "this is the realised/expected colour"
     } else {
