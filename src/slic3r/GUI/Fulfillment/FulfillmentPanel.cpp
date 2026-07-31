@@ -301,7 +301,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     auto* edit_btn = new ScalableButton(row, wxID_ANY, "edit");
     edit_btn->SetBackgroundColour(content_bg);
     edit_btn->SetToolTip(_L("Edit this colour's mix recipe."));
-    edit_btn->Enable(can_act);
+    if (can_act) edit_btn->enable(); else edit_btn->disable();
     edit_btn->Bind(wxEVT_BUTTON, [this, e, can_act](wxCommandEvent&) {
         if (!can_act) return;
         PresetBundle* pb = wxGetApp().preset_bundle;
@@ -337,8 +337,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     lock_btn->SetBackgroundColour(content_bg);
     lock_btn->SetToolTip(e.locked ? _L("Locked — recipe kept on recompute. Click to unlock.")
                                   : _L("Lock this recipe (keep on recompute)."));
-    lock_btn->Enable(can_act);
-    if (e.locked) lock_btn->SetBitmapDisabled(ScalableBitmap(lock_btn, "lock_normal").bmp());
+    if (can_act) lock_btn->enable(); else lock_btn->disable();
     lock_btn->Bind(wxEVT_BUTTON, [this, design_extruder = e.design_extruder](wxCommandEvent&) {
         m_store.toggle_lock(design_extruder);
         refresh_fulfilment();
