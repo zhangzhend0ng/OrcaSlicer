@@ -1,5 +1,7 @@
 #include "DeviceFilamentZone.hpp"
 
+#include "Fulfillment/FulfillmentStore.hpp"
+#include "Fulfillment/FulfillmentPanel.hpp"
 #include "GUI_App.hpp"
 #include "Plater.hpp"                       // build_machine_filament_list
 #include "DeviceManager.hpp"
