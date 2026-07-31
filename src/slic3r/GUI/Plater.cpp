@@ -22059,7 +22059,11 @@ void Plater::set_expected_view(bool on)
     if (p->m_expected_view_active == on) return;
     p->m_expected_view_active = on;
     // Force a repaint so the 3D scene picks up the new colour source.
-    if (p->view3D) p->view3D->get_canvas3d()->set_as_dirty();
+    if (p->view3D) {
+        auto* canvas = p->view3D->get_canvas3d();
+        canvas->set_as_dirty();
+        canvas->Refresh();
+    }
 }
 
 
