@@ -16,6 +16,7 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/MixedFilament.hpp"
+#include "libslic3r/libslic3r.h" // BOOST_LOG_TRIVIAL
 
 #include <wx/sizer.h>
 #include <wx/stattext.h>
@@ -110,9 +111,11 @@ FulfillmentPanel::FulfillmentPanel(wxWindow* parent, FulfillmentStore& store)
 void FulfillmentPanel::on_match()
 {
     PresetBundle* pb = wxGetApp().preset_bundle;
+    BOOST_LOG_TRIVIAL(info) << "FulfillmentPanel::on_match entered, pb=" << (void*)pb;
     if (!pb) return;
     auto design = snapshot_design_intent(*pb);
     auto device = snapshot_device_stock(*pb);
+    BOOST_LOG_TRIVIAL(info) << "on_match design_count=" << design.size() << " device_count=" << device.size();
     // NOTE: do NOT touch m_health_summary here — it is nullptr until
     // refresh_fulfilment() runs the solved branch and creates it. On the initial
     // (unsolved) display it doesn't exist, so SetLabel would null-deref.
