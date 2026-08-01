@@ -192,6 +192,14 @@ void FulfillmentPanel::refresh_fulfilment()
     const auto roll = m_store.rollup();
     wxString summary = wxString::Format(_L("Design vs device:  %d perfect, %d tunable, %d broken"),
                                         roll.perfect, roll.tunable, roll.broken);
+    // PRD §7: after a design/device change the store goes stale — the displayed
+    // rows/counts were solved against the PRIOR snapshot, so they may not reflect
+    // current reality. The PRD lets recipes wait for the user (no auto-overwrite),
+    // but §5 requires the gap to be SPOKEN: without this hint the user could read
+    // the rollup as current truth. Append a "stale" marker when has_stale(), so
+    // the stats are clearly labelled as pending a re-Match.
+    if (m_store.has_stale())
+        summary += "  " + _L("(stale — press Match to refresh)");
     m_health_summary = new wxStaticText(m_panel_content, wxID_ANY, summary);
     m_health_summary->SetBackgroundColour(content_bg);
     const wxColour sum_color = roll.broken > 0 ? wxColour(198, 80, 80)
