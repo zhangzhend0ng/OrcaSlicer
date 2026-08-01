@@ -39,6 +39,13 @@ struct ConnectMachineInfo
     std::vector<std::string> multiColors;
     Slic3r::FilamentColorMode colorMode { Slic3r::FilamentColorMode::Segment };
     int index {0};
+    // Device-reported extruder number for this slot, captured from the WCP
+    // `extruder_map_table` (SSWCP.cpp). This is the authoritative
+    // "AMS/WCP slot -> physical extruder (G-code T-number)" mapping, and is the
+    // ONLY reliable source for aligning the device filament space with G-code
+    // extruder indices during slicing. -1 = device did not report a mapping
+    // (e.g. Moonraker/Klipper paths) — callers must fall back.
+    int extruder {-1};
 };
 
 namespace Slic3r {

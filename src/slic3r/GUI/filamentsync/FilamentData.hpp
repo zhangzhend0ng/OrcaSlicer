@@ -27,6 +27,10 @@ struct FilamentData
     std::string  m_name;
     std::string  m_type;
     FilamentColor m_color;
+    // Device-reported extruder number for this slot (from ConnectMachineInfo.extruder,
+    // ultimately WCP `extruder_map_table`). 0-based physical extruder index = G-code
+    // T-number. -1 = device did not report a mapping (fallback path).
+    int m_extruder {-1};
 };
 
 struct MixedFilamentPreviewInfo

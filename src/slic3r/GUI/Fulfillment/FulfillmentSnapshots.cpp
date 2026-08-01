@@ -46,6 +46,7 @@ std::vector<PhysicalSlot> snapshot_device_stock(const PresetBundle& bundle)
         s.tray_name = std::to_string(fd.m_index + 1); // 1-based label
         s.type      = fd.m_type;
         s.exists    = !is_none_filament(fd);
+        s.physical_extruder = fd.m_extruder;
         wxColour c;
         if (try_parse_color_match_hex(wxString::FromUTF8(fd.m_color.PrimaryColor()), c))
             s.color = c;

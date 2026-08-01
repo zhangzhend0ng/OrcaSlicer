@@ -585,7 +585,7 @@ public:
     void force_print_bed_update();
     // On activating the parent window.
     void on_activate();
-    std::vector<std::string> get_extruder_colors_from_plater_config(const GCodeProcessorResult* const result = nullptr, bool include_mixed = true) const;
+    std::vector<std::string> get_extruder_colors_from_plater_config(const GCodeProcessorResult* const result = nullptr, bool include_mixed = true, bool force_device_palette = false) const;
     // Expected-View render colours: one realised colour per physical extruder,
     // derived from the FulfillmentStore (recipe.preview_color). Falls back to the
     // design colours when no match has been solved. Called per-frame from the
@@ -594,6 +594,9 @@ public:
     // Toggle / query the Expected-View mode (model rendered in realised colours).
     bool is_expected_view() const;
     void set_expected_view(bool on);
+    // Discard the cached Expected-View device palette (called when device stock
+    // is re-synced; design-side and project-reset invalidations happen in priv).
+    void invalidate_device_palette_cache();
     std::vector<std::string> get_colors_for_color_print(const GCodeProcessorResult* const result = nullptr) const;
 
     void update_menus();

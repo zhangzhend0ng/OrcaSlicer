@@ -4074,7 +4074,7 @@ void GCodeViewer::render_all_plates_stats(const std::vector<const GCodeProcessor
     std::vector<float> filament_diameters = gcode_result_list.front()->filament_diameters;
     std::vector<float> filament_densities = gcode_result_list.front()->filament_densities;
     std::vector<ColorRGBA> filament_colors;
-    decode_colors(wxGetApp().plater()->get_extruder_colors_from_plater_config(gcode_result_list.back()), filament_colors);
+    decode_colors(wxGetApp().plater()->get_extruder_colors_from_plater_config(gcode_result_list.back(), /*include_mixed=*/true, /*force_device_palette=*/true), filament_colors);
 
     for (size_t i = 0; i < filament_colors.size(); i++) {
         filament_colors[i] = adjust_color_for_rendering(filament_colors[i]);
@@ -5035,7 +5035,7 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
         append_item(EItemType::None, Travel_Colors[0], { {_u8L("travel"), offsets[0] }}, true, predictable_icon_pos/*ORCA checkbox_pos*/, travel_visible, [this, travel_visible]() {
             m_buffers[buffer_id(EMoveType::Travel)].visible = !m_buffers[buffer_id(EMoveType::Travel)].visible;
             // update buffers' render paths, and update m_tools.m_tool_colors and m_extrusions.ranges
-            refresh(*m_gcode_result, wxGetApp().plater()->get_extruder_colors_from_plater_config(m_gcode_result));
+            refresh(*m_gcode_result, wxGetApp().plater()->get_extruder_colors_from_plater_config(m_gcode_result, /*include_mixed=*/true, /*force_device_palette=*/true));
             update_moves_slider();
             wxGetApp().plater()->get_current_canvas3D()->set_as_dirty();
             });

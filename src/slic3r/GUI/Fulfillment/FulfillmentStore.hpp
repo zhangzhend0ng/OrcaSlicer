@@ -66,11 +66,19 @@ struct FulfillmentEntry
 // without preset_bundle.
 struct PhysicalSlot
 {
-    int          ams_key = -1;   // key in filament_ams_list (ams_id*4+tray_id)
+    // Position index of this slot in build_machine_filament_list's output, which
+    // follows the WCP `filament_official` array order (NOT the filament_ams_list
+    // ams_id*4+tray_id key — that map covers BBL/AMS only).
+    int          ams_key = -1;
     std::string  tray_name;      // "A1".."Ext"
     std::string  type;           // "PLA", ... (empty if unknown)
     wxColour     color;
     bool         exists = false; // filament_present
+    // Device-reported physical extruder (G-code T-number, 0-based) for this slot,
+    // from WCP `extruder_map_table`. This is the authoritative "slot -> extruder"
+    // mapping used to build the slice device-space filament array (whose indices
+    // must equal G-code T-numbers). -1 = device did not report (fallback).
+    int          physical_extruder = -1;
 };
 
 struct DesignIntent

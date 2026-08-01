@@ -1638,8 +1638,15 @@ void SSWCP_Instance::update_filament_info(const json& objects, bool send_message
                         name = vendor + " " + type + ((sub_type != "NONE" && sub_type != "") ? " " + sub_type : "");
                     }
 
-                    int extruder = j_value["extruder_map_table"][i].get<int>();
-                    machineData.index = static_cast<int>(i);
+                    // Capture the device-reported extruder number for this slot
+                    // (WCP `extruder_map_table`). This is the authoritative
+                    // "slot -> G-code T-number" mapping, previously read into a
+                    // local and discarded — losing it left the slicer unable to
+                    // align device filaments with extruder indices. Stored on
+                    // ConnectMachineInfo so the fulfillment/slice device-space
+                    // builder can resolve components to physical extruders.
+                    machineData.extruder = j_value["extruder_map_table"][i].get<int>();
+                    machineData.index    = static_cast<int>(i);
                     machineData.filament_info = name;
 
                     json::const_iterator multiColorIt = j_value.find("filament_color_multi");

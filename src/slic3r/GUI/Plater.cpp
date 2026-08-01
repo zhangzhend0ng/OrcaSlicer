@@ -148,6 +148,7 @@
 #include "DeviceFilamentZone.hpp"
 #include "Fulfillment/FulfillmentPanel.hpp"
 #include "Fulfillment/FulfillmentStore.hpp"
+#include "Fulfillment/FulfillmentSliceMapping.hpp"
 #include "PresetComboBoxes.hpp"
 #include "MsgDialog.hpp"
 #include "ProjectDirtyStateManager.hpp"
@@ -538,9 +539,10 @@ void build_machine_filament_list(PresetBundle* preset_bundle, std::vector<Filame
 
     for (const auto& info : preset_bundle->m_connect_machine_info_list) {
         FilamentData fd;
-        fd.m_index = info.index;
-        fd.m_name  = info.filament_info;
-        fd.m_type  = info.filament_type;
+        fd.m_index    = info.index;
+        fd.m_name     = info.filament_info;
+        fd.m_type     = info.filament_type;
+        fd.m_extruder = info.extruder;
         
         if (!info.color_info.empty() || !info.multiColors.empty()) {
             fd.m_color = FilamentColor::FromColors(info.multiColors, info.colorMode, info.color_info);
@@ -8661,6 +8663,9 @@ void Sidebar::load_ams_list(std::string const &device, MachineObject* obj)
     if (p->m_device_filament_zone) p->m_device_filament_zone->refresh();
     if (p->m_fulfillment_panel) p->m_fulfillment_panel->refresh_fulfilment();
     update_fulfillment_health_indicator();
+    // Device filaments re-synced → the cached Expected-View device palette (colours
+    // keyed by device T-number) is stale; clear it so the next slice rebuilds it.
+    if (auto* plater = wxGetApp().plater()) plater->invalidate_device_palette_cache();
 }
 
 void Sidebar::sync_ams_list()
@@ -9546,6 +9551,21 @@ struct Plater::priv
     // Expected-View mode: when true, GLVolume::render uses realised colours
     // (PRD §5.2). Lives on Plater::priv (3D-render state), not Sidebar::priv.
     bool m_expected_view_active = false;
+
+    // Expected-View G-code preview palette source. The design layer's colours are
+    // indexed by design extruder, but the G-code preview indexes colours by device
+    // T-number — after the slice remap those orderings differ, so the preview must
+    // read the device-space palette the slice itself used. prepare_slice_inputs()
+    // rebuilds this on every slice; the staleness hooks clear m_valid. When invalid
+    // (pre-slice, or after a design/device change) the preview falls back to the
+    // design-layer palette.
+    struct DevicePaletteCache {
+        std::vector<std::string> physical_colors; // device T-number order (== slice rows order)
+        std::vector<std::string> virtual_colors;  // synthesised rows, device virtual T-number order
+        int                      num_physical = 0;
+    };
+    DevicePaletteCache m_cached_device_palette;
+    bool               m_cached_device_palette_valid = false;
     FilamentTempMixingState filament_temp_mixing_notification_state = FilamentTempMixingState::Compatible;
 
     MenuFactory menus;
@@ -9867,6 +9887,32 @@ struct Plater::priv
     };
     // returns bit mask of UpdateBackgroundProcessReturnState
     unsigned int update_background_process(bool force_validation = false, bool postpone_error_messages = false, bool switch_print = true);
+
+    // Slice-time fulfillment device-space remap.
+    //
+    // Product principle: the G-code must reference only the physical filaments
+    // actually loaded on the device. When the FulfillmentStore has solved
+    // recipes, we slice against a TEMPORARY device filament space instead of the
+    // design layer:
+    //   - config is rewritten so filament_colour/type/diameter are the device
+    //     filaments (array index == G-code T-number) and mixed_filament_definitions
+    //     holds the synthesised (virtual) rows.
+    //   - model is a deep copy of the design model with its mmu painting remapped
+    //     from design extruders to device-space filament ids.
+    // The design layer (this->model + preset_bundle) is NEVER written — the copy
+    // lives only for the lifetime of this SliceInputs, i.e. across the apply()
+    // call. When no realisation applies, returns the design model + full_config
+    // unchanged (used_temp_model == false).
+    struct SliceInputs {
+        const Slic3r::Model*       model_ref = nullptr;
+        Slic3r::DynamicPrintConfig config;
+        Slic3r::Model              temp_storage; // valid only when used_temp_model
+        bool                       used_temp_model = false;
+    };
+    // The model argument selects the source: pass this->model or this->model()
+    // depending on call site (both yield the design model).
+    SliceInputs prepare_slice_inputs(const Slic3r::Model& design_model);
+
     // Restart background processing thread based on a bitmask of UpdateBackgroundProcessReturnState.
     bool restart_background_process(unsigned int state);
     // returns bit mask of UpdateBackgroundProcessReturnState
@@ -10215,6 +10261,10 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
         sb.fulfillment_store().mark_stale();
         if (auto* panel = sb.fulfillment_panel()) panel->refresh_fulfilment();
         sb.update_fulfillment_health_indicator();
+        // Design filaments changed → the cached Expected-View device palette
+        // (keyed/lengthed by device space) may no longer match; clear it so the
+        // preview falls back to design colours until the next slice rebuilds it.
+        m_cached_device_palette_valid = false;
     });
     main_frame->m_tabpanel->Bind(wxEVT_NOTEBOOK_PAGE_CHANGING, &priv::on_tab_selection_changing, this);
 
@@ -12543,6 +12593,10 @@ void Plater::priv::reset(bool apply_presets_change)
 {
     Plater::TakeSnapshot snapshot(q, "Reset Project", UndoRedo::SnapshotType::ProjectSeparator);
 
+    // Project reset → discard the cached Expected-View device palette; the next
+    // slice rebuilds it.
+    m_cached_device_palette_valid = false;
+
     clear_warnings();
 
     set_project_filename("");
@@ -12927,6 +12981,82 @@ bool Plater::priv::can_current_plate_be_sliced() const
 }
 
 
+// Build the slice-time inputs for one Print::apply call, applying the
+// fulfillment device-space remap when solved recipes exist. See the declaration
+// of SliceInputs / prepare_slice_inputs for the full rationale.
+Plater::priv::SliceInputs Plater::priv::prepare_slice_inputs(const Slic3r::Model& design_model)
+{
+    SliceInputs out;
+    out.model_ref = &design_model;
+    out.config    = wxGetApp().preset_bundle->full_config();
+
+    // No store, or nothing solved -> slice with the design layer unchanged.
+    FulfillmentStore& store = q->sidebar().fulfillment_store();
+    if (!store.has_solved()) return out;
+
+    auto space = GUI::build_device_filament_space(out.config, *wxGetApp().preset_bundle, store);
+    if (!space) return out; // no realisable entry -> unchanged design slice
+
+    // ---- Deep-copy the design model and remap its painting to device ids ----
+    // assign_clone copies the design model and regenerates fresh unique ids, so
+    // Print::apply treats the copy as a full rebuild — avoiding subtle timestamp
+    // interactions between the design model and the (config-different) device
+    // space. Painting data travels with ModelObject::new_copy -> ModelVolume copy
+    // ctor. (assign_clone == assign_copy + assign_new_unique_ids_recursive.)
+    out.temp_storage.assign_clone(design_model);
+
+    // Build the state map: identity, then override the design extruders that have
+    // a realisation. The first arg to remap_extruder_ids is num_total (physical
+    // + enabled virtual) so virtual ids (synthesised rows) are NOT clipped.
+    EnforcerBlockerStateMap state_map;
+    for (size_t i = 0; i < state_map.size(); ++i)
+        state_map[i] = EnforcerBlockerType(i);
+
+    const int num_total = space->num_total;
+    bool any_remap = false;
+    for (size_t design_id = 0; design_id < space->design_to_device.size(); ++design_id) {
+        const unsigned int device_id = space->design_to_device[design_id];
+        if (device_id == 0) continue;
+        // design_id is 0-based; painting state index is 1-based (Extruder1 == 1).
+        const size_t state_idx = design_id + 1;
+        if (state_idx >= state_map.size()) continue;
+        if (device_id >= state_map.size() || (int)device_id > num_total) continue;
+        state_map[state_idx] = EnforcerBlockerType(device_id);
+        any_remap = true;
+    }
+
+    if (any_remap) {
+        for (Slic3r::ModelObject* mo : out.temp_storage.objects) {
+            for (Slic3r::ModelVolume* mv : mo->volumes)
+                mv->remap_extruder_ids(static_cast<size_t>(num_total), state_map);
+        }
+    }
+
+    out.used_temp_model = true;
+    out.model_ref       = &out.temp_storage;   // point at the copy
+    out.config          = std::move(space->config);
+
+    BOOST_LOG_TRIVIAL(info) << "prepare_slice_inputs: using device filament space"
+                            << " num_physical=" << space->num_physical
+                            << " num_total=" << space->num_total
+                            << " remapped=" << (any_remap ? 1 : 0);
+
+    // Cache the device-space palette for the Expected-View G-code preview. The
+    // preview indexes colours by device T-number, so it needs exactly the colours
+    // the slice used — physical rows from out.config (now device T-number ordered)
+    // and the synthesised rows' display colours. Kept lightweight (no full config
+    // copy); cleared by the design/device-change staleness hooks.
+    if (auto* colours = out.config.option<ConfigOptionStrings>("filament_colour")) {
+        m_cached_device_palette.physical_colors = colours->values;
+        m_cached_device_palette.virtual_colors  = std::move(space->virtual_display_colors);
+        m_cached_device_palette.num_physical    = space->num_physical;
+        m_cached_device_palette_valid           = true;
+    }
+
+    return out;
+}
+
+
 // Update background processing thread from the current config and Model.
 // Returns a bitmask of UpdateBackgroundProcessReturnState.
 unsigned int Plater::priv::update_background_process(bool force_validation, bool postpone_error_messages, bool switch_print)
@@ -12949,32 +13079,19 @@ unsigned int Plater::priv::update_background_process(bool force_validation, bool
         this->partplate_list.update_slice_context_to_current_plate(background_process);
         this->preview->update_gcode_result(partplate_list.get_current_slice_result());
     }
-    // --- Fulfillment temporary mapping for slicing ---
-    // If the FulfillmentStore has solved recipes, override filament_colour and
-    // filament_type in the (temporary copy of) full_config so slicing uses the
-    // realised/expected filaments rather than the original design colours. This
-    // is a value-copy from full_config() → modifying it does NOT change
-    // preset_bundle (design layer stays untouched). The model painting's
-    // extruder_id is left as-is; only the colour/type each extruder resolves to
-    // changes. For mixed/synthesised recipes, the filament_colour is set to the
-    // recipe.preview_color so the slice reflects the realised appearance.
-    DynamicPrintConfig slice_config = wxGetApp().preset_bundle->full_config();
-    {
-        const FulfillmentStore& store = q->sidebar().fulfillment_store();
-        if (store.has_solved()) {
-            auto* colours = slice_config.option<ConfigOptionStrings>("filament_colour");
-            auto* types   = slice_config.option<ConfigOptionStrings>("filament_type");
-            if (colours && types) {
-                for (const FulfillmentEntry& e : store.entries()) {
-                    if (e.design_extruder >= colours->values.size()) continue;
-                    if (e.recipe.valid && e.recipe.preview_color.IsOk())
-                        colours->values[e.design_extruder] = e.recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
-                    // Type stays as design type (the recipe is same-type by construction).
-                }
-            }
-        }
-    }
-    Print::ApplyStatus invalidated = background_process.apply(this->model, slice_config);
+    // --- Fulfillment device-space remap for slicing ---
+    // When the FulfillmentStore has solved recipes, slice against a temporary
+    // device filament space (config + remapped-model copy) so the G-code
+    // references only the device's physical filaments. Suppressing auto-gradient
+    // generation around the apply keeps the device-space virtual IDs
+    // deterministic (only our synthesised rows exist, no C(N,2) pairs). The
+    // design layer (this->model + preset_bundle) is untouched; the temp copy
+    // lives only for this apply call. See prepare_slice_inputs / build_device_filament_space.
+    const bool prev_auto_gen = Slic3r::MixedFilamentManager::auto_generate_enabled();
+    Slic3r::MixedFilamentManager::set_auto_generate_enabled(false);
+    Plater::priv::SliceInputs slice_inputs = this->prepare_slice_inputs(this->model);
+    Print::ApplyStatus invalidated = background_process.apply(*slice_inputs.model_ref, slice_inputs.config);
+    Slic3r::MixedFilamentManager::set_auto_generate_enabled(prev_auto_gen);
     notify_filament_compatibility_after_apply();
 
     if ((invalidated == Print::APPLY_STATUS_CHANGED) || (invalidated == Print::APPLY_STATUS_INVALIDATED))
@@ -22019,7 +22136,7 @@ void Plater::on_activate()
 }
 
 // Get vector of extruder colors considering filament color, if extruder color is undefined.
-std::vector<std::string> Plater::get_extruder_colors_from_plater_config(const GCodeProcessorResult* const result, bool include_mixed) const
+std::vector<std::string> Plater::get_extruder_colors_from_plater_config(const GCodeProcessorResult* const result, bool include_mixed, bool force_device_palette) const
 {
     if (wxGetApp().is_gcode_viewer() && result != nullptr)
         return result->extruder_colors;
@@ -22033,6 +22150,33 @@ std::vector<std::string> Plater::get_extruder_colors_from_plater_config(const GC
             return filament_colors;
 
         filament_colors = (config->option<ConfigOptionStrings>("filament_colour"))->values;
+
+        // When the caller renders the slice result (G-code preview legend, layer
+        // slider, …) it passes force_device_palette=true: those views index colour
+        // by device T-number and must reflect what the G-code actually uses, not
+        // the design-extruder palette above. After the slice remap the orderings
+        // differ, so feed them the device-space palette the slice itself used
+        // (cached by prepare_slice_inputs). Length is device num_total (physical +
+        // virtual); do NOT resize to design filaments_cnt() — that would
+        // truncate/misalign device colours. Design-layer callers (ObjectList, Tab,
+        // filament icons, …) pass the default false and keep design colours.
+        //
+        // NOTE: resolve the live Plater explicitly — this function runs very
+        // early (Plater's own ctor → menus.init → get_extruder_color_icons → this)
+        // when wxGetApp().plater() is null and `this` itself is null, so any
+        // this-> dereference crashes. live_plater->p is valid because a Plater is
+        // only registered into GUI_App after its ctor (and thus p) completes.
+        Plater* live_plater = wxGetApp().plater();
+        if (force_device_palette && live_plater != nullptr && live_plater->p->m_cached_device_palette_valid) {
+            const auto& cache = live_plater->p->m_cached_device_palette;
+            filament_colors.clear();
+            filament_colors = cache.physical_colors;
+            if (include_mixed)
+                for (const auto& dc : cache.virtual_colors)
+                    filament_colors.push_back(dc);
+            return filament_colors;
+        }
+
         const size_t num_physical = static_cast<size_t>(std::max(wxGetApp().filaments_cnt(), 0));
         filament_colors.resize(num_physical, "#26A69A");
 
@@ -22059,8 +22203,18 @@ std::vector<std::string> Plater::get_expected_render_colors() const
     const auto* design = cfg.option<ConfigOptionStrings>("filament_colour");
     if (!design) return {};
 
+    // This function feeds ONLY the 3D object render (3DScene.cpp:421,450), whose
+    // volumes carry design-extruder ids (unremapped) — so a design-extruder-indexed
+    // palette is correct here. The G-code preview, which indexes by device
+    // T-number, goes through get_extruder_colors_from_plater_config() instead.
+    // Guard p/sidebar: the 3D render can run during early startup before p or
+    // p->sidebar is ready; in that window there is no realisation yet, so the
+    // design colour IS the expected colour.
+    if (!p || p->sidebar == nullptr) {
+        return design->values;
+    }
     // Build an index by extruder id (entries are not guaranteed sorted).
-    const FulfillmentStore& store = wxGetApp().plater()->sidebar().fulfillment_store();
+    const FulfillmentStore& store = p->sidebar->fulfillment_store();
     std::unordered_map<unsigned int, const FulfillmentEntry*> by_extruder;
     for (const FulfillmentEntry& e : store.entries())
         by_extruder[e.design_extruder] = &e;
@@ -22077,7 +22231,7 @@ std::vector<std::string> Plater::get_expected_render_colors() const
     return out;
 }
 
-bool Plater::is_expected_view() const { return p->m_expected_view_active; }
+bool Plater::is_expected_view() const { return p && p->m_expected_view_active; }
 
 void Plater::set_expected_view(bool on)
 {
@@ -22089,13 +22243,23 @@ void Plater::set_expected_view(bool on)
     if (p->view3D) p->view3D->get_canvas3d()->set_as_dirty();
 }
 
+void Plater::invalidate_device_palette_cache()
+{
+    // p is valid whenever a Plater is reachable (it completes its ctor before
+    // registration); guard anyway since callers (e.g. Sidebar::load_ams_list) run
+    // during sync flows.
+    if (p) p->m_cached_device_palette_valid = false;
+}
+
 
 /* Get vector of colors used for rendering of a Preview scene in "Color print" mode
  * It consists of extruder colors and colors, saved in model.custom_gcode_per_print_z
  */
 std::vector<std::string> Plater::get_colors_for_color_print(const GCodeProcessorResult* const result) const
 {
-    std::vector<std::string> colors = get_extruder_colors_from_plater_config(result);
+    // ColorPrint view renders the slice result, so it must use the device palette
+    // (G-code T-number colours), not the design-extruder palette.
+    std::vector<std::string> colors = get_extruder_colors_from_plater_config(result, /*include_mixed=*/true, /*force_device_palette=*/true);
 
     if (wxGetApp().is_gcode_viewer() && result != nullptr) {
         for (const CustomGCode::Item& code : result->custom_gcode_per_print_z) {
@@ -22569,8 +22733,13 @@ void Plater::apply_background_progress()
     PartPlate* part_plate = p->partplate_list.get_curr_plate();
     int plate_index = p->partplate_list.get_curr_plate_index();
     bool result_valid = part_plate->is_slice_result_valid();
-    //always apply the current plate's print
-    Print::ApplyStatus invalidated = p->background_process.apply(this->model(), wxGetApp().preset_bundle->full_config());
+    //always apply the current plate's print (fulfillment device-space remap
+    //applied when the store has solved recipes — see prepare_slice_inputs).
+    const bool prev_auto_gen = Slic3r::MixedFilamentManager::auto_generate_enabled();
+    Slic3r::MixedFilamentManager::set_auto_generate_enabled(false);
+    Plater::priv::SliceInputs slice_inputs = p->prepare_slice_inputs(this->model());
+    Print::ApplyStatus invalidated = p->background_process.apply(*slice_inputs.model_ref, slice_inputs.config);
+    Slic3r::MixedFilamentManager::set_auto_generate_enabled(prev_auto_gen);
     p->notify_filament_compatibility_after_apply();
 
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" %1%: plate %2%, after apply, invalidated= %3%, previous result_valid %4% ") % __LINE__ % plate_index % invalidated % result_valid;
@@ -22612,8 +22781,13 @@ int Plater::select_plate(int plate_index, bool need_slice)
 
         part_plate->get_print(&print, &gcode_result, NULL);
 
-        //always apply the current plate's print
-        invalidated = p->background_process.apply(this->model(), wxGetApp().preset_bundle->full_config());
+        //always apply the current plate's print (fulfillment device-space remap
+        //applied when the store has solved recipes — see prepare_slice_inputs).
+        const bool prev_auto_gen = Slic3r::MixedFilamentManager::auto_generate_enabled();
+        Slic3r::MixedFilamentManager::set_auto_generate_enabled(false);
+        Plater::priv::SliceInputs slice_inputs = p->prepare_slice_inputs(this->model());
+        invalidated = p->background_process.apply(*slice_inputs.model_ref, slice_inputs.config);
+        Slic3r::MixedFilamentManager::set_auto_generate_enabled(prev_auto_gen);
         p->notify_filament_compatibility_after_apply();
         bool model_fits, validate_err;
 
@@ -22933,8 +23107,13 @@ int Plater::select_plate_by_hover_id(int hover_id, bool right_click, bool isModi
             Print::ApplyStatus invalidated;
 
             part_plate->get_print(&print, &gcode_result, NULL);
-            //always apply the current plate's print
-            invalidated = p->background_process.apply(this->model(), wxGetApp().preset_bundle->full_config());
+            //always apply the current plate's print (fulfillment device-space
+            //remap applied when the store has solved recipes — see prepare_slice_inputs).
+            const bool prev_auto_gen = Slic3r::MixedFilamentManager::auto_generate_enabled();
+            Slic3r::MixedFilamentManager::set_auto_generate_enabled(false);
+            Plater::priv::SliceInputs slice_inputs = p->prepare_slice_inputs(this->model());
+            invalidated = p->background_process.apply(*slice_inputs.model_ref, slice_inputs.config);
+            Slic3r::MixedFilamentManager::set_auto_generate_enabled(prev_auto_gen);
             p->notify_filament_compatibility_after_apply();
             bool model_fits, validate_err;
             validate_current_plate(model_fits, validate_err);

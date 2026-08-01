@@ -138,6 +138,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/Fulfillment/FulfillmentSnapshots.hpp
     GUI/Fulfillment/FulfillmentStore.cpp
     GUI/Fulfillment/FulfillmentStore.hpp
+    GUI/Fulfillment/FulfillmentSliceMapping.cpp
+    GUI/Fulfillment/FulfillmentSliceMapping.hpp
     GUI/format.hpp
     GUI/GCodeViewer.cpp
     GUI/GCodeViewer.hpp
