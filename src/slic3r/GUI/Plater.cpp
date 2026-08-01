@@ -22344,8 +22344,16 @@ std::vector<std::string> Plater::get_expected_render_colors() const
     out.reserve(design->values.size());
     for (size_t i = 0; i < design->values.size(); ++i) {
         auto it = by_extruder.find(static_cast<unsigned int>(i));
-        if (it != by_extruder.end() && it->second->recipe.valid && it->second->recipe.preview_color.IsOk())
-            out.push_back(it->second->recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
+        const FulfillmentEntry* e = it != by_extruder.end() ? it->second : nullptr;
+        // Use the realised colour only when the recipe is valid, its preview_color
+        // is set, AND its ΔE is finite. A freshly hand-edited recipe (apply_edited_recipe)
+        // has delta_e=inf until the next Match re-solves, so its stored preview_color
+        // is the PRE-edit colour — showing it would misrepresent the new recipe (PRD §5).
+        // This matches the ΔE-finite guard the row's expected swatch uses, so the 3D
+        // model and the panel swatch stay consistent (both fall back to design colour
+        // for a just-edited recipe).
+        if (e && e->recipe.valid && e->recipe.preview_color.IsOk() && std::isfinite(e->recipe.delta_e))
+            out.push_back(e->recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
         else
             out.push_back(design->values[i]); // no realisation yet → show design colour
     }
