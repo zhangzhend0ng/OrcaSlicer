@@ -280,7 +280,17 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
 
     // Inject synthesised rows as the mixed_filament_definitions string. This is
     // the ONLY input Print::apply reads to rebuild its MixedFilamentManager.
-    out.config.opt_string("mixed_filament_definitions", true) = mgr.serialize_custom_entries();
+    //
+    // Only overwrite when we actually added synthesised rows. When the manager
+    // is empty (every recipe was direct, or all synth rows were dropped by the
+    // MAXIMUM_FILAMENT_NUMBER / clamp paths), serialize_custom_entries() returns
+    // "" — blindly assigning that would ERASE the design-layer mixed_filament
+    // definitions the user configured (out.config started as a copy of
+    // full_config, which carries them), so this slice run would silently drop
+    // the user's design-layer mixes. Preserving the existing string keeps those
+    // mixes live when fulfilment adds none of its own.
+    if (mgr.enabled_count() > 0)
+        out.config.opt_string("mixed_filament_definitions", true) = mgr.serialize_custom_entries();
 
     // ---- Pass 4: design_extruder -> device filament id map ----
     out.design_to_device.assign(static_cast<size_t>(max_design_extruder) + 1, 0u);
