@@ -18,6 +18,8 @@
 #include <wx/bmpbuttn.h>
 #include <wx/colour.h>
 
+#include <algorithm>
+
 namespace Slic3r {
 namespace GUI {
 
@@ -107,11 +109,15 @@ void DeviceFilamentZone::on_timer(wxTimerEvent&)
     build_machine_filament_list(pb, machine_list);
 
     // Detect change by a lightweight fingerprint: count + each entry's
-    // type+colour. Size-only check misses content changes (e.g. a slot's
-    // filament loaded/unloaded keeps the same slot count).
+    // type+colour+mock-flag. Size-only check misses content changes (e.g. a slot's
+    // filament loaded/unloaded keeps the same slot count). The mock flag is
+    // required: without it, a mock->real transition whose slots happen to share
+    // index+type+colour would produce an identical fingerprint and skip the
+    // refresh, leaving the UI showing stale mock data + the offline banner.
     std::string fingerprint;
     for (const FilamentData& fd : machine_list)
-        fingerprint += std::to_string(fd.m_index) + "|" + fd.m_type + "|" + fd.m_color.PrimaryColor() + ";";
+        fingerprint += std::to_string(fd.m_index) + "|" + fd.m_type + "|" + fd.m_color.PrimaryColor()
+                     + "|" + (fd.m_mock ? "M" : "R") + ";";
 
     if (fingerprint != m_last_fingerprint) {
         m_last_fingerprint = fingerprint;
@@ -157,12 +163,34 @@ void DeviceFilamentZone::refresh()
         return;
     }
 
+    // When the list is entirely the offline mock (no live printer), say so at
+    // the top so the user knows the device data is inferred from the printer
+    // preset, not measured from a connected machine. Once a real machine
+    // reports, every slot's m_mock is false and this banner disappears.
+    const bool all_mock = std::all_of(machine_list.begin(), machine_list.end(),
+                                      [](const FilamentData& fd) { return fd.m_mock; });
+
     for (const FilamentData& fd : machine_list) {
         std::string slot_label = std::to_string(fd.m_index + 1);
         add_tray_item(grid, slot_label, fd);
     }
 
     auto* wrap = new wxBoxSizer(wxVERTICAL);
+    if (all_mock) {
+        // Wording is deliberately source-and-action, not connection-state: the
+        // mock path triggers whenever the device reports no filaments — whether
+        // no printer is connected, a connected printer hasn't reported its stock
+        // yet, or all trays are empty. "Connect a printer" would be wrong in the
+        // latter two cases (the printer IS connected). State where the data came
+        // from and how to refresh it; this holds for all three causes.
+        auto* mock_hint = new Label(m_panel_content,
+            _L("Offline mock: device filaments are inferred from the printer preset, not read from a connected machine. Sync the printer (or connect one) and refresh to see the real stock."),
+            LB_PROPAGATE_MOUSE_EVENT);
+        mock_hint->SetBackgroundColour(content_bg);
+        mock_hint->SetForegroundColour(wxColour(180, 90, 0));
+        mock_hint->Wrap(FromDIP(220));
+        wrap->Add(mock_hint, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(8));
+    }
     wrap->Add(grid, 0, wxEXPAND | wxALL, FromDIP(8));
     m_panel_content->SetSizer(wrap, true);
     m_panel_content->Layout();

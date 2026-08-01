@@ -143,9 +143,15 @@ void FulfillmentPanel::on_match()
     const bool any_mock = std::any_of(device.begin(), device.end(),
                                       [](const PhysicalSlot& s) { return s.is_mock; });
     if (any_mock) {
+        // Source-and-action wording (see DeviceFilamentZone refresh): the mock
+        // path fires whenever the device reports no filaments — no printer
+        // connected, a connected printer that hasn't reported stock yet, or all
+        // trays empty. Don't claim "no printer connected"; say where the data
+        // came from and how to get the real match.
         MessageDialog dlg(this,
-            _L("Device data is an offline mock, inferred from the printer preset. "
-               "Connect a printer and re-run Match to see the real device match."),
+            _L("Device data is an offline mock, inferred from the printer preset, "
+               "not read from a connected machine. Sync the printer (or connect one) "
+               "and re-run Match to see the real device match."),
             _L("Fulfillment"), wxOK | wxICON_INFORMATION);
         dlg.ShowModal();
     }
