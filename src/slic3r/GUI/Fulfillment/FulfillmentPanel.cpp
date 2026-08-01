@@ -151,11 +151,7 @@ void FulfillmentPanel::on_match()
     }
     wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
     // If Expected View is active, the 3D model must repaint with the new colours.
-    Plater* plater = wxGetApp().plater();
-    if (plater && plater->is_expected_view()) {
-        plater->set_expected_view(false);
-        plater->set_expected_view(true); // toggle off/on to force repaint
-    }
+    wxGetApp().plater()->refresh_expected_render();
 }
 
 void FulfillmentPanel::refresh_fulfilment()
@@ -374,11 +370,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
                                           std::to_string(data.m_index + 1));
             refresh_fulfilment();
             wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
-            Plater* plater = wxGetApp().plater();
-            if (plater && plater->is_expected_view()) {
-                plater->set_expected_view(false);
-                plater->set_expected_view(true);
-            }
+            wxGetApp().plater()->refresh_expected_render();
         });
         wxPoint pos = phys_btn->GetScreenPosition();
         pos.y += phys_btn->GetSize().y;

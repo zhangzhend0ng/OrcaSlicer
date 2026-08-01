@@ -74,6 +74,15 @@ namespace GUI {
 struct FilamentData;
 void build_design_filament_list(PresetBundle* preset_bundle, std::vector<FilamentData>& out_list);
 void build_machine_filament_list(PresetBundle* preset_bundle, std::vector<FilamentData>& out_list);
+// Offline fallback: when no printer is connected (m_connect_machine_info_list
+// empty), synthesise one FilamentData per printer extruder from the printer
+// preset's extruder_colour + default_filament_profile. Content is device-layer
+// (printer preset), NOT design — so the device space stays independent of the
+// design intent. Every produced slot has m_mock = true. Called only from inside
+// build_machine_filament_list when the real-machine list is empty, so all
+// downstream consumers (DeviceFilamentZone / snapshots / picker / sync dialog)
+// reuse the same FilamentData path transparently.
+void build_offline_mock_machine_filament_list(const PresetBundle& bundle, std::vector<FilamentData>& out_list);
 
 class MainFrame;
 class DeviceFilamentZone;
@@ -594,6 +603,14 @@ public:
     // Toggle / query the Expected-View mode (model rendered in realised colours).
     bool is_expected_view() const;
     void set_expected_view(bool on);
+    // Force the 3D scene to repaint in the CURRENT view mode without toggling
+    // Expected-View state. Use after the store's realised colours change while
+    // Expected View is on (e.g. after a Match or a manual recipe edit) so the
+    // model picks up the new colours. No-op when Expected View is off (design
+    // colours are unaffected by fulfilment changes). Replaces the earlier
+    // set_expected_view(false);set_expected_view(true); toggle hack, which read
+    // as a state change and was duplicated at every repaint site.
+    void refresh_expected_render();
     // Discard the cached Expected-View device palette (called when device stock
     // is re-synced; design-side and project-reset invalidations happen in priv).
     void invalidate_device_palette_cache();

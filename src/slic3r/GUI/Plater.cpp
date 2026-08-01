@@ -149,6 +149,7 @@
 #include "Fulfillment/FulfillmentPanel.hpp"
 #include "Fulfillment/FulfillmentStore.hpp"
 #include "Fulfillment/FulfillmentSliceMapping.hpp"
+#include "Fulfillment/FulfillmentSnapshots.hpp"   // snapshot_design_intent / snapshot_device_stock
 #include "PresetComboBoxes.hpp"
 #include "MsgDialog.hpp"
 #include "ProjectDirtyStateManager.hpp"
@@ -543,9 +544,72 @@ void build_machine_filament_list(PresetBundle* preset_bundle, std::vector<Filame
         fd.m_name     = info.filament_info;
         fd.m_type     = info.filament_type;
         fd.m_extruder = info.extruder;
-        
+
         if (!info.color_info.empty() || !info.multiColors.empty()) {
             fd.m_color = FilamentColor::FromColors(info.multiColors, info.colorMode, info.color_info);
+        }
+
+        out_list.push_back(std::move(fd));
+    }
+
+    // Offline fallback: no printer connected -> synthesise one mock slot per
+    // printer extruder from the printer preset. Content is device-layer only
+    // (extruder_colour / default_filament_profile), independent of the design
+    // intent, so the device space stays a real counterpart to the design space.
+    // All downstream consumers reuse the same FilamentData path transparently.
+    // The m_mock flag lets the UI mark these as inferred, not measured.
+    if (out_list.empty())
+        build_offline_mock_machine_filament_list(*preset_bundle, out_list);
+}
+
+void build_offline_mock_machine_filament_list(const PresetBundle& bundle, std::vector<FilamentData>& out_list)
+{
+    // Slot count = printer extruder count. nozzle_diameter is an
+    // m_extruder_option_keys member, so its vector length == extruder count.
+    const auto* nozzle = bundle.printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+    if (!nozzle || nozzle->values.empty())
+        return; // no extruder info to mock from — stay empty (honest)
+
+    const size_t n = nozzle->values.size();
+
+    // Device-layer colour: per-extruder label colour from the printer preset.
+    // Also an m_extruder_option_keys member, so length == n.
+    const auto* extruder_colour = bundle.printers.get_edited_preset().config.option<ConfigOptionStrings>("extruder_colour");
+    // Vendor-recommended default filament per extruder. NOTE: this key is
+    // intentionally skipped by set_num_extruders (PrintConfig.cpp:7600), so it
+    // is NOT resized to n — it commonly holds a single value. get_at() clamps
+    // out-of-range indices to front(), so every slot inherits the one declared
+    // default rather than becoming an empty slot. That keeps each slot's type
+    // resolvable (and the matcher useful) instead of leaving the whole machine
+    // "no filaments" when only the first extruder's default is declared.
+    const auto* default_filament = bundle.printers.get_edited_preset().config.option<ConfigOptionStrings>("default_filament_profile");
+
+    out_list.reserve(out_list.size() + n);
+    for (size_t i = 0; i < n; ++i) {
+        FilamentData fd;
+        fd.m_index    = static_cast<unsigned int>(i);
+        fd.m_extruder = static_cast<int>(i); // G-code T-number == extruder index
+        fd.m_mock     = true;
+
+        // Colour from the printer preset's per-extruder label colour.
+        if (extruder_colour && !extruder_colour->values.empty()) {
+            const std::string hex = extruder_colour->get_at(i);
+            fd.m_color = FilamentColor::FromColors({hex}, FilamentColorMode::Segment);
+        }
+
+        // Type: resolve the vendor default filament name -> filament preset ->
+        // its filament_type. Falls back to the raw name if no preset matches.
+        if (default_filament && !default_filament->values.empty()) {
+            const std::string& fname = default_filament->get_at(i);
+            const Preset* preset = bundle.filaments.find_preset(fname);
+            if (preset) {
+                fd.m_name = preset->label(false);
+                const auto* type_opt = preset->config.option<ConfigOptionStrings>("filament_type");
+                if (type_opt && !type_opt->values.empty())
+                    fd.m_type = type_opt->values[0];
+            } else if (!fname.empty()) {
+                fd.m_name = extract_base_filament_name(fname);
+            }
         }
 
         out_list.push_back(std::move(fd));
@@ -10083,12 +10147,6 @@ struct Plater::priv
     void update_fff_scene_only_shells(bool only_shells = true);
     //BBS: add popup object table logic
     bool PopupObjectTable(int object_id, int volume_id, const wxPoint& position);
-    // Pre-print Fulfillment gate (PRD §6 Flow C). Returns true and shows a report
-    // if the user has run a match that left broken (unresolvable) rows — callers
-    // should abort the send when it returns true. Centralised here so every send
-    // path (send-to-printer, print-all, send-gcode, export-gcode) shares one check
-    // instead of duplicating the logic.
-    bool fulfillment_gate_blocks();
     void on_action_send_to_printer(bool isall = false);
     void on_action_send_to_multi_machine(SimpleEvent&);
     int update_print_required_data(Slic3r::DynamicPrintConfig config, Slic3r::Model model, Slic3r::PlateDataPtrs plate_data_list, std::string file_name, std::string file_path);
@@ -12994,6 +13052,19 @@ Plater::priv::SliceInputs Plater::priv::prepare_slice_inputs(const Slic3r::Model
     FulfillmentStore& store = q->sidebar().fulfillment_store();
     if (!store.has_solved()) return out;
 
+    // If any entry is stale (design/device snapshot changed since solve), the
+    // entries' component_ams_keys were resolved against a PRIOR device snapshot.
+    // Slicing with them against the current snapshot can silently rewire a
+    // recipe component to the wrong physical slot — most acute on a mock<->real
+    // transition, where the same ams_key integer names a different physical
+    // filament. Re-solve against the CURRENT snapshots before building device
+    // space. solve() honours §4.3 lock survival, so user-pinned recipes are
+    // preserved (only their health/snapshot refreshed).
+    if (store.has_stale()) {
+        const PresetBundle* pb = wxGetApp().preset_bundle;
+        store.solve(GUI::snapshot_design_intent(*pb), GUI::snapshot_device_stock(*pb));
+    }
+
     auto space = GUI::build_device_filament_space(out.config, *wxGetApp().preset_bundle, store);
     if (!space) return out; // no realisable entry -> unchanged design slice
 
@@ -13013,22 +13084,74 @@ Plater::priv::SliceInputs Plater::priv::prepare_slice_inputs(const Slic3r::Model
         state_map[i] = EnforcerBlockerType(i);
 
     const int num_total = space->num_total;
+
+    // Fallback device extruder for design extruders that have NO realisation
+    // (design_to_device[id] == 0): an empty device slot or an unresolvable
+    // colour. remap_extruder_ids only rewires MMU painting — it does NOT touch
+    // the volume/object/layer-range `extruder` config fields, so a model that
+    // references such a design extruder would otherwise keep pointing at it.
+    // Against the device-space config that index may exceed num_physical (the
+    // region path clamps it, but Print::object_extruders reads the raw
+    // volume extruders WITHOUT clamping — Print.cpp object_extruders ->
+    // mv->get_extruders — and the filament/preview list then shows a filament
+    // for a slot the user knows is empty). Redirect every unfulfilled design
+    // extruder to the first realisable device extruder so the model references
+    // a slot that actually has filament. (If NOTHING is realisable, rows is
+    // empty and build_device_filament_space already returned nullopt above, so
+    // a fallback always exists here.) Colour information for the redirected
+    // extruder is lost (it prints as the fallback filament), which is the
+    // honest outcome of "this colour can't be fulfilled on this device".
+    unsigned int fallback_device_id = 0;
+    for (unsigned int did : space->design_to_device)
+        if (did != 0) { fallback_device_id = did; break; }
+
     bool any_remap = false;
     for (size_t design_id = 0; design_id < space->design_to_device.size(); ++design_id) {
-        const unsigned int device_id = space->design_to_device[design_id];
-        if (device_id == 0) continue;
         // design_id is 0-based; painting state index is 1-based (Extruder1 == 1).
         const size_t state_idx = design_id + 1;
         if (state_idx >= state_map.size()) continue;
+        unsigned int device_id = space->design_to_device[design_id];
+        if (device_id == 0) {
+            // Unfulfilled: redirect to the fallback rather than leaving identity.
+            // Leaving identity would let the model keep referencing this design
+            // extruder against the device config (leaking an empty/unrealisable
+            // slot into the slice output).
+            if (fallback_device_id == 0) continue; // nothing to redirect to
+            device_id = fallback_device_id;
+        }
         if (device_id >= state_map.size() || (int)device_id > num_total) continue;
         state_map[state_idx] = EnforcerBlockerType(device_id);
         any_remap = true;
     }
 
     if (any_remap) {
+        // Rewire MMU painting (triangle-level painted extruder assignments).
         for (Slic3r::ModelObject* mo : out.temp_storage.objects) {
             for (Slic3r::ModelVolume* mv : mo->volumes)
                 mv->remap_extruder_ids(static_cast<size_t>(num_total), state_map);
+
+            // Rewire the per-volume / per-object / per-layer-range `extruder`
+            // config fields too. remap_extruder_ids only handles painting; the
+            // extruder field (1-based) is read by ModelVolume::extruder_id()
+            // (which falls back to the object config) and feeds
+            // Print::object_extruders -> mv->get_extruders, the unclamped path
+            // that populates the filament/preview list. Without this rewrite a
+            // volume assigned to an unfulfilled design extruder still shows up
+            // as a phantom filament in the slice result.
+            auto remap_extruder_field = [num_total, &state_map](Slic3r::ModelConfig &cfg) {
+                const ConfigOption *opt = cfg.option("extruder");
+                if (!opt) return;
+                int e = opt->getInt();
+                if (e <= 0) return; // 0 = default/unspecified, leave as-is
+                if ((size_t)e >= state_map.size() || (int)e > num_total) return;
+                int mapped = static_cast<int>(state_map[(size_t)e]);
+                if (mapped != e) cfg.set("extruder", mapped);
+            };
+            remap_extruder_field(mo->config);
+            for (Slic3r::ModelVolume* mv : mo->volumes)
+                remap_extruder_field(mv->config);
+            for (auto& lr : mo->layer_config_ranges)
+                remap_extruder_field(lr.second);
         }
     }
 
@@ -15256,33 +15379,8 @@ void Sidebar::update_fulfillment_health_indicator()
     p->m_fulfillment_health_indicator->SetToolTip(_L("Design vs device fulfilment. Click to view details."));
 }
 
-bool Plater::priv::fulfillment_gate_blocks()
-{
-    // Only blocks when the user has actually run a fulfilment match AND it
-    // surfaced unresolvable (broken) rows. If no match was ever run, we do NOT
-    // force one here — the gate speaks about detected gaps, and an un-run check
-    // is not a detected gap (no nagging).
-    Sidebar& sb = q->sidebar();
-    if (!sb.fulfillment_store().has_solved()) return false;
-    const auto roll = sb.fulfillment_store().rollup();
-    if (roll.broken <= 0) return false;
-    // Human-language report (PRD §5). OrcaSlicer has no plural-form macro, so
-    // the sentence is phrased to read correctly at any count.
-    wxString msg = wxString::Format(
-        _L("Send blocked: %d of your design colours cannot be fulfilled by this device's loaded filament."),
-        roll.broken);
-    if (roll.tunable > 0)
-        msg += wxString::Format(_L("\n(%d colour match(es) are approximate but accepted.)"), roll.tunable);
-    msg += "\n" + _L("Resolve the unmatched items in the Device Filaments panel, or load the missing filament, before sending.");
-    MessageDialog dlg(q, msg, _L("Pre-print check"), wxOK | wxICON_WARNING);
-    dlg.ShowModal();
-    return true;
-}
-
 void Plater::priv::on_action_send_to_printer(bool isall)
 {
-    if (fulfillment_gate_blocks()) return; // PRD §6 Flow C / §5
-
 	if (!m_send_to_sdcard_dlg) m_send_to_sdcard_dlg = new SendToPrinterDialog(q);
     if (isall) {
         m_send_to_sdcard_dlg->prepare(PLATE_ALL_IDX);
@@ -15308,7 +15406,6 @@ void Plater::priv::on_action_print_all(SimpleEvent&)
     if (q != nullptr) {
         BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ":received print all event\n" ;
     }
-    if (fulfillment_gate_blocks()) return; // PRD §6 Flow C / §5
 
     PresetBundle& preset_bundle = *wxGetApp().preset_bundle;
     if (preset_bundle.use_bbl_network()) {
@@ -15328,7 +15425,6 @@ void Plater::priv::on_action_export_gcode(SimpleEvent&)
 {
     if (q != nullptr) {
         BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ":received export gcode event\n" ;
-        if (fulfillment_gate_blocks()) return; // PRD §6 Flow C / §5
         q->export_gcode(false);
     }
 }
@@ -15337,7 +15433,6 @@ void Plater::priv::on_action_send_gcode(SimpleEvent&)
 {
     if (q != nullptr) {
         BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ":received export gcode event\n" ;
-        if (fulfillment_gate_blocks()) return; // PRD §6 Flow C / §5
         q->send_gcode_legacy();
     }
 }
@@ -22241,6 +22336,17 @@ void Plater::set_expected_view(bool on)
     // set_as_dirty() is the standard way the codebase triggers canvas redraw
     // (see Plater.cpp:13030, 22769) — the render loop picks it up.
     if (p->view3D) p->view3D->get_canvas3d()->set_as_dirty();
+}
+
+void Plater::refresh_expected_render()
+{
+    // Repaint in the current view mode WITHOUT toggling state. Realised colours
+    // are read per-frame from get_expected_render_colors(), so a dirty flag is
+    // enough; no state change is needed or wanted (toggling would briefly show
+    // the wrong source and read as a user-visible mode flip). No-op when
+    // Expected View is off — design colours don't depend on the FulfillmentStore.
+    if (p && p->m_expected_view_active && p->view3D)
+        p->view3D->get_canvas3d()->set_as_dirty();
 }
 
 void Plater::invalidate_device_palette_cache()
