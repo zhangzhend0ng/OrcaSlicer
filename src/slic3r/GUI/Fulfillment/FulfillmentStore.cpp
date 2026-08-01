@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <unordered_set>
 #include <boost/algorithm/string/predicate.hpp> // boost::iequals
 
 namespace Slic3r {
@@ -27,6 +28,21 @@ bool lock_survives(const FulfillmentEntry& prior, const DesignIntent& now)
     // separately by solve() comparing the entry's stored colour snapshot.)
     return true;
 }
+
+// A locked recipe pins specific device slots (component_ams_keys). Those keys
+// are only meaningful against the device snapshot the lock was made against; if
+// the snapshot changed (e.g. mock<->real, slot removed), the same integer may
+// now name a different filament or none at all. The lock is only safe to keep
+// while every key it references is still present in the current snapshot. A
+// missing key means the user-pinned recipe can no longer be honoured as-is, so
+// solve() drops the lock and re-matches against the live device.
+bool lock_components_present(const FulfillmentEntry& prior, const std::unordered_set<int>& device_ams_keys)
+{
+    if (!prior.locked) return false;
+    for (int key : prior.component_ams_keys)
+        if (device_ams_keys.find(key) == device_ams_keys.end()) return false;
+    return true;
+}
 } // namespace
 
 void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
@@ -36,6 +52,19 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
     // Index prior entries by design_extruder for O(1) lookup.
     std::vector<FulfillmentEntry> next;
     next.reserve(design.size());
+
+    // Device ams_key set for this snapshot — used to validate that a locked
+    // entry's component_ams_keys still resolve against the CURRENT device. The
+    // ams_key namespace is NOT stable across a device snapshot change: a real
+    // machine's ams_key is the WCP filament_official array position, while the
+    // offline mock's is the extruder index, so the SAME integer can name a
+    // different physical filament before/after a (dis)connect. A locked recipe
+    // whose ams_keys no longer exist must be re-solved rather than silently
+    // rewired to whatever now sits at that key (or dropped mid-slice).
+    std::unordered_set<int> device_ams_keys;
+    device_ams_keys.reserve(device.size());
+    for (const PhysicalSlot& s : device) device_ams_keys.insert(s.ams_key);
+
     for (const DesignIntent& intent : design) {
         // Carry forward a prior entry for this intent (for its lock/recipe).
         const FulfillmentEntry* prior = find(intent.design_extruder);
@@ -51,7 +80,11 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
         // itself is dropped if the intent's type changed (hard-constraint
         // space changed); a colour-only change keeps the lock but flags stale
         // so the user is prompted (soft-constraint path).
-        const bool lock_survives_this = prior && prior->locked && lock_survives(*prior, intent);
+        // It is ALSO dropped if any recipe component no longer maps to a device
+        // slot in the current snapshot (device changed under the lock) — see
+        // device_ams_keys above.
+        const bool lock_survives_this = prior && prior->locked && lock_survives(*prior, intent)
+                                     && lock_components_present(*prior, device_ams_keys);
         if (lock_survives_this) {
             e = *prior;                       // preserve the locked recipe wholesale
             e.design_color = intent.color;    // refresh snapshot
@@ -110,10 +143,30 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
 
     // ---- Pass 2: COLOUR MATCH among same-type slots ----
     // Direct: closest slot within ΔE < kColorMatchDirectThreshold (pure filament preferred).
+    //
+    // Colour validity is a precondition for an honest ΔE: color_delta_e00 reads
+    // RGB channels unconditionally and, given an invalid wxColour (default-
+    // constructed, channels read as 0), silently treats it as BLACK — yielding a
+    // finite, plausible-looking ΔE that can wrongly elect a slot as the "best
+    // direct match" (PRD §5: gaps must be spoken, never silently substituted).
+    // An invalid target colour (unparseable design intent) or an invalid slot
+    // colour (unparseable device-reported hex — snapshot_device_stock only sets
+    // s.color when try_parse_color_match_hex succeeds, else leaves it invalid)
+    // therefore cannot be matched honestly.
     const wxColour target(intent.color);
+    if (!target.IsOk()) {
+        // Same-type stock exists, but the design colour itself is unresolvable —
+        // a colour gap. Surface it as Unmet rather than matching against black.
+        out.kind = PlanKind::Unmet;
+        out.health = HealthState::Broken;
+        out.recipe = {};
+        out.component_ams_keys.clear();
+        return;
+    }
     const PhysicalSlot* best_direct = nullptr;
     double best_direct_de = std::numeric_limits<double>::max();
     for (const PhysicalSlot* s : same_type) {
+        if (!s->color.IsOk()) continue; // can't compute an honest ΔE for this slot
         double de = color_delta_e00(target, s->color);
         if (de < best_direct_de) { best_direct_de = de; best_direct = s; }
     }
@@ -129,6 +182,7 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
         out.recipe.preview_color = best_direct->color;
         out.recipe.delta_e = best_direct_de;
         out.component_ams_keys.assign(1, best_direct->ams_key);
+        out.component_tray_names.assign(1, best_direct->tray_name);
         return;
     }
 
@@ -145,7 +199,29 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
     // Both are required; neither subsumes the other.
     std::vector<std::string> palette;
     palette.reserve(same_type.size());
-    for (const PhysicalSlot* s : same_type) palette.push_back(s->color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
+    // Skip slots with an invalid colour for the same reason as the direct loop
+    // above: GetAsString(wxC2S_HTML_SYNTAX) on an invalid wxColour returns
+    // "#000000" (black), so including it would let a colour-unresolvable slot
+    // silently contribute black to the blend — a hidden substitution (PRD §5).
+    // Track which slots made it into the palette so component_ams_keys aligns.
+    std::vector<const PhysicalSlot*> palette_slots;
+    palette_slots.reserve(same_type.size());
+    for (const PhysicalSlot* s : same_type) {
+        if (!s->color.IsOk()) continue;
+        palette.push_back(s->color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
+        palette_slots.push_back(s);
+    }
+    if (palette.size() < 2) {
+        // Fewer than 2 honest-colour same-type slots: no blend possible. (1 slot
+        // was already handled by the direct path above if it qualified, so here
+        // it either didn't meet the direct threshold or its colour was invalid.)
+        out.kind = PlanKind::Unmet;
+        out.health = HealthState::Broken;
+        out.recipe = {};
+        out.component_ams_keys.clear();
+        out.component_tray_names.clear();
+        return;
+    }
 
     out.recipe = build_best_color_match_recipe(
         palette, target, /*min_component_percent=*/0, /*max_component_percent=*/100,
@@ -156,9 +232,20 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
         // Store the FULL recipe verbatim (component_a/b, mix_b_percent,
         // manual_pattern, gradient_*, preview_color, delta_e) — no projection,
         // so nothing the solver (or later MixedFilamentDialog) produces is lost.
+        // component_a/b are 1-based indices into `palette`, which was built
+        // parallel to `palette_slots` (same iteration order, invalid-colour slots
+        // excluded from BOTH). So component_ams_keys/tray_names must be filled
+        // from palette_slots — indexing them from `same_type` would misalign
+        // recipe components to the wrong slots whenever a same-type slot had an
+        // unresolvable colour and was skipped.
         out.component_ams_keys.clear();
-        out.component_ams_keys.reserve(same_type.size());
-        for (const PhysicalSlot* s : same_type) out.component_ams_keys.push_back(s->ams_key);
+        out.component_ams_keys.reserve(palette_slots.size());
+        out.component_tray_names.clear();
+        out.component_tray_names.reserve(palette_slots.size());
+        for (const PhysicalSlot* s : palette_slots) {
+            out.component_ams_keys.push_back(s->ams_key);
+            out.component_tray_names.push_back(s->tray_name);
+        }
         out.health = (out.recipe.delta_e < kTunableDeltaE) ? HealthState::Tunable : HealthState::Broken;
     } else {
         // Same-type slots exist but no valid blend — unmet (colour-wise
@@ -166,6 +253,7 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
         out.kind = PlanKind::Unmet;
         out.health = HealthState::Broken;
         out.component_ams_keys.clear();
+        out.component_tray_names.clear();
     }
 }
 
@@ -193,6 +281,13 @@ void FulfillmentStore::recompute_health_from_recipe(const DesignIntent& intent,
 void FulfillmentStore::mark_stale()
 {
     for (FulfillmentEntry& e : m_entries) e.stale = true;
+}
+
+bool FulfillmentStore::has_stale() const
+{
+    for (const FulfillmentEntry& e : m_entries)
+        if (e.stale) return true;
+    return false;
 }
 
 const FulfillmentEntry* FulfillmentStore::find(unsigned int design_extruder) const
@@ -228,7 +323,8 @@ void FulfillmentStore::set_ratio(unsigned int design_extruder, int ratio_b_perce
     }
 }
 
-void FulfillmentStore::set_direct_slot(unsigned int design_extruder, int slot)
+void FulfillmentStore::set_direct_slot(unsigned int design_extruder, int slot,
+                                        const std::string& tray_name)
 {
     for (FulfillmentEntry& e : m_entries) {
         if (e.design_extruder == design_extruder) {
@@ -238,13 +334,15 @@ void FulfillmentStore::set_direct_slot(unsigned int design_extruder, int slot)
             e.recipe.component_b = 1;
             e.recipe.mix_b_percent = 0;
             e.component_ams_keys.assign(1, slot);
+            e.component_tray_names.assign(1, tray_name);
             return;
         }
     }
 }
 
 void FulfillmentStore::set_direct_with_color(unsigned int design_extruder, int slot,
-                                             const wxColour& realised_color, const std::string& design_color_hex)
+                                             const wxColour& realised_color, const std::string& design_color_hex,
+                                             const std::string& tray_name)
 {
     for (FulfillmentEntry& e : m_entries) {
         if (e.design_extruder != design_extruder) continue;
@@ -263,6 +361,7 @@ void FulfillmentStore::set_direct_with_color(unsigned int design_extruder, int s
                  : (e.recipe.delta_e < kTunableDeltaE)             ? HealthState::Tunable
                                                                   : HealthState::Broken;
         e.component_ams_keys.assign(1, slot);
+        e.component_tray_names.assign(1, tray_name);
         e.locked = true;   // user explicitly chose this filament
         e.stale = false;
         return;
@@ -274,7 +373,8 @@ void FulfillmentStore::apply_edited_recipe(unsigned int design_extruder,
                                            const std::string& manual_pattern,
                                            const std::string& gradient_component_ids,
                                            const std::string& gradient_component_weights,
-                                           const std::vector<int>& component_ams_keys)
+                                           const std::vector<int>& component_ams_keys,
+                                           const std::vector<std::string>& component_tray_names)
 {
     for (FulfillmentEntry& e : m_entries) {
         if (e.design_extruder != design_extruder) continue;
@@ -283,6 +383,7 @@ void FulfillmentStore::apply_edited_recipe(unsigned int design_extruder,
         e.recipe.component_b = component_b;
         e.recipe.mix_b_percent = std::clamp(mix_b_percent, 0, 100);
         e.component_ams_keys = component_ams_keys; // update slot mapping for the new palette
+        e.component_tray_names = component_tray_names;
         e.recipe.manual_pattern = manual_pattern;
         e.recipe.gradient_component_ids = gradient_component_ids;
         e.recipe.gradient_component_weights = gradient_component_weights;
