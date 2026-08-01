@@ -36,6 +36,14 @@ public:
     // after a design/device change marked the plan stale.
     void refresh_fulfilment();
 
+    // Snap the Design/Expected toggle's visual state to `expected` WITHOUT
+    // firing its selection callback (setSelected is visual-only). Used when the
+    // active view mode is changed externally (e.g. project reset turns Expected
+    // View off) so the control doesn't desync from the actual mode — otherwise
+    // the toggle would keep showing "Expected" while the 3D model renders Design
+    // colours, a confusing mismatch.
+    void sync_view_toggle_to_expected(bool expected);
+
 private:
     // Solve the store against live Design + Physical snapshots (read-only),
     // then refresh. Bound to the Match button.

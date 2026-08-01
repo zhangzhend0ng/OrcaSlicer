@@ -12655,6 +12655,25 @@ void Plater::priv::reset(bool apply_presets_change)
     // slice rebuilds it.
     m_cached_device_palette_valid = false;
 
+    // Project reset → the FulfillmentStore holds entries (recipes/locks) solved
+    // against the PREVIOUS project's design + device. They are meaningless for a
+    // fresh project, and mark_stale alone would leave them displayed (just flagged
+    // stale) until the user re-Matches — confusing, and a stale entry could even
+    // be consumed by prepare_slice_inputs' stale re-solve against the new (empty)
+    // design before the user notices. Fully reset the store (clears entries,
+    // locks, and m_ever_solved) and turn Expected View off (no realisation exists
+    // for the new project until the user matches again).
+    sidebar->fulfillment_store().reset_all();
+    if (m_expected_view_active) {
+        m_expected_view_active = false;
+        if (view3D) view3D->get_canvas3d()->set_as_dirty();
+        // The view-toggle widget retains its clicked state across a project reset;
+        // snap it back to Design so the control matches the active mode.
+        if (auto* panel = sidebar->fulfillment_panel()) panel->sync_view_toggle_to_expected(false);
+    }
+    if (auto* panel = sidebar->fulfillment_panel()) panel->refresh_fulfilment();
+    sidebar->update_fulfillment_health_indicator();
+
     clear_warnings();
 
     set_project_filename("");

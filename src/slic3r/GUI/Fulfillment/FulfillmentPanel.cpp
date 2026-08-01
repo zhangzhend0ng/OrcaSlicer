@@ -166,6 +166,13 @@ void FulfillmentPanel::on_match()
     }
 }
 
+void FulfillmentPanel::sync_view_toggle_to_expected(bool expected)
+{
+    // setSelected is visual-only (does not fire the callback), so this is safe
+    // to call from a path that already set the actual mode (e.g. project reset).
+    if (m_view_toggle) m_view_toggle->setSelected(expected ? 1 : 0);
+}
+
 void FulfillmentPanel::refresh_fulfilment()
 {
     const bool     is_dark    = wxGetApp().dark_mode();
