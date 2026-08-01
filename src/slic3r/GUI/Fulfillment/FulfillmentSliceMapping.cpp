@@ -71,6 +71,16 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
     // (harness UB-3/UB-4). The sole caller discards the result anyway, so the
     // return value was both dead and a latent trap. Returning void removes both.
     std::vector<DeviceFilamentRow> rows;
+    // Sanitise the device-reported physical_extruder (T-number). It is parsed
+    // verbatim from untrusted device WCP JSON (SSWCP.cpp:1648,
+    // extruder_map_table[i].get<int>()) with no upstream bounds check. A
+    // legitimate T-number is always in [0, device.size()) — a slot index beyond
+    // the reported filament count names a slot the device does not have. Without
+    // this clamp, a malformed/huge value would set max_t to that value and make
+    // num_physical = max_t+1, driving an unbounded allocation of t_indexed_colors
+    // (input-validation (N), integer-safety (N)). Out-of-range values are mapped
+    // to -1 (unmapped), preserving the existing Moonraker/Klipper fallback path.
+    const auto device_extruder_limit = static_cast<int>(device.size());
     auto need_slot = [&](int ams_key) -> void {
         for (const DeviceFilamentRow& r : rows)
             if (r.ams_key == ams_key) return; // already collected
@@ -78,8 +88,9 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
         if (it == slot_by_ams_key.end() || it->second == nullptr) return;
         const PhysicalSlot* s = it->second;
         DeviceFilamentRow r;
-        r.ams_key           = s->ams_key;
-        r.physical_extruder = s->physical_extruder;
+        r.ams_key = s->ams_key;
+        const int reported = s->physical_extruder;
+        r.physical_extruder = (reported >= 0 && reported < device_extruder_limit) ? reported : -1;
         if (s->color.IsOk()) r.color_hex = s->color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
         r.type = s->type;
         rows.push_back(std::move(r));
