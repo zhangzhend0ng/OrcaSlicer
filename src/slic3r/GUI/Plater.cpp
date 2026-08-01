@@ -13143,8 +13143,25 @@ Plater::priv::SliceInputs Plater::priv::prepare_slice_inputs(const Slic3r::Model
                 if (!opt) return;
                 int e = opt->getInt();
                 if (e <= 0) return; // 0 = default/unspecified, leave as-is
-                if ((size_t)e >= state_map.size() || (int)e > num_total) return;
+                // `e` is a 1-based DESIGN extruder; state_map is indexed by it and
+                // already holds the device-space id (real or fallback) for every
+                // design extruder in range. The earlier guard `(int)e > num_total`
+                // compared the DESIGN index to the DEVICE count — wrong when the
+                // design has more extruders than the device (e.g. 8-colour design
+                // on a 4-extruder device): design extruders 5-8 hit the early
+                // return UNMAPPED, leaking phantom filaments into the slice — the
+                // exact failure this rewrite exists to prevent. The only valid
+                // bounds check here is against state_map's size; the resulting
+                // device id is then range-checked against num_total and clamped to
+                // the fallback if somehow out of range.
+                if ((size_t)e >= state_map.size()) return;
                 int mapped = static_cast<int>(state_map[(size_t)e]);
+                if (mapped > num_total) {
+                    // Defensive: state_map should only hold ids <= num_total, but
+                    // don't trust it — clamp to 1 (first physical slot) rather
+                    // than write an out-of-range extruder into the device config.
+                    mapped = 1;
+                }
                 if (mapped != e) cfg.set("extruder", mapped);
             };
             remap_extruder_field(mo->config);
