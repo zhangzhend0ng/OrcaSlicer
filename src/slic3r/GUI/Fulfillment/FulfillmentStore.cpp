@@ -146,7 +146,7 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
                 e.stale = true;
             // Re-derive health from the (possibly colour-shifted) intent vs the
             // preserved recipe, so the dot still reflects current truth.
-            recompute_health_from_recipe(intent, device, e);
+            recompute_health_from_recipe(intent, e);
         } else {
             // Not locked (or lock invalidated): solve fresh.
             solve_intent(intent, device, e);
@@ -310,13 +310,16 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
 }
 
 void FulfillmentStore::recompute_health_from_recipe(const DesignIntent& intent,
-                                                    const std::vector<PhysicalSlot>& device,
                                                     FulfillmentEntry& e)
 {
     // Re-derive ΔE/health for a locked entry whose recipe is preserved but whose
     // design colour snapshot moved. The recipe already carries its preview_color
     // (the colour this recipe realises), so just recompute ΔE against the new
-    // target — no need to re-resolve components. Unmet stays broken.
+    // target — no need to re-resolve components. (The device snapshot is not
+    // needed here: solve() already validated component presence AND content via
+    // lock_components_present / lock_components_unchanged before calling this, so
+    // the recipe's components are current. The earlier signature took `device`
+    // but never read it — a misleading unused parameter.)
     if (e.kind == PlanKind::Unmet || !e.recipe.valid) {
         e.health = HealthState::Broken;
         return;
