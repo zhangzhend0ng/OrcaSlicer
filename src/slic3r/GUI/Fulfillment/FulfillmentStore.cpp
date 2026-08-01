@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <unordered_map>
 #include <unordered_set>
 #include <boost/algorithm/string/predicate.hpp> // boost::iequals
 
@@ -43,6 +44,39 @@ bool lock_components_present(const FulfillmentEntry& prior, const std::unordered
         if (device_ams_keys.find(key) == device_ams_keys.end()) return false;
     return true;
 }
+
+// A locked recipe's ams_keys may all still be present, but a slot's CONTENT may
+// have changed since the lock was made: a same-type swap on a real machine
+// (slot 2 red PLA -> blue PLA keeps ams_key 2 but the recipe now blends the
+// wrong colour), or a mock<->real transition where the same ams_key integer
+// names a different physical filament. Capturing each component's device colour
+// at lock time lets us detect a material colour change and drop the lock rather
+// than silently honour a stale binding (PRD §4.3 physical-stock-change, §5 gaps
+// spoken). `device_color_by_ams_key` maps the current ams_key -> hex colour.
+// Entries whose prior.component_colors is empty (legacy/unguarded lock) skip the
+// colour check and fall back to ams_key-presence-only — preserving prior
+// behaviour instead of dropping locks that never captured a fingerprint.
+bool lock_components_unchanged(const FulfillmentEntry& prior,
+                               const std::unordered_map<int, std::string>& device_color_by_ams_key)
+{
+    if (!prior.locked) return false;
+    if (prior.component_colors.empty()) return true; // no fingerprint captured → trust presence
+    if (prior.component_colors.size() != prior.component_ams_keys.size()) return true; // misaligned → trust presence
+    for (size_t i = 0; i < prior.component_ams_keys.size(); ++i) {
+        auto it = device_color_by_ams_key.find(prior.component_ams_keys[i]);
+        if (it == device_color_by_ams_key.end()) return false; // missing — lock_components_present also flags this
+        // Compare via ΔE so trivial colour-string differences (#FF0000 vs #ff0000,
+        // or a near-identical vendor batch) don't spuriously drop a lock. Use the
+        // same kTunableDeltaE threshold as the matcher's health bands: a change
+        // within the tunable band is "same filament, batch drift", kept; beyond it
+        // is "different filament", dropped.
+        const wxColour old_c(prior.component_colors[i]);
+        const wxColour new_c(it->second);
+        if (old_c.IsOk() && new_c.IsOk() && color_delta_e00(old_c, new_c) > kTunableDeltaE)
+            return false;
+    }
+    return true;
+}
 } // namespace
 
 void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
@@ -63,7 +97,16 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
     // rewired to whatever now sits at that key (or dropped mid-slice).
     std::unordered_set<int> device_ams_keys;
     device_ams_keys.reserve(device.size());
-    for (const PhysicalSlot& s : device) device_ams_keys.insert(s.ams_key);
+    std::unordered_map<int, std::string> device_color_by_ams_key;
+    device_color_by_ams_key.reserve(device.size());
+    for (const PhysicalSlot& s : device) {
+        device_ams_keys.insert(s.ams_key);
+        // Only capture a colour when the slot's colour is valid; invalid-colour
+        // slots contribute empty strings, which lock_components_unchanged treats
+        // as "no fingerprint comparable" via the IsOk() guard.
+        device_color_by_ams_key.emplace(s.ams_key,
+            s.color.IsOk() ? s.color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString() : std::string{});
+    }
 
     for (const DesignIntent& intent : design) {
         // Carry forward a prior entry for this intent (for its lock/recipe).
@@ -82,9 +125,14 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
         // so the user is prompted (soft-constraint path).
         // It is ALSO dropped if any recipe component no longer maps to a device
         // slot in the current snapshot (device changed under the lock) — see
-        // device_ams_keys above.
+        // device_ams_keys above — OR if a still-present slot's CONTENT changed
+        // materially since the lock was made (same-type swap / mock<->real),
+        // which lock_components_unchanged detects via the captured colour
+        // fingerprint. Without that check a slot swap would silently rebind the
+        // locked recipe to a different filament (PRD §5).
         const bool lock_survives_this = prior && prior->locked && lock_survives(*prior, intent)
-                                     && lock_components_present(*prior, device_ams_keys);
+                                     && lock_components_present(*prior, device_ams_keys)
+                                     && lock_components_unchanged(*prior, device_color_by_ams_key);
         if (lock_survives_this) {
             e = *prior;                       // preserve the locked recipe wholesale
             e.design_color = intent.color;    // refresh snapshot
@@ -183,6 +231,7 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
         out.recipe.delta_e = best_direct_de;
         out.component_ams_keys.assign(1, best_direct->ams_key);
         out.component_tray_names.assign(1, best_direct->tray_name);
+        out.component_colors.assign(1, best_direct->color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
         return;
     }
 
@@ -242,9 +291,12 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
         out.component_ams_keys.reserve(palette_slots.size());
         out.component_tray_names.clear();
         out.component_tray_names.reserve(palette_slots.size());
+        out.component_colors.clear();
+        out.component_colors.reserve(palette_slots.size());
         for (const PhysicalSlot* s : palette_slots) {
             out.component_ams_keys.push_back(s->ams_key);
             out.component_tray_names.push_back(s->tray_name);
+            out.component_colors.push_back(s->color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
         }
         out.health = (out.recipe.delta_e < kTunableDeltaE) ? HealthState::Tunable : HealthState::Broken;
     } else {
@@ -335,6 +387,9 @@ void FulfillmentStore::set_direct_slot(unsigned int design_extruder, int slot,
             e.recipe.mix_b_percent = 0;
             e.component_ams_keys.assign(1, slot);
             e.component_tray_names.assign(1, tray_name);
+            e.component_colors.clear(); // no colour captured by this legacy API;
+                                        // solve() colour-check skips entries
+                                        // whose component_colors is empty.
             return;
         }
     }
@@ -362,6 +417,9 @@ void FulfillmentStore::set_direct_with_color(unsigned int design_extruder, int s
                                                                   : HealthState::Broken;
         e.component_ams_keys.assign(1, slot);
         e.component_tray_names.assign(1, tray_name);
+        e.component_colors.assign(1, realised_color.IsOk()
+            ? realised_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString()
+            : std::string{});
         e.locked = true;   // user explicitly chose this filament
         e.stale = false;
         return;
@@ -374,7 +432,8 @@ void FulfillmentStore::apply_edited_recipe(unsigned int design_extruder,
                                            const std::string& gradient_component_ids,
                                            const std::string& gradient_component_weights,
                                            const std::vector<int>& component_ams_keys,
-                                           const std::vector<std::string>& component_tray_names)
+                                           const std::vector<std::string>& component_tray_names,
+                                           const std::vector<std::string>& component_colors)
 {
     for (FulfillmentEntry& e : m_entries) {
         if (e.design_extruder != design_extruder) continue;
@@ -384,6 +443,7 @@ void FulfillmentStore::apply_edited_recipe(unsigned int design_extruder,
         e.recipe.mix_b_percent = std::clamp(mix_b_percent, 0, 100);
         e.component_ams_keys = component_ams_keys; // update slot mapping for the new palette
         e.component_tray_names = component_tray_names;
+        e.component_colors = component_colors;     // colour fingerprint for lock survival
         e.recipe.manual_pattern = manual_pattern;
         e.recipe.gradient_component_ids = gradient_component_ids;
         e.recipe.gradient_component_weights = gradient_component_weights;

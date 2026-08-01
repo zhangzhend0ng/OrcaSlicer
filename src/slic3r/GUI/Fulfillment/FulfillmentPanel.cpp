@@ -423,7 +423,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
         const Slic3r::MixedFilament& r = dlg.GetResult();
         m_store.apply_edited_recipe(e.design_extruder, r.component_a, r.component_b, r.mix_b_percent,
                                     r.manual_pattern, r.gradient_component_ids, r.gradient_component_weights,
-                                    palette_ams_keys, palette_tray_names);
+                                    palette_ams_keys, palette_tray_names, palette);
         refresh_fulfilment();
     });
 

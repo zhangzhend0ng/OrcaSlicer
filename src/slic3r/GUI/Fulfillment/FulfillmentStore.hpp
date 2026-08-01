@@ -56,6 +56,23 @@ struct FulfillmentEntry
     // so rendering/locking can resolve recipe components to real slots without
     // any global physical-filament-ID mapping.
     std::vector<int> component_ams_keys;
+    // Parallel to component_ams_keys: the human-readable tray label
+    // (PhysicalSlot.tray_name, 1-based like the rest of the UI) for each
+    // component. Used by the row renderer so the plan text shows a label that
+    // matches DeviceFilamentZone instead of the raw 0-based ams_key (which made
+    // the first device filament read as "slot 0" while every other view called
+    // it "1"). Empty when the source snapshot did not supply tray_names.
+    std::vector<std::string> component_tray_names;
+    // Parallel to component_ams_keys: the device colour each component pointed
+    // at when the recipe was locked/solved, as a hex snapshot ("#RRGGBB").
+    // ams_key presence alone is NOT enough to trust a lock across a device
+    // snapshot change: the same ams_key integer can name a different physical
+    // filament after a mock<->real transition, OR a same-type slot-swap on a
+    // real machine (slot 2 red->blue PLA keeps ams_key 2 but the locked recipe
+    // now silently blends the wrong colour). Capturing the colour at lock time
+    // lets solve() detect a content change and drop/flag the lock instead of
+    // silently honouring a stale binding (PRD §4.3, §5).
+    std::vector<std::string> component_colors;
 
     bool         locked = false; // user-pinned; survives recompute (PRD §4.3)
     bool         stale  = true;  // needs (re)solve
@@ -79,6 +96,11 @@ struct PhysicalSlot
     // mapping used to build the slice device-space filament array (whose indices
     // must equal G-code T-numbers). -1 = device did not report (fallback).
     int          physical_extruder = -1;
+    // true = produced by the offline mock path (no printer connected; content
+    // derived from the printer preset, not from a live machine). Surfaces in the
+    // Fulfillment UI as an "offline mock" hint so the user knows the device data
+    // is inferred and will be replaced once a printer reports.
+    bool         is_mock = false;
 };
 
 struct DesignIntent
@@ -117,14 +139,25 @@ public:
     // to hide already-computed results. Without this decoupling, any model drag
     // (which fires EVT_FILAMENT_USAGE_CHANGED) wipes the displayed plan.
     bool                                 has_solved() const { return m_ever_solved; }
+    // True if any entry is marked stale (design/device snapshot changed since
+    // solve). Slice entry MUST re-solve before consuming entries, otherwise a
+    // stale entry's component_ams_keys — solved against a prior device snapshot —
+    // could be silently rewired to the wrong physical slot in the new snapshot
+    // (e.g. the mock<->real transition, where the same ams_key integer names a
+    // different physical filament). has_solved() alone does NOT guard against
+    // this; see prepare_slice_inputs.
+    bool                                 has_stale() const;
 
     // Class-A edits (PRD §5.2.1): write Fulfillment, never Design.
     void set_ratio(unsigned int design_extruder, int ratio_b_percent);
-    void set_direct_slot(unsigned int design_extruder, int slot);
+    void set_direct_slot(unsigned int design_extruder, int slot,
+                         const std::string& tray_name = "");
     // Direct match with full colour/delta_e/health (used when user picks a
-    // specific physical filament from MachineFilamentPicker).
+    // specific physical filament from MachineFilamentPicker). tray_name is the
+    // 1-based label shown in the row (matches DeviceFilamentZone).
     void set_direct_with_color(unsigned int design_extruder, int slot,
-                               const wxColour& realised_color, const std::string& design_color_hex);
+                               const wxColour& realised_color, const std::string& design_color_hex,
+                               const std::string& tray_name = "");
     // Apply a recipe edited via MixedFilamentDialog. Component ids are
     // palette-local (1-based into the entry's component_ams_keys). Marks the
     // entry locked (an explicit edit is a user decision worth keeping, §6) and
@@ -134,7 +167,9 @@ public:
                              const std::string& manual_pattern,
                              const std::string& gradient_component_ids,
                              const std::string& gradient_component_weights,
-                             const std::vector<int>& component_ams_keys);
+                             const std::vector<int>& component_ams_keys,
+                             const std::vector<std::string>& component_tray_names,
+                             const std::vector<std::string>& component_colors);
     void toggle_lock(unsigned int design_extruder);
     void reset_all();                                     // discard all manual edits
     void clear_all_locks();                               // PRD §12.1 panic button
