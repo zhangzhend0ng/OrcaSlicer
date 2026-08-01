@@ -64,12 +64,18 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
     // ---- Pass 1: enumerate the distinct device filaments the recipes need ----
     // For each solved entry, resolve its recipe's components to device slots.
     // Build a unique, sorted device filament list (the device-space array).
+    //
+    // NOTE: this lambda returns void by design. An earlier version returned
+    // `const DeviceFilamentRow*` = `&rows.back()` immediately after a push_back
+    // that could reallocate `rows` — a use-after-reallocation dangling pointer
+    // (harness UB-3/UB-4). The sole caller discards the result anyway, so the
+    // return value was both dead and a latent trap. Returning void removes both.
     std::vector<DeviceFilamentRow> rows;
-    auto need_slot = [&](int ams_key) -> const DeviceFilamentRow* {
+    auto need_slot = [&](int ams_key) -> void {
         for (const DeviceFilamentRow& r : rows)
-            if (r.ams_key == ams_key) return &r;
+            if (r.ams_key == ams_key) return; // already collected
         auto it = slot_by_ams_key.find(ams_key);
-        if (it == slot_by_ams_key.end() || it->second == nullptr) return nullptr;
+        if (it == slot_by_ams_key.end() || it->second == nullptr) return;
         const PhysicalSlot* s = it->second;
         DeviceFilamentRow r;
         r.ams_key           = s->ams_key;
@@ -77,7 +83,6 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
         if (s->color.IsOk()) r.color_hex = s->color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
         r.type = s->type;
         rows.push_back(std::move(r));
-        return &rows.back();
     };
 
     const std::vector<FulfillmentEntry>& entries = store.entries();
