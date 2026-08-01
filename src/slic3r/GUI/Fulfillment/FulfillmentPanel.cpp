@@ -23,7 +23,19 @@
 #include <wx/stattext.h>
 #include <wx/bmpbuttn.h>
 #include <wx/colour.h>
+#include <algorithm>
 #include <cmath>
+
+#include <boost/algorithm/string/predicate.hpp> // boost::iequals — length-safe
+                                                // case-insensitive compare. The
+                                                // hand-rolled std::equal(first,last,
+                                                // other.begin(),pred) form reads
+                                                // `other` up to (last-first) chars
+                                                // and goes out of bounds when other
+                                                // is shorter (UB). boost::iequals
+                                                // checks both lengths. MUST stay in
+                                                // sync with FulfillmentStore.cpp:131
+                                                // (the solver's same-type filter).
 
 namespace Slic3r {
 namespace GUI {
@@ -125,6 +137,18 @@ void FulfillmentPanel::on_match()
     }
     m_store.solve(design, device);
     refresh_fulfilment();
+    // If the device snapshot was the offline mock (no printer connected), tell
+    // the user the match is against inferred device data, not a live machine —
+    // so they know to re-Match once a printer reports the real stock.
+    const bool any_mock = std::any_of(device.begin(), device.end(),
+                                      [](const PhysicalSlot& s) { return s.is_mock; });
+    if (any_mock) {
+        MessageDialog dlg(this,
+            _L("Device data is an offline mock, inferred from the printer preset. "
+               "Connect a printer and re-run Match to see the real device match."),
+            _L("Fulfillment"), wxOK | wxICON_INFORMATION);
+        dlg.ShowModal();
+    }
     wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
     // If Expected View is active, the 3D model must repaint with the new colours.
     Plater* plater = wxGetApp().plater();
@@ -270,15 +294,25 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
 
     // Plan description (human language — PRD §5).
     wxString plan;
-    auto key_for = [&](unsigned int component_id) -> int {
-        return (component_id >= 1 && component_id <= e.component_ams_keys.size())
-               ? e.component_ams_keys[component_id - 1] : -1;
+    // Resolve a recipe component to a human-readable slot label. Prefer the
+    // tray_name (1-based, matches DeviceFilamentZone and the design swatches);
+    // fall back to ams_key+1 when tray_names weren't captured (e.g. an entry
+    // serialised before the tray_names field existed), and finally "?" when the
+    // component id is out of range. This deliberately does NOT render the raw
+    // 0-based ams_key, which made the first device filament read "slot 0" while
+    // every other view labelled it "1".
+    auto label_for = [&](unsigned int component_id) -> wxString {
+        if (component_id < 1 || component_id > e.component_ams_keys.size()) return "?";
+        const size_t idx = component_id - 1;
+        if (idx < e.component_tray_names.size() && !e.component_tray_names[idx].empty())
+            return wxString::FromUTF8(e.component_tray_names[idx]);
+        return wxString::Format("%d", e.component_ams_keys[idx] + 1);
     };
     if (e.kind == PlanKind::Direct) {
-        plan = wxString::Format(_L("direct match (slot %d)"), key_for(e.recipe.component_a));
+        plan = wxString::Format(_L("direct match (slot %s)"), label_for(e.recipe.component_a));
     } else if (e.kind == PlanKind::Synthesised) {
-        plan = wxString::Format(_L("mix slot %d + %d @ %d%%"),
-                                key_for(e.recipe.component_a), key_for(e.recipe.component_b),
+        plan = wxString::Format(_L("mix slot %s + %s @ %d%%"),
+                                label_for(e.recipe.component_a), label_for(e.recipe.component_b),
                                 e.recipe.mix_b_percent);
     } else {
         plan = _L("no same-type stock — type gap");
@@ -309,13 +343,17 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
         build_machine_filament_list(pb, machine_list);
         if (machine_list.empty()) return;
 
-        // Filter to same-type filaments only.
+        // Filter to same-type filaments only. Case-insensitive type match via
+        // boost::iequals (length-safe). The std::equal(first,last,other.begin(),pred)
+        // form previously used here reads `other` up to (last-first) chars and goes
+        // out of bounds when e.design_type is shorter than fd.m_type (UB) — the same
+        // pitfall FulfillmentStore.cpp:130-132 calls out. These two filters are
+        // orthogonal to the solver's: solver filters design-type-vs-slot at solve
+        // time; this filters again at dialog-open time against the live machine list.
         std::vector<FilamentData> same_type_list;
         for (const FilamentData& fd : machine_list) {
             if (is_none_filament(fd)) continue;
-            if (fd.m_type.size() == e.design_type.size() &&
-                std::equal(fd.m_type.begin(), fd.m_type.end(), e.design_type.begin(),
-                           [](char a, char b) { return std::tolower(a) == std::tolower(b); }))
+            if (boost::iequals(fd.m_type, e.design_type))
                 same_type_list.push_back(fd);
         }
         if (same_type_list.empty()) return;
@@ -328,9 +366,12 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
         picker->bindSelectionCallback([this, design_extruder = e.design_extruder,
                                        design_color = e.design_color](const FilamentData& data) {
             // User picked a physical filament → set Direct match with full
-            // colour/delta_e/health update + force UI repaint.
+            // colour/delta_e/health update + force UI repaint. Pass the 1-based
+            // tray label so the row reads "slot 1" (matching DeviceFilamentZone),
+            // not the raw 0-based ams_key.
             m_store.set_direct_with_color(design_extruder, static_cast<int>(data.m_index),
-                                          wxColour(data.m_color.PrimaryColor()), design_color);
+                                          wxColour(data.m_color.PrimaryColor()), design_color,
+                                          std::to_string(data.m_index + 1));
             refresh_fulfilment();
             wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
             Plater* plater = wxGetApp().plater();
@@ -359,17 +400,17 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
 
         std::vector<std::string> palette;
         std::vector<int>         palette_ams_keys;
+        std::vector<std::string> palette_tray_names;
         for (const PhysicalSlot& s : device) {
             if (!s.exists) continue;
-            if (s.type.size() == e.design_type.size() &&
-                std::equal(s.type.begin(), s.type.end(), e.design_type.begin(),
-                           [](char a, char b) { return std::tolower(a) == std::tolower(b); })) {
+            if (boost::iequals(s.type, e.design_type)) {
                 palette.push_back(s.color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString());
                 palette_ams_keys.push_back(s.ams_key);
+                palette_tray_names.push_back(s.tray_name);
             }
         }
         if (palette.empty()) return;
-        if (palette.size() < 2) { palette.push_back("#C8C8C8"); palette_ams_keys.push_back(-1); }
+        if (palette.size() < 2) { palette.push_back("#C8C8C8"); palette_ams_keys.push_back(-1); palette_tray_names.emplace_back("?"); }
 
         Slic3r::MixedFilament seed;
         seed.component_a              = e.recipe.component_a;
@@ -384,7 +425,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
         const Slic3r::MixedFilament& r = dlg.GetResult();
         m_store.apply_edited_recipe(e.design_extruder, r.component_a, r.component_b, r.mix_b_percent,
                                     r.manual_pattern, r.gradient_component_ids, r.gradient_component_weights,
-                                    palette_ams_keys);
+                                    palette_ams_keys, palette_tray_names);
         refresh_fulfilment();
     });
 
