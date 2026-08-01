@@ -47,6 +47,7 @@ std::vector<PhysicalSlot> snapshot_device_stock(const PresetBundle& bundle)
         s.type      = fd.m_type;
         s.exists    = !is_none_filament(fd);
         s.physical_extruder = fd.m_extruder;
+        s.is_mock   = fd.m_mock;
         wxColour c;
         if (try_parse_color_match_hex(wxString::FromUTF8(fd.m_color.PrimaryColor()), c))
             s.color = c;

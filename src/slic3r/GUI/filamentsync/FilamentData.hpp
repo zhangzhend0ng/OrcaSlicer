@@ -31,6 +31,11 @@ struct FilamentData
     // ultimately WCP `extruder_map_table`). 0-based physical extruder index = G-code
     // T-number. -1 = device did not report a mapping (fallback path).
     int m_extruder {-1};
+    // true = produced by build_offline_mock_machine_filament_list (no printer
+    // connected; content derived from the printer preset's extruder_colour /
+    // default_filament_profile, NOT from design). Downstream UI shows an
+    // "offline mock" hint; once a real machine reports, this is false.
+    bool m_mock {false};
 };
 
 struct MixedFilamentPreviewInfo
