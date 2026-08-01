@@ -155,9 +155,15 @@ void FulfillmentPanel::on_match()
             _L("Fulfillment"), wxOK | wxICON_INFORMATION);
         dlg.ShowModal();
     }
-    wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
-    // If Expected View is active, the 3D model must repaint with the new colours.
-    wxGetApp().plater()->refresh_expected_render();
+    // Guard plater(): null during early init / teardown. The Match button only
+    // fires post-init in practice, but the unguarded deref was inconsistent with
+    // the guarded pattern used elsewhere in this file (view_toggle callback) and
+    // a latent null-deref (UB-2) if a handler ever runs during shutdown.
+    if (Plater* plater = wxGetApp().plater()) {
+        plater->sidebar().update_fulfillment_health_indicator();
+        // If Expected View is active, the 3D model must repaint with the new colours.
+        plater->refresh_expected_render();
+    }
 }
 
 void FulfillmentPanel::refresh_fulfilment()
@@ -390,8 +396,10 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
                                           wxColour(data.m_color.PrimaryColor()), design_color,
                                           std::to_string(data.m_index + 1));
             refresh_fulfilment();
-            wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
-            wxGetApp().plater()->refresh_expected_render();
+            if (Plater* plater = wxGetApp().plater()) {
+                plater->sidebar().update_fulfillment_health_indicator();
+                plater->refresh_expected_render();
+            }
         });
         wxPoint pos = phys_btn->GetScreenPosition();
         pos.y += phys_btn->GetSize().y;

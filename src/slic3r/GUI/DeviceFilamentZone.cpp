@@ -122,11 +122,16 @@ void DeviceFilamentZone::on_timer(wxTimerEvent&)
     if (fingerprint != m_last_fingerprint) {
         m_last_fingerprint = fingerprint;
         refresh();
-        auto& store = wxGetApp().plater()->sidebar().fulfillment_store();
-        store.mark_stale();
-        if (auto* panel = wxGetApp().plater()->sidebar().fulfillment_panel())
+        // Guard plater(): the auto-refresh timer can fire during teardown when
+        // wxGetApp().plater() is already gone — an unguarded deref would crash.
+        // (The timer is stopped in the dtor, but a pending event may already be
+        // in the queue.)
+        Plater* plater = wxGetApp().plater();
+        if (!plater) return;
+        plater->sidebar().fulfillment_store().mark_stale();
+        if (auto* panel = plater->sidebar().fulfillment_panel())
             panel->refresh_fulfilment();
-        wxGetApp().plater()->sidebar().update_fulfillment_health_indicator();
+        plater->sidebar().update_fulfillment_health_indicator();
     }
 }
 
