@@ -166,6 +166,13 @@ void FulfillmentPanel::refresh_fulfilment()
     const wxColour content_bg = is_dark ? wxColour(45, 45, 49) : wxColour(255, 255, 255);
 
     m_panel_content->DestroyChildren();
+    // DestroyChildren deleted the wxStaticText m_health_summary points at (when
+    // the prior render took the solved branch). Null the member so no later code
+    // path can dereference a freed widget — a latent use-after-free (lifetime
+    // harness UB-4) that the current single-reader flow happens to avoid, but
+    // which any future caller or a reordered early-return would trip. It is
+    // reassigned in the solved branch below.
+    m_health_summary = nullptr;
     auto* sizer = new wxBoxSizer(wxVERTICAL);
 
     if (!m_store.has_solved()) {

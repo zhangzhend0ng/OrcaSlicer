@@ -15385,6 +15385,15 @@ void Sidebar::update_fulfillment_health_indicator()
         p->m_fulfillment_health_indicator->UnsetToolTip();
         return;
     }
+    if (p->m_fulfillment_store.entries().empty()) {
+        // A solve ran but produced no rows (no design intent to match): showing
+        // "0✓ 0~ 0✗" reads as "everything perfect" when there is in fact nothing
+        // to evaluate — a misleading signal (PRD §5). Blank the indicator until
+        // there is at least one design intent.
+        p->m_fulfillment_health_indicator->SetLabel("");
+        p->m_fulfillment_health_indicator->SetToolTip(_L("No design colours to match yet."));
+        return;
+    }
     const auto roll = p->m_fulfillment_store.rollup();
     // Shape+colour redundant glyph summary (PRD §12.5).
     wxString txt = wxString::Format("%d\u2713 %d~ %d\u2717", roll.perfect, roll.tunable, roll.broken);
