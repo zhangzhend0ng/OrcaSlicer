@@ -9,6 +9,7 @@
 #include "libslic3r/Config.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <unordered_map>
 
 #include <boost/log/trivial.hpp>
@@ -41,6 +42,60 @@ bool device_row_less(const DeviceFilamentRow& a, const DeviceFilamentRow& b)
     if (a.physical_extruder < 0) return false;
     if (b.physical_extruder < 0) return true;
     return a.physical_extruder < b.physical_extruder;
+}
+
+// Remap a manual_pattern string (cycle mode) from PALETTE-LOCAL ids to
+// DEVICE-SPACE ids. Pattern grammar (post-normalize): single-char tokens '1'-'9',
+// bracketed tokens "[NN]" (up to 2 digits), ',' separates groups. Semantics
+// (decode_manual_pattern_preview_token, MixedFilament.cpp:1066): token "1"/"2"
+// are RELATIVE — they resolve to component_a/component_b at consume time, which
+// Pass 2 already remaps to device-space — so they MUST stay as-is. Tokens >= 3
+// and bracketed tokens are ABSOLUTE palette-local ids and MUST be remapped via
+// the same palette-local→device-space translation component_a/b used. Without
+// this, a cycle pattern like "13" (use slot 1 then slot 3) on a 3+ same-type-slot
+// device would leave token "3" pointing at device slot 3 directly instead of the
+// device slot that palette slot 3 maps to — silently cycling the wrong filaments.
+// (Discovered via self-driven-iteration skill Part 1+2: shape D was never audited
+// because the prior 20 rounds only understood 2-colour shapes.)
+std::string remap_manual_pattern(const std::string& pattern,
+                                 const FulfillmentEntry& e,
+                                 const std::function<int(const FulfillmentEntry&, unsigned int)>& component_device_id)
+{
+    if (pattern.empty()) return pattern;
+    std::string out;
+    out.reserve(pattern.size());
+    for (size_t i = 0; i < pattern.size(); ) {
+        char c = pattern[i];
+        if (c == '[') {
+            // Bracketed token [NN] — absolute id, remap.
+            size_t j = i + 1;
+            while (j < pattern.size() && pattern[j] >= '0' && pattern[j] <= '9') ++j;
+            if (j > i + 1 && j < pattern.size() && pattern[j] == ']') {
+                unsigned int palette_id = 0;
+                try { palette_id = static_cast<unsigned int>(std::stoul(pattern.substr(i + 1, j - i - 1))); }
+                catch (...) { out.push_back(c); ++i; continue; } // malformed — copy verbatim
+                if (palette_id >= 1) {
+                    int did = component_device_id(e, palette_id);
+                    if (did > 0) { out += '['; out += std::to_string(did); out += ']'; i = j + 1; continue; }
+                }
+                // unmapped — copy verbatim (consumer clamps/skips)
+            }
+            out.push_back(c); ++i; continue;
+        }
+        if (c >= '1' && c <= '9') {
+            // Single-char token: "1"/"2" are relative (keep); "3"+ are absolute (remap).
+            if (c >= '3') {
+                unsigned int palette_id = static_cast<unsigned int>(c - '0');
+                int did = component_device_id(e, palette_id);
+                if (did > 0 && did <= 9) { out.push_back(static_cast<char>('0' + did)); ++i; continue; }
+                // unmapped or >9 (can't fit single char) — fall through to copy verbatim
+            }
+            out.push_back(c); ++i; continue;
+        }
+        // comma or any other char — copy verbatim
+        out.push_back(c); ++i;
+    }
+    return out;
 }
 
 } // namespace
@@ -227,7 +282,11 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
         be.component_a   = static_cast<unsigned int>(a);
         be.component_b   = static_cast<unsigned int>(b);
         be.mix_b_percent = e.recipe.mix_b_percent;
-        be.manual_pattern            = e.recipe.manual_pattern;
+        // manual_pattern (cycle mode) is palette-local for absolute tokens >= 3
+        // and bracketed [NN]; remap those to device-space. Relative tokens "1"/"2"
+        // resolve to component_a/b (already remapped above) so they stay as-is.
+        // See remap_manual_pattern above for the full grammar + rationale.
+        be.manual_pattern            = remap_manual_pattern(e.recipe.manual_pattern, e, component_device_id);
         be.distribution_mode         = int(MixedFilament::Simple);
 
         // gradient_component_ids is stored on the entry as PALETTE-LOCAL ids
