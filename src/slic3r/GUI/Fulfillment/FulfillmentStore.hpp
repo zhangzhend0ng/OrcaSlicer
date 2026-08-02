@@ -25,7 +25,10 @@ namespace GUI {
 enum class PlanKind   { Direct, Synthesised, Unmet };
 enum class HealthState { Perfect, Tunable, Broken }; // green / yellow / red
 
-// The unit the canvas renders as one row, and the pre-print gate rolls up.
+// The unit the canvas renders as one row, and the health rollup aggregates.
+// (The pre-print "gate" is advisory and non-blocking per PRD §6 Flow C /
+// §6 Decision authority — broken rows surface via the indicator + Resolve
+// dialog but never block send/print/export.)
 struct FulfillmentEntry
 {
     unsigned int design_extruder = 0;   // 0-based identity (Design Layer index)
@@ -115,7 +118,8 @@ struct DesignIntent
 class FulfillmentStore
 {
 public:
-    // Roll-up for the pre-print gate / global indicator.
+    // Roll-up for the global health indicator (title-bar N✓ M~ K✗). Advisory
+    // only — does not block send/print (PRD §6 Flow C, §6 user authority).
     struct HealthRollup { int perfect = 0, tunable = 0, broken = 0; };
 
     // Replace design + device snapshots and (re)solve every entry.

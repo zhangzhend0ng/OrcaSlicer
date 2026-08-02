@@ -109,15 +109,21 @@ void DeviceFilamentZone::on_timer(wxTimerEvent&)
     build_machine_filament_list(pb, machine_list);
 
     // Detect change by a lightweight fingerprint: count + each entry's
-    // type+colour+mock-flag. Size-only check misses content changes (e.g. a slot's
-    // filament loaded/unloaded keeps the same slot count). The mock flag is
-    // required: without it, a mock->real transition whose slots happen to share
-    // index+type+colour would produce an identical fingerprint and skip the
-    // refresh, leaving the UI showing stale mock data + the offline banner.
+    // type+colour+mock-flag+extruder(T-number). Size-only check misses content
+    // changes (e.g. a slot's filament loaded/unloaded keeps the same slot count).
+    // The mock flag is required: without it, a mock->real transition whose slots
+    // happen to share index+type+colour would produce an identical fingerprint
+    // and skip the refresh, leaving the UI showing stale mock data + the offline
+    // banner. The extruder (G-code T-number from WCP extruder_map_table) is
+    // required because build_device_filament_space orders the device-space colour
+    // array by it (FulfillmentSliceMapping.cpp row_device_index) — a slot whose
+    // content is unchanged but whose T-number was remapped would otherwise keep
+    // the same fingerprint, skip mark_stale, and the next slice would silently
+    // reorder colours under fixed Tn → G-code reading the wrong filament_colour.
     std::string fingerprint;
     for (const FilamentData& fd : machine_list)
         fingerprint += std::to_string(fd.m_index) + "|" + fd.m_type + "|" + fd.m_color.PrimaryColor()
-                     + "|" + (fd.m_mock ? "M" : "R") + ";";
+                     + "|" + (fd.m_mock ? "M" : "R") + "|T" + std::to_string(fd.m_extruder) + ";";
 
     if (fingerprint != m_last_fingerprint) {
         m_last_fingerprint = fingerprint;

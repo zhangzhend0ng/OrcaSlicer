@@ -415,7 +415,7 @@ core, but **not** as a parameter swap: it must first be audited and severed
 from its internal `preset_bundle` reads (see §2 caveat), then fed **real device
 stock colours** with `check_compatible=true` (force same-type mixing, §4).
 
-### Flow C — Pre-print physical (mandatory gate)
+### Flow C — Pre-print physical (advisory, non-blocking)
 
 1. User clicks "Print".
 2. System scans the Fulfillment Layer and emits a **pre-print physical report**
@@ -423,11 +423,18 @@ stock colours** with `check_compatible=true` (force same-type mixing, §4).
    - ✓ 4 perfectly fulfilled
    - ⚠ 1 colour synthesis (ΔE 3.1, fine-tuned & confirmed)
    - ✗ 2 type gaps (unprintable unless filament loaded)
-3. Any ✗ → **print blocked**, guided to resolve (never silent — directly fixes
-   the silent-substitution pain). All green/yellow → confirm → print.
+3. The report is **advisory**: the title-bar health indicator and the Resolve
+   dialog surface every gap before the user commits (§5 — gaps spoken), but a
+   broken (✗) row does **not** block send/print/export. The user is the
+   authority on whether to proceed (e.g. they may have loaded filament the
+   device hasn't reported yet, or accept the mismatch). This is a deliberate
+   product decision: an uncloseable gate that nagged on every send was rejected
+   as too intrusive — the gate speaks about detected gaps; an un-run check does
+   not nag.
 
-This is §5's ultimate backstop. Any mismatch that would cause wrong-filament /
-failed prints is **forced into the open** here; there is no silent path through.
+This is §5's "gaps spoken" backstop, not a hard gate. Mismatches are forced
+into the open via the indicator + Resolve dialog, but there is no enforced
+block on the send path — the user always retains the authority to print.
 
 ---
 
