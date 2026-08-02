@@ -492,7 +492,13 @@ void FulfillmentStore::toggle_lock(unsigned int design_extruder)
 
 void FulfillmentStore::reset_all()
 {
-    for (FulfillmentEntry& e : m_entries) { e.locked = false; e.stale = true; }
+    // Clear entries outright (not just flag them stale). The previous project's
+    // recipes/locks are meaningless for a fresh project, and leaving them in
+    // m_entries forces every consumer to remember to check has_solved() before
+    // reading entries() — a future consumer that forgets would read the prior
+    // project's plan. Clearing closes that contract: has_solved()==false AND
+    // entries().empty() after reset, so either guard is sufficient on its own.
+    m_entries.clear();
     m_ever_solved = false;
 }
 

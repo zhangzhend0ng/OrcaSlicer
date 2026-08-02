@@ -193,8 +193,9 @@ public:
     void clear_all_locks();                               // PRD §12.1 panic button
 
 private:
-    // Set true after the first solve(), never reset. Independent of stale flags
-    // so has_solved() stays true across model drags that mark entries stale.
+    // Set true after the first solve(). Independent of stale flags so
+    // has_solved() stays true across model drags that mark entries stale.
+    // reset_all() clears it (full project reset / "Reset all" button).
     bool m_ever_solved = false;
 
     // Resolves a single design intent against the device snapshot into `out`.

@@ -21636,6 +21636,16 @@ void Plater::on_filaments_delete(size_t num_filaments, size_t filament_id, int r
 // BBS.
 void Plater::on_filaments_change(size_t num_filaments)
 {
+    // Filament count/identity changed → the FulfillmentStore's entries
+    // (design_extruder-indexed, component_ams_keys) may now point at the wrong
+    // slots. Mark stale so prepare_slice_inputs re-solves against the new
+    // filament set before the next slice. This is the direct entry point for
+    // sidebar-combo / AMS-sync / select-machine-dialog filament changes; those
+    // paths do NOT all flow through on_config_change (whose trailing
+    // notify_filament_usage_changed was the only stale signal). Coalesced via
+    // filament_usage_sync_pending, so calling it here AND downstream is safe.
+    notify_filament_usage_changed();
+
     // only update elements in plater
     update_filament_colors_in_full_config();
 
