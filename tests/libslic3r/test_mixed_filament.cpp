@@ -518,6 +518,55 @@ TEST_CASE("Grouped manual wall patterns make infill follow the innermost perimet
     CHECK(layer1.solid_infill_filament(overridden_region) == 1);
 }
 
+TEST_CASE("Mixed filament three-colour gradient resolve honours distribution_mode (round-24 regression)", "[MixedFilament]")
+{
+    // Regression for the "mapped three-colour mix cut as two colours" bug.
+    // resolve() enters its 3+ colour weighted-gradient branch ONLY when
+    // distribution_mode != Simple AND gradient_component_ids has >= 3 ids
+    // (MixedFilament.cpp:2553-2555). A mapped recipe that carries 3 gradient
+    // ids but distribution_mode = Simple falls through to the ratio_a/ratio_b
+    // 2-colour cycle (line 2583-2591), silently degrading to two colours.
+    // This is exactly what build_device_filament_space did before round-24
+    // (it hardcoded distribution_mode = Simple when copying the recipe into the
+    // batch entry, because MixedColorMatchRecipeResult had no field to carry
+    // the dialog/solver's LayerCycle through).
+    const std::vector<std::string> colors = {"#FF0000", "#00FF00", "#0000FF"};
+
+    MixedFilamentManager mgr;
+    mgr.add_custom_filament(1, 2, 50, colors);
+    REQUIRE(mgr.mixed_filaments().size() == 1);
+
+    MixedFilament &row = mgr.mixed_filaments().front();
+    row.ratio_a         = 1;
+    row.ratio_b         = 1;
+    row.manual_pattern.clear();
+    row.gradient_component_ids     = MixedFilamentManager::encode_gradient_component_ids({1, 2, 3});
+    row.gradient_component_weights = "40/35/25";
+
+    const unsigned int mixed_filament_id = 4; // num_physical(3) + 1
+
+    // Sanity: with Simple mode + 3 ids, resolve collapses to the 2-colour
+    // ratio cycle (component_a / component_b only). This is the BUG behaviour
+    // and also the safe fallback — it must never return id 3 here.
+    row.distribution_mode = int(MixedFilament::Simple);
+    for (int layer = 0; layer < 10; ++layer) {
+        const unsigned int r = mgr.resolve(mixed_filament_id, 3, layer);
+        CHECK((r == 1 || r == 2));
+    }
+
+    // The fix: distribution_mode = LayerCycle + 3 ids must cycle through all
+    // three physical filaments. If the field were dropped (the bug), this loop
+    // would never see id 3 and the test would fail.
+    row.distribution_mode = int(MixedFilament::LayerCycle);
+    std::set<unsigned int> seen;
+    for (int layer = 0; layer < 40; ++layer)
+        seen.insert(mgr.resolve(mixed_filament_id, 3, layer));
+    CHECK(seen.size() == 3u);
+    CHECK(seen.count(1) == 1);
+    CHECK(seen.count(2) == 1);
+    CHECK(seen.count(3) == 1);
+}
+
 TEST_CASE("Mixed filament painted-region resolver collapses ordinary mixed rows to the active physical extruder", "[MixedFilament]")
 {
     const std::vector<std::string> colors = {"#FF0000", "#00FF00"};

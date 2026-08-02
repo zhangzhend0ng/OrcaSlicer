@@ -3017,7 +3017,17 @@ Sidebar::Sidebar(Plater *parent)
             created.gradient_component_ids = recipe.gradient_component_ids;
             created.gradient_component_weights = recipe.gradient_component_weights;
             created.pointillism_all_filaments = false;
-            created.distribution_mode = recipe.gradient_component_ids.empty() ? int(MixedFilament::Simple) : int(MixedFilament::LayerCycle);
+            // Use the recipe's own distribution_mode instead of the legacy
+            // heuristic (gradient_component_ids.empty() ? Simple : LayerCycle).
+            // The heuristic misfires on MODE_MATCH 2-colour recipes, which carry
+            // gradient_component_ids {a,b} but distribution_mode = Simple
+            // (MixedFilamentDialog.cpp:3335/3346). With the field now propagated
+            // end-to-end (round-24), the recipe carries the truth. Also carry
+            // gradient_* so Z-gradient recipes render/resolve correctly.
+            created.distribution_mode = recipe.distribution_mode;
+            created.gradient_enabled  = recipe.gradient_enabled;
+            created.gradient_start    = recipe.gradient_start;
+            created.gradient_end      = recipe.gradient_end;
             created.custom = true;
             created.display_color = compute_color_match_recipe_display_color(recipe, display_context).GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
         }

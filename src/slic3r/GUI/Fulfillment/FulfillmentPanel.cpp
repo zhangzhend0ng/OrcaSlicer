@@ -497,12 +497,24 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
         seed.manual_pattern           = e.recipe.manual_pattern;
         seed.gradient_component_ids    = e.recipe.gradient_component_ids;
         seed.gradient_component_weights= e.recipe.gradient_component_weights;
+        // Restore the g-code-relevant fields so the dialog reopens in the mode
+        // that originally produced this recipe. Without distribution_mode the
+        // dialog constructor's heuristic maps a 3-colour RATIO recipe to MATCH
+        // (gradient_component_ids non-empty + Simple), and a re-save would
+        // corrupt the recipe. Mirrors apply_edited_recipe's write side below.
+        seed.distribution_mode        = e.recipe.distribution_mode;
+        seed.gradient_enabled         = e.recipe.gradient_enabled;
+        seed.gradient_start           = e.recipe.gradient_start;
+        seed.gradient_end             = e.recipe.gradient_end;
+        seed.ui_mode                  = e.recipe.ui_mode;
 
         MixedFilamentDialog dlg(wxGetApp().mainframe, palette, seed);
         if (dlg.ShowModal() != wxID_OK) return;
         const Slic3r::MixedFilament& r = dlg.GetResult();
         m_store.apply_edited_recipe(e.design_extruder, r.component_a, r.component_b, r.mix_b_percent,
                                     r.manual_pattern, r.gradient_component_ids, r.gradient_component_weights,
+                                    r.distribution_mode, r.gradient_enabled, r.gradient_start, r.gradient_end,
+                                    r.ui_mode,
                                     palette_ams_keys, palette_tray_names, palette);
         refresh_fulfilment();
     });

@@ -434,6 +434,11 @@ void FulfillmentStore::apply_edited_recipe(unsigned int design_extruder,
                                            const std::string& manual_pattern,
                                            const std::string& gradient_component_ids,
                                            const std::string& gradient_component_weights,
+                                           int distribution_mode,
+                                           bool gradient_enabled,
+                                           float gradient_start,
+                                           float gradient_end,
+                                           int ui_mode,
                                            const std::vector<int>& component_ams_keys,
                                            const std::vector<std::string>& component_tray_names,
                                            const std::vector<std::string>& component_colors)
@@ -450,6 +455,18 @@ void FulfillmentStore::apply_edited_recipe(unsigned int design_extruder,
         e.recipe.manual_pattern = manual_pattern;
         e.recipe.gradient_component_ids = gradient_component_ids;
         e.recipe.gradient_component_weights = gradient_component_weights;
+        // Carry the g-code-relevant fields end-to-end. distribution_mode drives
+        // resolve()'s 3+ colour gradient branch (the round-24 fix); gradient_*
+        // drive Z-gradient height weighting; ui_mode lets the dialog restore the
+        // correct mode on re-edit (without it a 3-colour RATIO recipe reopens
+        // as MATCH and a re-save corrupts the recipe).
+        e.recipe.distribution_mode = std::clamp(distribution_mode,
+                                                int(MixedFilament::LayerCycle),
+                                                int(MixedFilament::Simple));
+        e.recipe.gradient_enabled = gradient_enabled;
+        e.recipe.gradient_start   = gradient_start;
+        e.recipe.gradient_end     = gradient_end;
+        e.recipe.ui_mode          = ui_mode;
         // Honest ΔE: the user just changed the recipe, so the prior ΔE (computed
         // against the OLD recipe) no longer applies. Invalidate it rather than
         // show a stale number that contradicts the new recipe; the next Match

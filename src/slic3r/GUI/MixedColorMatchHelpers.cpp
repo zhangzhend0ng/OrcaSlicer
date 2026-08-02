@@ -542,6 +542,13 @@ MixedColorMatchRecipeResult build_best_color_match_recipe(const std::vector<std:
                             best.mix_b_percent = wa + wb > 0 ? int(std::lround(100.0 * double(wb) / double(wa + wb))) : 50;
                             best.gradient_component_ids     = encode_gradient_ids({a, b, c});
                             best.gradient_component_weights = encode_gradient_weights({wa, wb, wc});
+                            // resolve() enters its 3+ colour weighted-gradient
+                            // branch only when distribution_mode != Simple
+                            // (MixedFilament.cpp:2553-2555). This is a 3-colour
+                            // triple, so LayerCycle is mandatory; the default
+                            // Simple would silently degrade it to a 2-colour
+                            // ratio cycle in the slice path (round-24 bug).
+                            best.distribution_mode = int(MixedFilament::LayerCycle);
                             best.preview_color = blend_multi_filament_mixer(
                                 {palette[a - 1], palette[b - 1], palette[c - 1]},
                                 {double(wa), double(wb), double(wc)});
@@ -583,6 +590,9 @@ MixedColorMatchRecipeResult build_best_color_match_recipe(const std::vector<std:
                     best.mix_b_percent = wa + wb > 0 ? int(std::lround(100.0 * double(wb) / double(wa + wb))) : 50;
                     best.gradient_component_ids     = encode_gradient_ids({te.a, te.b, te.c});
                     best.gradient_component_weights = encode_gradient_weights({wa, wb, wc});
+                    // See coarse triple search above: a 3-colour recipe MUST
+                    // carry LayerCycle or the slice path degrades it to 2 colours.
+                    best.distribution_mode = int(MixedFilament::LayerCycle);
                     best.preview_color = blend_multi_filament_mixer(
                         {palette[te.a - 1], palette[te.b - 1], palette[te.c - 1]},
                         {double(wa), double(wb), double(wc)});
@@ -729,7 +739,16 @@ wxColour compute_color_match_recipe_display_color(const MixedColorMatchRecipeRes
     entry.manual_pattern             = recipe.manual_pattern;
     entry.gradient_component_ids     = recipe.gradient_component_ids;
     entry.gradient_component_weights = recipe.gradient_component_weights;
-    entry.distribution_mode          = recipe.gradient_component_ids.empty() ? int(MixedFilament::Simple) : int(MixedFilament::LayerCycle);
+    // Use the recipe's own distribution_mode rather than the legacy heuristic
+    // (gradient_component_ids.empty() ? Simple : LayerCycle). The heuristic was
+    // a workaround for the field being absent; it misfires on MODE_MATCH
+    // 2-colour recipes, which carry gradient_component_ids {a,b} but
+    // distribution_mode = Simple (MixedFilamentDialog.cpp:3335/3346). With the
+    // field now propagated end-to-end (round-24), the recipe carries the truth.
+    entry.distribution_mode          = recipe.distribution_mode;
+    entry.gradient_enabled           = recipe.gradient_enabled;
+    entry.gradient_start             = recipe.gradient_start;
+    entry.gradient_end               = recipe.gradient_end;
 
     return parse_mixed_color(compute_mixed_filament_display_color(entry, context));
 }
@@ -829,6 +848,14 @@ MixedColorMatchRecipeResult build_multi_color_match_candidate(const std::vector<
                                       std::clamp(int(std::lround(100.0 * double(ordered_weights[1]) / double(pair_weight_total))), 0, 100) :
                                       50;
     candidate.gradient_component_ids = MixedFilamentManager::encode_gradient_component_ids(ordered_ids);
+    // resolve() enters its 3+ colour weighted-gradient branch only when
+    // distribution_mode != Simple (MixedFilament.cpp:2553-2555). This candidate
+    // always carries >= 3 weighted ids (guarded at the top of this function),
+    // so it MUST be LayerCycle — leaving the default Simple would make the
+    // slice path silently degrade the solver's 3-colour match to a 2-colour
+    // ratio cycle (the round-24 "three-colour mix cut as two" bug, on the
+    // solver path rather than the dialog-edit path).
+    candidate.distribution_mode = int(MixedFilament::LayerCycle);
     {
         std::ostringstream weights_ss;
         for (size_t weight_idx = 0; weight_idx < ordered_weights.size(); ++weight_idx) {

@@ -83,6 +83,27 @@ struct MixedColorMatchRecipeResult
     std::string  gradient_component_weights;
     wxColour     preview_color = wxColour("#26A69A");
     double       delta_e       = std::numeric_limits<double>::infinity();
+
+    // ---- G-code-relevant fields mirrored from Slic3r::MixedFilament ----
+    // These were previously dropped when a MixedFilament (the slice/edit
+    // authority) was projected into this bespoke recipe struct, which silently
+    // degraded N-colour mixes to 2 colours: MixedFilamentManager::resolve()
+    // enters its 3+ colour weighted-gradient branch only when distribution_mode
+    // != Simple, but the projection lost that field so the slice path always
+    // hardcoded Simple and resolved to a 2-colour ratio cycle
+    // (round-21 fixed the id-space but missed this hop; round-24 closes it).
+    // Defaults mirror MixedFilament's own (MixedFilament.hpp:69,78-80) so the
+    // existing 2-colour builders that do not set them stay behaviourally
+    // identical (Simple mode, no Z-gradient).
+    int          distribution_mode = int(MixedFilament::Simple);
+    bool         gradient_enabled  = false;
+    float        gradient_start    = MixedFilament::k_default_gradient_dominant;
+    float        gradient_end      = MixedFilament::k_default_gradient_minority;
+    // MixedFilamentDialog mode that produced this recipe (-1=unknown/legacy,
+    // 0=RATIO, 1=CYCLE, 2=MATCH, 3=GRADIENT). The dialog constructor reads it
+    // to restore the correct mode on re-edit; without it, a 3-colour RATIO
+    // recipe reopens as MATCH and a subsequent save corrupts the recipe.
+    int          ui_mode           = -1;
 };
 
 // ---- small pure helpers (defined here, used everywhere) ----

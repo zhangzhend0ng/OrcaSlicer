@@ -287,7 +287,17 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
         // resolve to component_a/b (already remapped above) so they stay as-is.
         // See remap_manual_pattern above for the full grammar + rationale.
         be.manual_pattern            = remap_manual_pattern(e.recipe.manual_pattern, e, component_device_id);
-        be.distribution_mode         = int(MixedFilament::Simple);
+        // Carry distribution_mode / gradient_* end-to-end. resolve() enters its
+        // 3+ colour weighted-gradient branch ONLY when distribution_mode !=
+        // Simple (MixedFilament.cpp:2553-2555); hardcoding Simple here (as the
+        // prior code did) silently degraded every mapped N-colour mix to a
+        // 2-colour ratio cycle — the reported "three-colour mix cut as two"
+        // bug. gradient_enabled/start/end drive Z-gradient height weighting
+        // (resolve() :2568-2581 via compute_gradient_heights).
+        be.distribution_mode         = e.recipe.distribution_mode;
+        be.gradient_enabled          = e.recipe.gradient_enabled;
+        be.gradient_start            = e.recipe.gradient_start;
+        be.gradient_end              = e.recipe.gradient_end;
 
         // gradient_component_ids is stored on the entry as PALETTE-LOCAL ids
         // (1-based into the palette the solver/dialog saw — same space as the

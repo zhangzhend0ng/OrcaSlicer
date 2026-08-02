@@ -162,11 +162,25 @@ public:
     // palette-local (1-based into the entry's component_ams_keys). Marks the
     // entry locked (an explicit edit is a user decision worth keeping, §6) and
     // recomputes health/preview from the new recipe.
+    //
+    // distribution_mode / gradient_enabled / gradient_start / gradient_end /
+    // ui_mode are the g-code-relevant fields previously dropped by the bespoke
+    // recipe projection (see MixedColorMatchRecipeResult). They MUST be carried
+    // end-to-end (dialog -> store -> slice mapping -> MixedFilamentBatchEntry)
+    // because resolve() / compute_mixed_filament_display_color() branch on
+    // distribution_mode != Simple to enter the 3+ colour gradient path, and
+    // Z-gradient height weighting reads gradient_start/end. Dropping any of
+    // them silently degrades an N-colour mix to 2 colours (the round-21/24 bug).
     void apply_edited_recipe(unsigned int design_extruder,
                              unsigned int component_a, unsigned int component_b, int mix_b_percent,
                              const std::string& manual_pattern,
                              const std::string& gradient_component_ids,
                              const std::string& gradient_component_weights,
+                             int distribution_mode,
+                             bool gradient_enabled,
+                             float gradient_start,
+                             float gradient_end,
+                             int ui_mode,
                              const std::vector<int>& component_ams_keys,
                              const std::vector<std::string>& component_tray_names,
                              const std::vector<std::string>& component_colors);
