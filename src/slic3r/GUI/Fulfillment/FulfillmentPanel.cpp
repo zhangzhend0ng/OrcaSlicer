@@ -341,17 +341,27 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     if (e.kind == PlanKind::Direct) {
         plan = wxString::Format(_L("direct match (slot %s)"), label_for(e.recipe.component_a));
     } else if (e.kind == PlanKind::Synthesised) {
-        // A multi-colour mix (3+) stores its full component list + per-component
-        // weights in gradient_component_ids / gradient_component_weights
-        // (palette-local, parallel — same space as component_a/b, verified against
-        // MixedFilamentDialog::collect_result). The legacy two-colour text
-        // ("mix slot X + Y @ Z%") only renders the primary pair and silently
-        // dropped the third+ colour, so the UI read as two-colour even after the
-        // slice path was fixed (round-21). When the gradient list has 3+ entries,
-        // render the full recipe: "mix slot X/Y/Z @ a%/b%/c%". Falls back to the
-        // two-colour form for plain 2-component blends (incl. the {a,b} marker
-        // dialog stores for 2-colour gradient mode, where weights is empty).
-        const auto gids = MixedFilamentManager::decode_gradient_component_ids(e.recipe.gradient_component_ids, 0);
+        // Cycle mode (shape D): manual_pattern is non-empty. Its semantics differ
+        // from a weighted blend — it's a layer-cadence sequence of filament
+        // switches (e.g. "12" = alternate slot 1/2, "13" = alternate 1/3). Show
+        // the cycle pattern explicitly rather than the misleading "mix X + Y @ Z%"
+        // (which implies a ratio blend). Tokens 1/2 are relative to component_a/b.
+        if (!e.recipe.manual_pattern.empty()) {
+            plan = wxString::Format(_L("cycle %s (slot %s + %s)"),
+                                    wxString::FromUTF8(e.recipe.manual_pattern),
+                                    label_for(e.recipe.component_a), label_for(e.recipe.component_b));
+        } else {
+            // A multi-colour mix (3+) stores its full component list + per-component
+            // weights in gradient_component_ids / gradient_component_weights
+            // (palette-local, parallel — same space as component_a/b, verified against
+            // MixedFilamentDialog::collect_result). The legacy two-colour text
+            // ("mix slot X + Y @ Z%") only renders the primary pair and silently
+            // dropped the third+ colour, so the UI read as two-colour even after the
+            // slice path was fixed (round-21). When the gradient list has 3+ entries,
+            // render the full recipe: "mix slot X/Y/Z @ a%/b%/c%". Falls back to the
+            // two-colour form for plain 2-component blends (incl. the {a,b} marker
+            // dialog stores for 2-colour gradient mode, where weights is empty).
+            const auto gids = MixedFilamentManager::decode_gradient_component_ids(e.recipe.gradient_component_ids, 0);
         if (gids.size() >= 3) {
             // Weights are "/"-separated percents parallel to gids; parse them
             // manually (decode_gradient_component_weights is file-static in
@@ -383,6 +393,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
                                     label_for(e.recipe.component_a), label_for(e.recipe.component_b),
                                     e.recipe.mix_b_percent);
         }
+        } // end non-cycle (gradient/2-colour) branch
     } else {
         plan = _L("no same-type stock — type gap");
     }
