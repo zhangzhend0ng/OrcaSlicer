@@ -128,8 +128,16 @@ public:
     // marks the entry stale. Phase 1 runs synchronously on the calling thread
     // (the per-intent solve via build_best_color_match_recipe is cheap enough
     // for typical colour counts; PRD §12.3 still applies for the heavy path).
+    //
+    // layer_height drives the per-component cap on synthesised mixes (see
+    // solve_intent): without local-Z dithering, a single filament must not
+    // dominate more than (n-1)/n of the cycle where n = 0.2/lh + 1, or the
+    // colour transition reads as a solid band instead of a blend. 0 / out of
+    // (0, 0.4] falls back to a safe static cap (no constraint beyond the
+    // solver's own [50,100] floor).
     void solve(const std::vector<DesignIntent>& design,
-               const std::vector<PhysicalSlot>& device);
+               const std::vector<PhysicalSlot>& device,
+               double                           layer_height = 0.0);
 
     // Invalidate without solving (design/device changed signals).
     void mark_stale();
@@ -200,8 +208,10 @@ private:
 
     // Resolves a single design intent against the device snapshot into `out`.
     // Type-first (hard constraint, PRD §4), then colour via build_best_color_match_recipe.
+    // layer_height drives the per-component cap on synthesised mixes — see solve().
     static void solve_intent(const DesignIntent& intent,
                              const std::vector<PhysicalSlot>& device,
+                             double                           layer_height,
                              FulfillmentEntry& out);
 
     // Re-derive health/delta_e for an entry whose recipe is already set (used

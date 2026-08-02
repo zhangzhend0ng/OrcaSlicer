@@ -135,7 +135,14 @@ void FulfillmentPanel::on_match()
         dlg.ShowModal();
         return;
     }
-    m_store.solve(design, device);
+    // Read layer_height to cap each mix component (see FulfillmentStore::solve).
+    // full_config carries the resolved print layer_height; fall back to 0.2
+    // (the nominal default, MixedFilamentPreviewSettings::nominal_layer_height)
+    // when the key is absent so the cap is still applied.
+    double layer_height = 0.2;
+    if (auto* opt = pb->full_config().option<ConfigOptionFloat>("layer_height"))
+        layer_height = opt->value;
+    m_store.solve(design, device, layer_height);
     refresh_fulfilment();
     // If the device snapshot was the offline mock (no printer connected), tell
     // the user the match is against inferred device data, not a live machine —

@@ -80,7 +80,8 @@ bool lock_components_unchanged(const FulfillmentEntry& prior,
 } // namespace
 
 void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
-                             const std::vector<PhysicalSlot>& device)
+                             const std::vector<PhysicalSlot>& device,
+                             double                           layer_height)
 {
     // Build the new entry list, carrying forward locks that survive (PRD §4.3).
     // Index prior entries by design_extruder for O(1) lookup.
@@ -149,7 +150,7 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
             recompute_health_from_recipe(intent, e);
         } else {
             // Not locked (or lock invalidated): solve fresh.
-            solve_intent(intent, device, e);
+            solve_intent(intent, device, layer_height, e);
             // Fresh-solved entries are current (not stale). (FulfillmentEntry.stale
             // defaults true; without this, has_solved() — which checks front().stale
             // — would wrongly return false and refresh_fulfilment would show the
@@ -166,6 +167,7 @@ void FulfillmentStore::solve(const std::vector<DesignIntent>& design,
 
 void FulfillmentStore::solve_intent(const DesignIntent& intent,
                                     const std::vector<PhysicalSlot>& device,
+                                    double                           layer_height,
                                     FulfillmentEntry& out)
 {
     // ---- Pass 1: TYPE FILTER (hard constraint, PRD §4) ----
@@ -272,8 +274,23 @@ void FulfillmentStore::solve_intent(const DesignIntent& intent,
         return;
     }
 
+    // Per-component cap for the mix recipe. Without local-Z dithering a single
+    // filament must not dominate more than (n-1)/n of the cadence cycle, where
+    // n = 0.2/layer_height + 1 — otherwise the colour transition reads as a solid
+    // band over (n-1) consecutive layers instead of an even blend. At the
+    // recommended lh<=0.2 this yields max ∈ [50, ~67]%; above lh=0.2 the cap
+    // drops below the solver's [50,100] floor, so clamp to 50 (the solver would
+    // otherwise reject the recipe and return invalid). Out-of-range / non-positive
+    // layer_height disables the cap (max=100, the solver's physical ceiling).
+    int max_component_percent = 100;
+    if (layer_height > 1e-6) {
+        const double n = 0.2 / layer_height + 1.0;          // cycle length in layers
+        const double cap = (n - 1.0) / n * 100.0;            // max single-filament %
+        max_component_percent = std::clamp(int(std::floor(cap)), 50, 100);
+    }
+
     out.recipe = build_best_color_match_recipe(
-        palette, target, /*min_component_percent=*/0, /*max_component_percent=*/100,
+        palette, target, /*min_component_percent=*/0, max_component_percent,
         /*check_compatible=*/true);
 
     if (out.recipe.valid) {

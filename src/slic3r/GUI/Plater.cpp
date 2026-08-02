@@ -13091,7 +13091,13 @@ Plater::priv::SliceInputs Plater::priv::prepare_slice_inputs(const Slic3r::Model
     // preserved (only their health/snapshot refreshed).
     if (store.has_stale()) {
         const PresetBundle* pb = wxGetApp().preset_bundle;
-        store.solve(GUI::snapshot_design_intent(*pb), GUI::snapshot_device_stock(*pb));
+        // Pass the resolved layer_height so solve() can cap each mix component
+        // (see FulfillmentStore::solve). out.config already carries layer_height
+        // (it's a copy of full_config at line ~13078); fall back to 0.2 nominal.
+        double lh = 0.2;
+        if (auto* opt = out.config.option<ConfigOptionFloat>("layer_height"))
+            lh = opt->value;
+        store.solve(GUI::snapshot_design_intent(*pb), GUI::snapshot_device_stock(*pb), lh);
     }
 
     auto space = GUI::build_device_filament_space(out.config, *wxGetApp().preset_bundle, store);
