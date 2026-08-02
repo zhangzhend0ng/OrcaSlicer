@@ -341,9 +341,48 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     if (e.kind == PlanKind::Direct) {
         plan = wxString::Format(_L("direct match (slot %s)"), label_for(e.recipe.component_a));
     } else if (e.kind == PlanKind::Synthesised) {
-        plan = wxString::Format(_L("mix slot %s + %s @ %d%%"),
-                                label_for(e.recipe.component_a), label_for(e.recipe.component_b),
-                                e.recipe.mix_b_percent);
+        // A multi-colour mix (3+) stores its full component list + per-component
+        // weights in gradient_component_ids / gradient_component_weights
+        // (palette-local, parallel — same space as component_a/b, verified against
+        // MixedFilamentDialog::collect_result). The legacy two-colour text
+        // ("mix slot X + Y @ Z%") only renders the primary pair and silently
+        // dropped the third+ colour, so the UI read as two-colour even after the
+        // slice path was fixed (round-21). When the gradient list has 3+ entries,
+        // render the full recipe: "mix slot X/Y/Z @ a%/b%/c%". Falls back to the
+        // two-colour form for plain 2-component blends (incl. the {a,b} marker
+        // dialog stores for 2-colour gradient mode, where weights is empty).
+        const auto gids = MixedFilamentManager::decode_gradient_component_ids(e.recipe.gradient_component_ids, 0);
+        if (gids.size() >= 3) {
+            // Weights are "/"-separated percents parallel to gids; parse them
+            // manually (decode_gradient_component_weights is file-static in
+            // MixedFilament.cpp). Fall back to mix_b_percent split if absent.
+            std::vector<int> gw;
+            gw.reserve(gids.size());
+            if (!e.recipe.gradient_component_weights.empty()) {
+                size_t start = 0;
+                for (size_t pos = 0; pos <= e.recipe.gradient_component_weights.size(); ++pos) {
+                    if (pos == e.recipe.gradient_component_weights.size() || e.recipe.gradient_component_weights[pos] == '/') {
+                        try { gw.push_back(std::stoi(e.recipe.gradient_component_weights.substr(start, pos - start))); }
+                        catch (...) { /* malformed weight token — leave absent */ }
+                        start = pos + 1;
+                    }
+                }
+            }
+            wxString slots, pcts;
+            for (size_t i = 0; i < gids.size(); ++i) {
+                const wxString lbl = label_for(gids[i]);
+                slots += (i ? "/" : "") + lbl;
+                if (i < gw.size()) pcts += (i ? "/" : "") + wxString::Format("%d%%", gw[i]);
+            }
+            if (pcts.empty())
+                plan = wxString::Format(_L("mix slot %s"), slots);
+            else
+                plan = wxString::Format(_L("mix slot %s @ %s"), slots, pcts);
+        } else {
+            plan = wxString::Format(_L("mix slot %s + %s @ %d%%"),
+                                    label_for(e.recipe.component_a), label_for(e.recipe.component_b),
+                                    e.recipe.mix_b_percent);
+        }
     } else {
         plan = _L("no same-type stock — type gap");
     }
