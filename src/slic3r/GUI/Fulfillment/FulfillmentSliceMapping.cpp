@@ -106,13 +106,29 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
 
     for (const FulfillmentEntry& e : entries) {
         if (e.kind == PlanKind::Unmet || !e.recipe.valid) continue;
-        // Direct: component_a is the sole (palette-local) component.
-        // Synthesised: component_a and component_b are the two palette-local components.
-        // Degenerate single-component recipe (a==b, mix==0) is treated as direct.
-        const unsigned int comps[2] = { e.recipe.component_a, e.recipe.component_b };
-        const int          ncomp    = (e.kind == PlanKind::Direct || e.recipe.mix_b_percent == 0) ? 1 : 2;
-        for (unsigned int ci = 0; ci < (unsigned int)ncomp; ++ci) {
-            const unsigned int palette_idx = comps[ci]; // 1-based into component_ams_keys
+
+        // Collect every palette-local component id this recipe references, so the
+        // device-space rows/colours array covers ALL of them — not just the primary
+        // pair. A three-or-more-colour gradient stores its extra component ids in
+        // gradient_component_ids (palette-local, same space as component_a/b,
+        // encoded by MixedFilamentManager::encode_gradient_component_ids: legacy
+        // "123" or extended "1/12/3"). Collecting only component_a/b here would
+        // drop the third+ slot from `rows`, and the gradient ids string — passed
+        // verbatim into the batch entry below — would then point at a slot absent
+        // from the device-space colour array, silently degrading an N-colour mix
+        // to a 2-colour one (the reported bug). decode_gradient_component_ids(.,0)
+        // skips the num_physical clamp; we bound-check against component_ams_keys
+        // ourselves below.
+        std::vector<unsigned int> palette_ids;
+        palette_ids.push_back(e.recipe.component_a);
+        if (e.kind == PlanKind::Synthesised && e.recipe.mix_b_percent != 0)
+            palette_ids.push_back(e.recipe.component_b);
+        if (e.kind == PlanKind::Synthesised && !e.recipe.gradient_component_ids.empty()) {
+            const auto gids = MixedFilamentManager::decode_gradient_component_ids(e.recipe.gradient_component_ids, 0);
+            for (unsigned int gid : gids) palette_ids.push_back(gid);
+        }
+
+        for (unsigned int palette_idx : palette_ids) {
             if (palette_idx < 1 || palette_idx > e.component_ams_keys.size()) {
                 BOOST_LOG_TRIVIAL(warning) << "build_device_filament_space: recipe component "
                                            << palette_idx << " out of range for design extruder "
@@ -206,14 +222,53 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
                                     << " — unmapped device slot, fallback to design colour)";
             continue;
         }
+
         MixedFilamentBatchEntry be;
         be.component_a   = static_cast<unsigned int>(a);
         be.component_b   = static_cast<unsigned int>(b);
         be.mix_b_percent = e.recipe.mix_b_percent;
         be.manual_pattern            = e.recipe.manual_pattern;
-        be.gradient_component_ids    = e.recipe.gradient_component_ids;
-        be.gradient_component_weights= e.recipe.gradient_component_weights;
         be.distribution_mode         = int(MixedFilament::Simple);
+
+        // gradient_component_ids is stored on the entry as PALETTE-LOCAL ids
+        // (1-based into the palette the solver/dialog saw — same space as the
+        // entry's component_a/b before this loop remapped them to device space).
+        // MixedFilamentManager reads them as DEVICE-SPACE filament ids (it clamps
+        // to device_colors.size() and indexes colours by [id-1]), so they MUST be
+        // remapped here exactly like component_a/b were — otherwise a 3-colour
+        // gradient's third id points at the wrong device slot (the reported
+        // "three-colour mix degraded to two" bug: the third component was either
+        // absent from device_colors or silently rebound to a different filament).
+        // Decode → remap each palette-local id via component_device_id → re-encode.
+        // Weights are positional (parallel to the decoded id list) and need no
+        // reordering as long as we preserve id order through the remap.
+        if (!e.recipe.gradient_component_ids.empty()) {
+            const auto gids = MixedFilamentManager::decode_gradient_component_ids(e.recipe.gradient_component_ids, 0);
+            std::vector<unsigned int> dev_gids;
+            dev_gids.reserve(gids.size());
+            bool any_gradient_unmapped = false;
+            for (unsigned int gid : gids) {
+                int did = component_device_id(e, gid);
+                if (did <= 0) { any_gradient_unmapped = true; break; }
+                dev_gids.push_back(static_cast<unsigned int>(did));
+            }
+            if (any_gradient_unmapped) {
+                // A gradient-referenced slot no longer resolves on this device —
+                // can't honour the recipe; fall back to design colour (honest,
+                // PRD §5) rather than emit a partial/wrong gradient.
+                any_unmapped_component_seen = true;
+                BOOST_LOG_TRIVIAL(info) << "build_device_filament_space: skipping synthesised recipe for "
+                                        << "design extruder " << e.design_extruder
+                                        << " (a gradient component is unmapped; fallback to design colour)";
+                continue;
+            }
+            be.gradient_component_ids    = MixedFilamentManager::encode_gradient_component_ids(dev_gids);
+            be.gradient_component_weights= e.recipe.gradient_component_weights;
+        } else {
+            be.gradient_component_ids.clear();
+            be.gradient_component_weights.clear();
+        }
+
         if (e.recipe.preview_color.IsOk())
             be.display_color = e.recipe.preview_color.GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
         batch_entries.push_back(be);
