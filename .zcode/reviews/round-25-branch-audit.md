@@ -236,3 +236,52 @@ agent C 的过度泛化：它看到两条路径都"漏 m_extruder"，但没区�
 - [minor] on_filaments_change 不直接 mark_stale（靠 on_config_change 兜底，脆弱）
 - [minor] publish_project() 空 stub
 
+---
+
+## Round 25 清理轮 — 4 项 [minor] backlog 处理（2026-08-03）
+
+用户："修掉"。逐项核实现状后处理。
+
+### 修1 — reset_all 真正 clear m_entries（行为改动）
+`FulfillmentStore::reset_all`（FulfillmentStore.cpp:493）原只 reset flags 不 clear entries。
+Plater.cpp:12673 的注释却说 "clears entries, locks, and m_ever_solved"——注释与实现不符。
+当前靠两层闸门兜底（has_solved + m_expected_view_active），行为正确但脆弱：未来新增
+不查 has_solved 的消费者（如 get_expected_render_colors 已经是这种写法，仅靠
+m_expected_view_active 闸门）会读到上个项目的 stale plan。改为真正 `m_entries.clear()`，
+闭合语义：reset 后 has_solved()==false AND entries().empty()，任一 guard 独立充分。
+两个 caller 核实安全：priv::reset（12676）后立即关 expected view；FulfillmentPanel:232
+的 "Reset all" 按钮后立即 on_match() 重新 solve。
+
+### 修2 — has_solved / m_ever_solved 注释（纯注释）
+FulfillmentStore.hpp:196 成员注释说 "never reset"，但 reset_all（496）会置 false。
+去掉 "never reset"，改为说明 reset_all clears it。
+
+### 修3 — Plater::on_filaments_change 加 notify（行为改动）
+Plater::on_filaments_change（21637）是 sidebar combo / AMS sync / select-machine-dialog
+filament 变更的直接入口，有十几个活 caller，**函数体本身不 mark_stale / notify**。
+audit tiebreaker 已确认活路径靠 on_config_change 末尾的 notify 兜底，但那是脆弱不变量——
+不是所有 caller 都经过 on_config_change。改为函数开头调 notify_filament_usage_changed()，
+覆盖所有 caller 路径。幂等安全：notify 用 filament_usage_sync_pending.exchange 去重，
+双触发不会出问题（coalesce 机制）。
+
+### 修4 — publish_project 不动（audit 误判，记录纠正）
+audit [minor] #7 说 publish_project() 是"死代码"。核实后发现：
+- 它是 BBS "publish project" 功能入口，被 publish state machine 调用（Plater.cpp:15158, 15313）
+- 空实现来自上游 commit 7e6408c（分支起点之前），是 **OrcaSlicer fork 有意禁用 BBS publish**
+  的 stub，不是本分支引入的死代码
+- 直接删会破坏 publish state machine（m_is_publishing 流程）
+audit 把"上游 feature flag stub"误判为"本分支该清理的死代码"。**不动，仅在此纠正记录**。
+这是分类法边界陷阱：把"可达但功能禁用"当成"不可达死代码"。
+
+### 测试证据
+- build Snapmaker_Orca：10/10 含 linking ✓
+- 二进制 (01:19:06) 晚于 3 个源文件 (01:18:06-01:18:27)，确认重链接
+- MixedFilament 全套 166 cases（164 + 2 failed-as-expected），无回归 ✓
+- 修3 是行为改动，靠测试无回归 + notify 的 coalesce 幂等性保证
+
+### 过程意外
+- **audit 的 publish_project 误判**：把上游 feature flag stub 当成本分支死代码。
+  核查项 (j) "现状描述错"的又一实例——audit 说"空 stub"，现状确实是空，但归因错
+  （是上游有意禁用，不是本分支遗忘）。改前必须核实代码来源（git log -S）。
+
+
