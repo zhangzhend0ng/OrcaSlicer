@@ -264,6 +264,22 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
         return row_device_index(rows[it->second], it->second) + 1;
     };
 
+    // Map a DESIGN physical extruder (1-based, as stored in a design-layer mixed
+    // filament's component_a/b / manual_pattern / gradient_component_ids) to its
+    // 1-based device filament id. This is the counterpart of the per-entry direct
+    // mapping in Pass 4 (line ~433-439), factored out so design-layer mixed rows
+    // (which have no FulfillmentEntry of their own) can remap their components.
+    // Returns 0 when the design extruder has no realisation on this device
+    // (Unmet / invalid recipe / unmapped physical slot).
+    auto design_physical_to_device = [&](unsigned int design_extruder_1based) -> int {
+        for (const FulfillmentEntry& e : entries) {
+            if (e.design_extruder + 1 != design_extruder_1based) continue;
+            if (e.kind == PlanKind::Unmet || !e.recipe.valid) return 0;
+            return component_device_id(e, e.recipe.component_a);
+        }
+        return 0;
+    };
+
     for (const FulfillmentEntry& e : entries) {
         if (e.kind != PlanKind::Synthesised || !e.recipe.valid) continue;
         if (e.recipe.mix_b_percent == 0) continue; // effectively direct
@@ -344,6 +360,115 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
         synth_order.push_back({ e.design_extruder });
     }
 
+    // ---- Pass 2.5: port design-layer mixed filaments into device space ----
+    // A model volume/object/layer-range may reference a design-layer mixed
+    // filament via its extruder field (e > num_design_physical). Those virtual
+    // ids are invisible to FulfillmentStore (snapshot_design_intent only covers
+    // physical extruders), so without this pass they would fall through
+    // remap_extruder_field's identity state_map and be clamped to slot 1
+    // (Case A: no synth, num_total excludes virtual) or point at the wrong synth
+    // row (Case B: mixed_filament_definitions overwritten). Port each design
+    // mixed row into device space by remapping its components via
+    // design_physical_to_device, then add it as a device mixed row alongside
+    // the fulfilment synth rows. (round-27)
+    //
+    // design_mixed_map: design virtual id (1-based, = num_design_physical + k)
+    //                  → index into batch_entries (so we can read its assigned
+    //                  device virtual id from assigned_ids after add_batch).
+    std::vector<std::pair<unsigned int, size_t>> design_mixed_map;
+    if (design_full_config.has("mixed_filament_definitions")) {
+        const std::string& design_mixed_str = design_full_config.opt_string("mixed_filament_definitions");
+        if (!design_mixed_str.empty()) {
+            // num_design_physical = filament count in design_full_config (the
+            // design palette the mixed string was authored against). The mixed
+            // string's component ids are 1-based into that palette.
+            const auto* design_colours_opt = design_full_config.option<ConfigOptionStrings>("filament_colour");
+            const unsigned int num_design_physical =
+                static_cast<unsigned int>(design_colours_opt ? design_colours_opt->values.size() : 0);
+            if (num_design_physical >= 2) {
+                // Build the design palette (must match what the user authored
+                // against) so load_custom_entries accepts the design-space
+                // component ids. Using device colours here would reject rows
+                // whose component id > device num_physical.
+                std::vector<std::string> design_colors;
+                design_colors.reserve(num_design_physical);
+                for (const std::string& c : design_colours_opt->values)
+                    design_colors.push_back(c.empty() ? std::string("#26A69A") : c);
+
+                // Load into a throwaway manager to parse the serialised string.
+                // We do NOT load_custom_entries on the main mgr — it rebuilds
+                // m_mixed and would erase the fulfilment synth rows.
+                MixedFilamentManager design_mgr;
+                design_mgr.load_custom_entries(design_mixed_str, design_colors);
+
+            unsigned int next_design_virtual = num_design_physical + 1;
+            for (const MixedFilament& dmf : design_mgr.mixed_filaments()) {
+                if (!dmf.enabled || dmf.deleted || !dmf.custom) continue;
+
+                // Remap component_a/b from design-space → device-space.
+                const int dev_a = design_physical_to_device(dmf.component_a);
+                const int dev_b = design_physical_to_device(dmf.component_b);
+                if (dev_a <= 0 || dev_b <= 0 || dev_a == dev_b) {
+                    // A component this design mix depends on has no realisation on
+                    // the current device — can't honour the mix. Skip it (honest
+                    // fallback: the design virtual id stays unmapped, and
+                    // remap_extruder_field redirects volumes referencing it to the
+                    // fallback device slot, same as any unfulfilled design colour).
+                    any_unmapped_component_seen = true;
+                    BOOST_LOG_TRIVIAL(info) << "build_device_filament_space: dropping design-layer mixed "
+                                            << "row (virtual id " << next_design_virtual
+                                            << ") — component a=" << dev_a << " b=" << dev_b
+                                            << " unmapped on device";
+                    ++next_design_virtual; // virtual id space still advances even when dropped
+                    continue;
+                }
+
+                MixedFilamentBatchEntry be;
+                be.component_a   = static_cast<unsigned int>(dev_a);
+                be.component_b   = static_cast<unsigned int>(dev_b);
+                be.mix_b_percent = dmf.mix_b_percent;
+                // manual_pattern absolute tokens (>=3 / [NN]) are design-space ids;
+                // remap via design_physical_to_device. Relative "1"/"2" stay (they
+                // resolve to component_a/b, now device-space). See remap_manual_pattern.
+                be.manual_pattern = remap_manual_pattern(dmf.manual_pattern, FulfillmentEntry{}, [&design_physical_to_device](const FulfillmentEntry&, unsigned int pid) -> int {
+                    return design_physical_to_device(pid);
+                });
+                be.distribution_mode = dmf.distribution_mode;
+                be.gradient_enabled  = dmf.gradient_enabled;
+                be.gradient_start    = dmf.gradient_start;
+                be.gradient_end      = dmf.gradient_end;
+                // gradient_component_ids are design-space ids; remap each.
+                if (!dmf.gradient_component_ids.empty()) {
+                    const auto gids = MixedFilamentManager::decode_gradient_component_ids(dmf.gradient_component_ids, 0);
+                    std::vector<unsigned int> dev_gids;
+                    dev_gids.reserve(gids.size());
+                    bool any_g_unmapped = false;
+                    for (unsigned int gid : gids) {
+                        int did = design_physical_to_device(gid);
+                        if (did <= 0) { any_g_unmapped = true; break; }
+                        dev_gids.push_back(static_cast<unsigned int>(did));
+                    }
+                    if (any_g_unmapped) {
+                        any_unmapped_component_seen = true;
+                        ++next_design_virtual;
+                        continue;
+                    }
+                    be.gradient_component_ids     = MixedFilamentManager::encode_gradient_component_ids(dev_gids);
+                    be.gradient_component_weights = dmf.gradient_component_weights;
+                }
+                if (dmf.display_color.empty() && dmf.component_a >= 1 && dmf.component_a <= t_indexed_colors.size())
+                    be.display_color = t_indexed_colors[dmf.component_a - 1]; // fallback; Print::apply recomputes
+                else
+                    be.display_color = dmf.display_color;
+
+                design_mixed_map.emplace_back(next_design_virtual, batch_entries.size());
+                batch_entries.push_back(be);
+                ++next_design_virtual;
+            }
+            } // end if (num_design_physical >= 2)
+        }
+    }
+
     std::vector<unsigned int> assigned_ids; // 1-based virtual ids per batch entry (0 if dropped)
     if (!batch_entries.empty()) {
         // add_batch_custom_filaments clamps component refs to [1,n] (n = colours.size())
@@ -417,7 +542,14 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
         out.config.opt_string("mixed_filament_definitions", true) = mgr.serialize_custom_entries();
 
     // ---- Pass 4: design_extruder -> device filament id map ----
-    out.design_to_device.assign(static_cast<size_t>(max_design_extruder) + 1, 0u);
+    // Size covers physical design extruders (max_design_extruder from entries)
+    // PLUS design-layer mixed virtual ids (num_design_physical + 1 .. +K), so
+    // that volumes/layer-ranges whose `extruder` field points at a design mixed
+    // filament find a mapped device virtual id instead of falling off the end.
+    unsigned int design_virtual_max = max_design_extruder;
+    for (const auto& dm : design_mixed_map)
+        design_virtual_max = std::max(design_virtual_max, dm.first);
+    out.design_to_device.assign(static_cast<size_t>(design_virtual_max) + 1, 0u);
     auto set_map = [&](unsigned int design_extruder, unsigned int device_id) {
         if (design_extruder < out.design_to_device.size())
             out.design_to_device[design_extruder] = device_id;
@@ -427,6 +559,12 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
     for (size_t i = 0; i < synth_order.size() && i < assigned_ids.size(); ++i) {
         if (assigned_ids[i] != 0)
             set_map(synth_order[i].design_extruder, assigned_ids[i]);
+    }
+    // Design-layer mixed rows ported in Pass 2.5. Their device virtual id is the
+    // assigned_id at their batch_entries position (which add_batch filled).
+    for (const auto& dm : design_mixed_map) {
+        if (dm.second < assigned_ids.size() && assigned_ids[dm.second] != 0)
+            set_map(dm.first, assigned_ids[dm.second]);
     }
     // Direct entries (and synthesised entries we skipped above — fall back to
     // their primary component if it resolves, else stay 0 = use design colour).
