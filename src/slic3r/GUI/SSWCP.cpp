@@ -3313,7 +3313,7 @@ void SSWCP_MachineOption_Instance::sw_GetFileFilamentMapping()
             response["filament_color_rgba"] = str_res;
             response["filament_color_multi"] = multi_color_res;
         }
-        
+
 
         // filament type
         if (const auto* filament_type_opt = full_config.option<ConfigOptionStrings>("filament_type");
@@ -3394,7 +3394,7 @@ void SSWCP_MachineOption_Instance::sw_GetFileFilamentMapping()
         if (!filament_extruder_map.empty()) {
             json object;
             for (const auto& item : filament_extruder_map) {
-                object[std::to_string(item.first)] = std::to_string(item.second); 
+                object[std::to_string(item.first)] = std::to_string(item.second);
             }
             response["filament_extruder_map"] = object;
         }

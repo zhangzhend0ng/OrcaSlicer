@@ -8739,7 +8739,13 @@ void Sidebar::load_ams_list(std::string const &device, MachineObject* obj)
     update_fulfillment_health_indicator();
     // Device filaments re-synced → the cached Expected-View device palette (colours
     // keyed by device T-number) is stale; clear it so the next slice rebuilds it.
-    if (auto* plater = wxGetApp().plater()) plater->invalidate_device_palette_cache();
+    if (auto* plater = wxGetApp().plater()) {
+        plater->invalidate_device_palette_cache();
+        // Device stock changed → the existing slice result was built against the
+        // prior device mapping and is now stale. Invalidate it so the user must
+        // re-slice (and the send path can't ship a stale plan).
+        plater->invalidate_slice_for_fulfillment_change();
+    }
 }
 
 void Sidebar::sync_ams_list()
@@ -9637,6 +9643,14 @@ struct Plater::priv
         std::vector<std::string> physical_colors; // device T-number order (== slice rows order)
         std::vector<std::string> virtual_colors;  // synthesised rows, device virtual T-number order
         int                      num_physical = 0;
+        // extruder_map_table inversion: ams_slot_by_t[T] = device bay/slot index (0-based)
+        // the filament on T-number T is physically loaded in. -1 = no mapping (e.g. mock
+        // device, or a T-number with no slot). Lets the G-code preview legend list filaments
+        // in device-bay order (matching what the user sees on the device panel) instead of
+        // raw T-number order, while stripes still index tool_colors by T-number. Empty when
+        // the device reported an identity mapping (bay == T) or no mapping at all — callers
+        // fall back to T-number order, preserving prior behaviour.
+        std::vector<int>         ams_slot_by_t;
     };
     DevicePaletteCache m_cached_device_palette;
     bool               m_cached_device_palette_valid = false;
@@ -13225,6 +13239,24 @@ Plater::priv::SliceInputs Plater::priv::prepare_slice_inputs(const Slic3r::Model
         m_cached_device_palette.physical_colors = colours->values;
         m_cached_device_palette.virtual_colors  = std::move(space->virtual_display_colors);
         m_cached_device_palette.num_physical    = space->num_physical;
+        // Build the T-number -> device-bay inversion of extruder_map_table, so the
+        // G-code preview legend can list filaments in device-bay order (matching the
+        // device panel) while stripes keep indexing tool_colors by T-number. Source is
+        // build_machine_filament_list (AMS-bay order, each entry carrying m_index = bay
+        // and m_extruder = T-number). Only populated when the mapping is non-identity;
+        // an identity mapping (bay == T for every slot) leaves ams_slot_by_t empty so
+        // callers fall back to plain T-number order.
+        std::vector<FilamentData> machine_list;
+        build_machine_filament_list(wxGetApp().preset_bundle, machine_list);
+        std::vector<int> ams_slot_by_t(space->num_physical, -1);
+        bool any_swap = false;
+        for (const FilamentData& fd : machine_list) {
+            if (fd.m_extruder < 0 || fd.m_extruder >= space->num_physical) continue;
+            int bay = static_cast<int>(fd.m_index);
+            ams_slot_by_t[fd.m_extruder] = bay;
+            if (bay != fd.m_extruder) any_swap = true;
+        }
+        m_cached_device_palette.ams_slot_by_t = any_swap ? std::move(ams_slot_by_t) : std::vector<int>{};
         m_cached_device_palette_valid           = true;
     }
 
@@ -20674,7 +20706,17 @@ int Plater::export_3mf(const boost::filesystem::path& output_path, SaveStrategy 
 
 
     // get type and color for platedata
-    auto* filament_color = dynamic_cast<const ConfigOptionStrings*>(cfg.option("filament_colour"));
+    // cfg here is full_config_secure() = design-space. filament_colour / filament_type
+    // in it are design-ordered, but slice_filaments_info[i].id is a device T-number
+    // (from total_volumes_per_extruder). Under a non-identity design→device remap
+    // (FulfillmentStore solved) indexing design arrays with a device id misaligns
+    // colour/type. Source colour/type per-plate from that plate's fff_print()->config()
+    // — Print::apply was fed the device-space slice_inputs.config, so its
+    // filament_colour / filament_type are device T-number ordered and match it->id.
+    // Same source as SSWCP.cpp:3286 / SelectMachine.cpp reset_and_sync_ams_list.
+    // filament_id stays on design cfg: filament_ids is a supply-chain id that
+    // build_device_filament_space does NOT reorder, and design identity is the
+    // honest intent (it carries no device-slot meaning). See backlog (round-28).
     auto* nozzle_diameter_option = dynamic_cast<const ConfigOptionFloats*>(cfg.option("nozzle_diameter"));
     auto* filament_id_opt = dynamic_cast<const ConfigOptionStrings*>(cfg.option("filament_ids"));
     std::string nozzle_diameter_str;
@@ -20687,11 +20729,26 @@ int Plater::export_3mf(const boost::filesystem::path& output_path, SaveStrategy 
         PlateData *plate_data = plate_data_list[i];
         plate_data->printer_model_id = printer_model_id;
         plate_data->nozzle_diameters = nozzle_diameter_str;
+
+        // Per-plate device-space palette (only this plate's own slice had its
+        // device remap baked into its Print config). Unliced plates have empty
+        // slice_filaments_info (parse_filament_info only runs on a valid slice
+        // result — PartPlate.cpp:5443), so the inner loop below is a no-op there
+        // and the device config length does not matter.
+        PartPlate* plate = p->partplate_list.get_plate(i);
+        // full_print_config() was populated by Print::apply from the device-space
+        // slice_inputs.config, so filament_colour / filament_type are device
+        // T-number ordered and match it->id.
+        auto& plate_dev_cfg = plate->fff_print()->full_print_config();
+        const auto* plate_colors = dynamic_cast<const ConfigOptionStrings*>(plate_dev_cfg.option("filament_colour"));
+        const auto* plate_types  = dynamic_cast<const ConfigOptionStrings*>(plate_dev_cfg.option("filament_type"));
+
         for (auto it = plate_data->slice_filaments_info.begin(); it != plate_data->slice_filaments_info.end(); it++) {
-            std::string display_filament_type;
-            it->type  = cfg.get_filament_type(display_filament_type, it->id);
+            // type + color: device-space (per-plate print config), indexed by device id.
+            it->type  = plate_types ? plate_types->get_at(it->id) : "";
+            it->color = plate_colors ? plate_colors->get_at(it->id) : "#FFFFFF";
+            // filament_id: design-space supply-chain id (see note above).
             it->filament_id = filament_id_opt ? filament_id_opt->get_at(it->id) : "";
-            it->color = filament_color ? filament_color->get_at(it->id) : "#FFFFFF";
             // save filament info used in curr plate
             int index = p->partplate_list.get_curr_plate_index();
             if (store_params.id_bboxes.size() > index) {
@@ -22357,6 +22414,39 @@ std::vector<std::string> Plater::get_extruder_colors_from_plater_config(const GC
     }
 }
 
+std::vector<unsigned int> Plater::get_ams_ordered_extruder_ids(const std::vector<unsigned char>& used_t_ids) const
+{
+    // No cached non-identity mapping -> caller falls back to plain T-number order.
+    if (!p->m_cached_device_palette_valid || p->m_cached_device_palette.ams_slot_by_t.empty())
+        return {};
+    const auto& ams_slot_by_t = p->m_cached_device_palette.ams_slot_by_t;
+    // Build (bay, T-number) pairs for every used T that has a bay, sort by bay, emit T.
+    std::vector<std::pair<int, unsigned int>> keyed;
+    keyed.reserve(used_t_ids.size());
+    for (unsigned char t : used_t_ids) {
+        if (t >= ams_slot_by_t.size()) continue;
+        int bay = ams_slot_by_t[t];
+        if (bay < 0) continue;
+        keyed.emplace_back(bay, static_cast<unsigned int>(t));
+    }
+    std::sort(keyed.begin(), keyed.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<unsigned int> out;
+    out.reserve(keyed.size());
+    for (const auto& k : keyed) out.push_back(k.second);
+    return out;
+}
+
+unsigned int Plater::extruder_id_to_ams_slot(unsigned int extruder_id) const
+{
+    if (!p->m_cached_device_palette_valid || p->m_cached_device_palette.ams_slot_by_t.empty())
+        return extruder_id; // no mapping -> label with the T-number itself
+    const auto& ams_slot_by_t = p->m_cached_device_palette.ams_slot_by_t;
+    if (extruder_id >= ams_slot_by_t.size() || ams_slot_by_t[extruder_id] < 0)
+        return extruder_id;
+    return static_cast<unsigned int>(ams_slot_by_t[extruder_id]);
+}
+
 std::vector<std::string> Plater::get_expected_render_colors() const
 {
     // Build one realised colour per physical extruder. O(N) over entries once
@@ -22434,6 +22524,36 @@ void Plater::invalidate_device_palette_cache()
     // registration); guard anyway since callers (e.g. Sidebar::load_ams_list) run
     // during sync flows.
     if (p) p->m_cached_device_palette_valid = false;
+}
+
+void Plater::invalidate_slice_for_fulfillment_change()
+{
+    // Fulfilment mapping/recipe changed. The current slice result (if any) was
+    // produced against the PREVIOUS device-space mapping — its G-code T-numbers
+    // and the per-plate Print config's filament_colour no longer match the
+    // current plan. Mark every plate's slice result invalid so:
+    //   - the action button shows "Slice now" (not "Preview"), signalling stale;
+    //   - the send path can't ship a G-code built from a stale mapping;
+    //   - get_used_extruders() / fff_print()->config() consumers don't read a
+    //     device space that no longer reflects the user's intent.
+    // This is needed because fulfilment-only changes (device stock sync, Match
+    // re-solve, recipe edit, lock toggle) do NOT produce a design-config diff,
+    // so Print::apply's change detection would otherwise leave the stale result
+    // marked valid. (Design-config changes route through on_filaments_change →
+    // update_background_process and invalidate normally.)
+    if (!p) return;
+    PartPlateList& ppl = p->partplate_list;
+    for (int i = 0; i < ppl.get_plate_count(); ++i)
+        if (PartPlate* plate = ppl.get_plate(i))
+            plate->update_slice_result_valid_state(false);
+    // Refresh the action button so it flips to "Slice now" (the valid=false
+    // above makes get_enable_slice_status() enable slicing). Do NOT call
+    // schedule_background_process() here — that would auto-trigger a reslice
+    // (and, via prepare_slice_inputs' has_stale branch, an automatic re-solve /
+    // re-mapping), which must stay a user-initiated action. The user decides
+    // when to re-slice after changing the fulfilment plan.
+    if (p->main_frame)
+        p->main_frame->update_slice_print_status(MainFrame::eEventSliceUpdate, true, false);
 }
 
 

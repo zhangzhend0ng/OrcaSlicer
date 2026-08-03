@@ -138,6 +138,11 @@ void DeviceFilamentZone::on_timer(wxTimerEvent&)
         if (auto* panel = plater->sidebar().fulfillment_panel())
             panel->refresh_fulfilment();
         plater->sidebar().update_fulfillment_health_indicator();
+        // Device stock fingerprint changed → existing slice result was built
+        // against the prior device mapping and is now stale. Invalidate so the
+        // user re-slices before sending. (Does not produce a design-config diff,
+        // so Print::apply would not notice on its own.)
+        plater->invalidate_slice_for_fulfillment_change();
     }
 }
 

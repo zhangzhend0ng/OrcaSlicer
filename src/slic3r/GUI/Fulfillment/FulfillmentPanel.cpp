@@ -170,6 +170,11 @@ void FulfillmentPanel::on_match()
         plater->sidebar().update_fulfillment_health_indicator();
         // If Expected View is active, the 3D model must repaint with the new colours.
         plater->refresh_expected_render();
+        // Match re-solved the mapping → the existing slice result was built
+        // against the prior plan and is now stale. Invalidate so the user
+        // re-slices before sending. (solve() does not produce a design-config
+        // diff, so Print::apply would not notice on its own.)
+        plater->invalidate_slice_for_fulfillment_change();
     }
 }
 
@@ -236,16 +241,23 @@ void FulfillmentPanel::refresh_fulfilment()
     reset_btn->SetStyle(ButtonStyle::Confirm, ButtonType::Compact);
     reset_btn->SetToolTip(_L("Discard all manual edits and recompute recipes."));
     reset_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+        // reset_all() + on_match() → refresh_fulfilment() → m_panel_content->
+        // DestroyChildren(), which deletes THIS button while its wxEVT_BUTTON
+        // is still being dispatched. wxWidgets then walks a freed wxButton when
+        // unwinding event propagation → use-after-free / crash. Defer the
+        // destroying work to the next event-loop idle so the button finishes
+        // dispatching first. Same pattern as clear_locks/mix/lock handlers below.
         m_store.reset_all();
-        on_match(); // re-solve after reset
+        wxTheApp->CallAfter([this]() { on_match(); }); // re-solve after reset
     });
     auto* clear_locks_btn = new Button(m_panel_content, _L("Clear locks"));
     clear_locks_btn->SetStyle(ButtonStyle::Confirm, ButtonType::Compact);
     clear_locks_btn->SetToolTip(_L("Unlock every recipe."));
     clear_locks_btn->Enable(any_locked);
     clear_locks_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+        // See reset_btn: refresh_fulfilment() destroys this button mid-dispatch.
         m_store.clear_all_locks();
-        refresh_fulfilment();
+        wxTheApp->CallAfter([this]() { refresh_fulfilment(); });
     });
     action_row->Add(reset_btn, 0, wxRIGHT, FromDIP(8));
     action_row->Add(clear_locks_btn, 0);
@@ -417,7 +429,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     // dialog uses) so the user can choose a device filament to use directly
     // (Direct match) instead of the auto-computed recipe. This is the "use a
     // physical filament" option the user asked for.
-    auto* phys_btn = new ScalableButton(row, wxID_ANY, "edit");
+    auto* phys_btn = new ScalableButton(row, wxID_ANY, "menu_filament");
     phys_btn->SetBackgroundColour(content_bg);
     phys_btn->SetToolTip(_L("Choose a device filament to use for this colour."));
     phys_btn->Enable(can_act);
@@ -473,7 +485,7 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
     // "Mix" — opens MixedFilamentDialog for fine-tuning the mix recipe (ratio,
     // gradient, pattern). Separate from "select physical" so the user has a
     // clear choice between "use a physical filament directly" and "mix".
-    auto* mix_btn = new ScalableButton(row, wxID_ANY, "menu_filament");
+    auto* mix_btn = new ScalableButton(row, wxID_ANY, "color_palette");
     mix_btn->SetBackgroundColour(content_bg);
     mix_btn->SetToolTip(_L("Edit the mix recipe for this colour."));
     mix_btn->Enable(can_act);
@@ -523,18 +535,29 @@ void FulfillmentPanel::add_fulfilment_row(wxFlexGridSizer* grid, const Fulfillme
                                     r.distribution_mode, r.gradient_enabled, r.gradient_start, r.gradient_end,
                                     r.ui_mode,
                                     palette_ams_keys, palette_tray_names, palette);
-        refresh_fulfilment();
+        // See reset_btn: refresh_fulfilment() destroys this button mid-dispatch
+        // (ShowModal ran a nested loop, but mix_btn's handler is still on the
+        // stack, so DestroyChildren deletes mix_btn before this frame returns).
+        wxTheApp->CallAfter([this]() {
+            refresh_fulfilment();
+            // Recipe edit changed the device-space mapping → invalidate the stale slice.
+            if (Plater* plater = wxGetApp().plater()) plater->invalidate_slice_for_fulfillment_change();
+        });
     });
 
-    // Lock (🔒) — class-A edit (PRD §4.3, §6).
-    auto* lock_btn = new ScalableButton(row, wxID_ANY, "lock_normal");
+    // Lock (🔒) — class-A edit (PRD §4.3, §6). Icon mirrors the plate lock pair
+    // (plate_locked / plate_unlocked) so the locked state is visually unambiguous;
+    // refresh_fulfilment rebuilds this row after toggle_lock, so the icon flips
+    // with e.locked.
+    auto* lock_btn = new ScalableButton(row, wxID_ANY, e.locked ? "plate_locked" : "plate_unlocked");
     lock_btn->SetBackgroundColour(content_bg);
     lock_btn->SetToolTip(e.locked ? _L("Locked — recipe kept on recompute. Click to unlock.")
                                   : _L("Lock this recipe (keep on recompute)."));
     lock_btn->Enable(can_act);
     lock_btn->Bind(wxEVT_BUTTON, [this, design_extruder = e.design_extruder](wxCommandEvent&) {
+        // See reset_btn: refresh_fulfilment() destroys this button mid-dispatch.
         m_store.toggle_lock(design_extruder);
-        refresh_fulfilment();
+        wxTheApp->CallAfter([this]() { refresh_fulfilment(); });
     });
 
     auto* status     = new wxStaticText(row, wxID_ANY, wxString::FromUTF8(glyph));

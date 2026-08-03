@@ -595,6 +595,17 @@ public:
     // On activating the parent window.
     void on_activate();
     std::vector<std::string> get_extruder_colors_from_plater_config(const GCodeProcessorResult* const result = nullptr, bool include_mixed = true, bool force_device_palette = false) const;
+    // Reorder a set of used G-code T-numbers into device-bay order, using the
+    // extruder_map_table inversion cached at slice time. Returns the T-numbers
+    // sorted so the legend lists filaments in the order the user sees on the
+    // device panel. Returns empty when no non-identity mapping is cached — the
+    // caller then falls back to the input (plain T-number order). `used_t_ids`
+    // are 0-based T-numbers (as carried by G-code moves / m_extruder_ids).
+    std::vector<unsigned int> get_ams_ordered_extruder_ids(const std::vector<unsigned char>& used_t_ids) const;
+    // For a given T-number, return the device-bay index (0-based) it is loaded in,
+    // or the T-number itself when no non-identity mapping is cached. Used by the
+    // G-code preview legend to label filaments with device-bay numbers.
+    unsigned int extruder_id_to_ams_slot(unsigned int extruder_id) const;
     // Expected-View render colours: one realised colour per physical extruder,
     // derived from the FulfillmentStore (recipe.preview_color). Falls back to the
     // design colours when no match has been solved. Called per-frame from the
@@ -614,6 +625,14 @@ public:
     // Discard the cached Expected-View device palette (called when device stock
     // is re-synced; design-side and project-reset invalidations happen in priv).
     void invalidate_device_palette_cache();
+    // Fulfilment mapping/recipe changed (device stock, Match re-solve, recipe
+    // edit, lock toggle). The device-space slice result is now stale: the G-code
+    // was produced against the prior mapping, so its T-numbers / colours no longer
+    // match the current plan. Mark every plate's slice result invalid so the UI
+    // shows "Slice now" (not "Preview") and the send path can't ship a stale plan.
+    // This change does NOT produce a design-config diff, so Print::apply would
+    // otherwise not notice and the stale result would stay "valid".
+    void invalidate_slice_for_fulfillment_change();
     std::vector<std::string> get_colors_for_color_print(const GCodeProcessorResult* const result = nullptr) const;
 
     void update_menus();

@@ -3219,9 +3219,12 @@ void SelectMachineDialog::set_default()
 void SelectMachineDialog::reset_and_sync_ams_list()
 {
     // for black list
-    std::vector<std::string> materials;
+    // NOTE: brand / filament_id (brands / m_filaments_id) are sourced from the
+    // design-space preset arrays and remain design-ordered — see the limitation
+    // note at info.brand / info.filament_id below. filament_type / colour are
+    // sourced separately from the device-space print config (dev_materials /
+    // dev_colours) after this loop.
     std::vector<std::string> brands;
-    std::vector<std::string> display_materials;
     std::vector<std::string> m_filaments_id;
     auto                     preset_bundle = wxGetApp().preset_bundle;
 
@@ -3231,11 +3234,7 @@ void SelectMachineDialog::reset_and_sync_ams_list()
             Preset *          preset           = &filament_presets->preset(f_index);
 
             if (preset && filament_name.compare(preset->name) == 0) {
-                std::string display_filament_type;
-                std::string filament_type = preset->config.get_filament_type(display_filament_type);
                 std::string m_filament_id = preset->filament_id;
-                display_materials.push_back(display_filament_type);
-                materials.push_back(filament_type);
                 m_filaments_id.push_back(m_filament_id);
 
                 std::string m_vendor_name = "";
@@ -3249,7 +3248,8 @@ void SelectMachineDialog::reset_and_sync_ams_list()
         }
     }
 
-    auto           extruders = wxGetApp().plater()->get_partplate_list().get_curr_plate()->get_used_extruders();
+    auto*          curr_plate = wxGetApp().plater()->get_partplate_list().get_curr_plate();
+    auto           extruders  = curr_plate->get_used_extruders();
     BitmapCache    bmcache;
     MaterialHash::iterator iter = m_materialList.begin();
     while (iter != m_materialList.end()) {
@@ -3264,20 +3264,47 @@ void SelectMachineDialog::reset_and_sync_ams_list()
     m_materialList.clear();
     m_filaments.clear();
 
+    // Device-space palette + type. get_used_extruders() returns device T-numbers
+    // (per-plate slice result); when the FulfillmentStore has solved recipes the
+    // design→device remap in prepare_slice_inputs makes them differ from design
+    // extruders. Source colour/type from this plate's fff_print()->config() —
+    // Print::apply was fed the device-space slice_inputs.config, so its
+    // filament_colour / filament_type are already indexed by device T-number and
+    // match the extruders above. (Same source as SSWCP::sw_GetFileFilamentMapping
+    // at SSWCP.cpp:3286.) MUST stay in sync with that path.
+    // NOTE: brand / filament_id below still index the design-space preset arrays
+    // (filament_vendor / filament_ids are NOT reordered by build_device_filament_space),
+    // so they remain misaligned under non-identity remap — see backlog (round-28).
+    auto& dev_cfg           = curr_plate->fff_print()->full_print_config();
+    const auto& dev_colours = dev_cfg.option<ConfigOptionStrings>("filament_colour")->values;
+    const auto* dev_types   = dev_cfg.option<ConfigOptionStrings>("filament_type");
+    // Rebuild type arrays in device order from the device-space print config so
+    // every consumer below (boundary check, MaterialItem label, mapping popup
+    // tag texture, info.type) is self-consistently device-indexed.
+    std::vector<std::string> dev_materials;
+    std::vector<std::string> dev_display_materials;
+    for (size_t i = 0; i < dev_colours.size(); ++i) {
+        std::string filament_type = dev_types ? dev_types->get_at((int) i) : "";
+        dev_materials.push_back(filament_type);
+        dev_display_materials.push_back(filament_type);
+    }
+
     for (auto i = 0; i < extruders.size(); i++) {
-        auto          extruder = extruders[i] - 1;
-        auto          colour   = wxGetApp().preset_bundle->project_config.opt_string("filament_colour", (unsigned int) extruder);
+        auto extruder = extruders[i] - 1;
+        auto colour   = (extruder >= 0 && extruder < (int) dev_colours.size())
+                            ? dev_colours[extruder]
+                            : std::string("#26A69A"); // fallback — unreached: get_used_extruders returns ids within the slice palette
         unsigned char rgb[4];
         bmcache.parse_color4(colour, rgb);
 
         auto colour_rgb = wxColour((int) rgb[0], (int) rgb[1], (int) rgb[2], (int) rgb[3]);
-        if (extruder >= materials.size() || extruder < 0 || extruder >= display_materials.size()) continue;
+        if (extruder >= dev_materials.size() || extruder < 0 || extruder >= dev_display_materials.size()) continue;
 
-        MaterialItem *item = new MaterialItem(m_filament_panel, colour_rgb, _L(display_materials[extruder]));
+        MaterialItem *item = new MaterialItem(m_filament_panel, colour_rgb, _L(dev_display_materials[extruder]));
         m_sizer_ams_mapping->Add(item, 0, wxALL, FromDIP(5));
 
-        item->Bind(wxEVT_LEFT_UP, [this, item, materials, extruder](wxMouseEvent &e) {});
-        item->Bind(wxEVT_LEFT_DOWN, [this, item, materials, extruder](wxMouseEvent &e) {
+        item->Bind(wxEVT_LEFT_UP, [this, item, dev_materials, extruder](wxMouseEvent &e) {});
+        item->Bind(wxEVT_LEFT_DOWN, [this, item, dev_materials, extruder](wxMouseEvent &e) {
             MaterialHash::iterator iter = m_materialList.begin();
             while (iter != m_materialList.end()) {
                 int           id   = iter->first;
@@ -3307,7 +3334,7 @@ void SelectMachineDialog::reset_and_sync_ams_list()
                 if (obj_ && obj_->has_ams() && m_checkbox_list["use_ams"]->GetValue() && obj_->dev_id == m_printer_last_select) {
                     m_mapping_popup.set_parent_item(item);
                     m_mapping_popup.set_current_filament_id(extruder);
-                    m_mapping_popup.set_tag_texture(materials[extruder]);
+                    m_mapping_popup.set_tag_texture(dev_materials[extruder]);
                     m_mapping_popup.update_ams_data(obj_->amsList);
                     m_mapping_popup.Popup();
                 }
@@ -3320,12 +3347,18 @@ void SelectMachineDialog::reset_and_sync_ams_list()
         m_materialList[i]       = material_item;
 
         // build for ams mapping
-        if (extruder < materials.size() && extruder >= 0) {
+        if (extruder >= 0) {
             FilamentInfo info;
-            info.id          = extruder;
-            info.type        = materials[extruder];
-            info.brand       = brands[extruder];
-            info.filament_id = m_filaments_id[extruder];
+            info.id   = extruder;
+            info.type = (extruder < (int) dev_materials.size()) ? dev_materials[extruder] : std::string();
+            // KNOWN LIMITATION: brand / filament_id come from the design-space
+            // preset arrays (filament_vendor / filament_ids are NOT reordered by
+            // build_device_filament_space), so under a non-identity design→device
+            // remap they are indexed by device id against a design-ordered array
+            // and may not match the physical slot. AMS mapping keys primarily off
+            // tray_id; brand/filament_id are advisory. See backlog (round-28).
+            info.brand       = (extruder < (int) brands.size()) ? brands[extruder] : std::string();
+            info.filament_id = (extruder < (int) m_filaments_id.size()) ? m_filaments_id[extruder] : std::string();
             info.color       = wxString::Format("#%02X%02X%02X%02X", colour_rgb.Red(), colour_rgb.Green(), colour_rgb.Blue(), colour_rgb.Alpha()).ToStdString();
             m_filaments.push_back(info);
         }

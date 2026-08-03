@@ -583,6 +583,28 @@ build_device_filament_space(const DynamicPrintConfig& design_full_config,
     // can show device-filament blends for virtual extruders without re-deriving.
     out.virtual_display_colors = mgr.display_colors();
 
+    // ---- Pass 5: clear filament_multi_colors / filament_colour_mode on device slots ----
+    // Pass 3 filled filament_colour / filament_type / filament_diameter from the device
+    // snapshot (rows[].color_hex / rows[].type), so those already reflect the physical
+    // filament loaded in each slot. But filament_multi_colors / filament_colour_mode were
+    // left at their DESIGN ordering by set_num_extruders — under a non-identity remap this
+    // leaks the DESIGN-layer multi-colour at a DEVICE index, so the WCP preprint page colour
+    // block (which consumes filament_color_multi from sw_GetFileFilamentMapping) shows the
+    // design colour instead of the device slot's actual filament.
+    // The device snapshot (PhysicalSlot) carries only a single colour per slot — it has no
+    // multi-colour tray data — so the correct device-space value is EMPTY: with no
+    // filament_multi_colors[t], BuildPreprintColorMultiItem (SSWCP.cpp) falls back to
+    // filament_colour[t], which Pass 3 already set to the device slot's colour. We do NOT
+    // transplant the design-layer multi-colors here: those describe a DESIGN tray the slot
+    // may not be realising, and would re-introduce the design colour leak.
+    if (auto* dev_multi = out.config.option<ConfigOptionStrings>("filament_multi_colors")) {
+        for (int t = 0; t < num_physical; ++t)
+            dev_multi->values[t].clear();
+        if (auto* dev_modes = out.config.option<ConfigOptionInts>("filament_colour_mode"))
+            for (int t = 0; t < num_physical && t < (int)dev_modes->values.size(); ++t)
+                dev_modes->values[t] = 0;
+    }
+
     return out;
 }
 

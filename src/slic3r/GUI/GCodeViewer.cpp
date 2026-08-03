@@ -4074,7 +4074,7 @@ void GCodeViewer::render_all_plates_stats(const std::vector<const GCodeProcessor
     std::vector<float> filament_diameters = gcode_result_list.front()->filament_diameters;
     std::vector<float> filament_densities = gcode_result_list.front()->filament_densities;
     std::vector<ColorRGBA> filament_colors;
-    decode_colors(wxGetApp().plater()->get_extruder_colors_from_plater_config(gcode_result_list.back(), /*include_mixed=*/true, /*force_device_palette=*/true), filament_colors);
+    decode_colors(wxGetApp().plater()->get_extruder_colors_from_plater_config(gcode_result_list.back(), /*include_mixed=*/false, /*force_device_palette=*/true), filament_colors);
 
     for (size_t i = 0; i < filament_colors.size(); i++) {
         filament_colors[i] = adjust_color_for_rendering(filament_colors[i]);
@@ -5035,7 +5035,7 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
         append_item(EItemType::None, Travel_Colors[0], { {_u8L("travel"), offsets[0] }}, true, predictable_icon_pos/*ORCA checkbox_pos*/, travel_visible, [this, travel_visible]() {
             m_buffers[buffer_id(EMoveType::Travel)].visible = !m_buffers[buffer_id(EMoveType::Travel)].visible;
             // update buffers' render paths, and update m_tools.m_tool_colors and m_extrusions.ranges
-            refresh(*m_gcode_result, wxGetApp().plater()->get_extruder_colors_from_plater_config(m_gcode_result, /*include_mixed=*/true, /*force_device_palette=*/true));
+            refresh(*m_gcode_result, wxGetApp().plater()->get_extruder_colors_from_plater_config(m_gcode_result, /*include_mixed=*/false, /*force_device_palette=*/true));
             update_moves_slider();
             wxGetApp().plater()->get_current_canvas3D()->set_as_dirty();
             });
@@ -5049,13 +5049,23 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
     case EViewType::VolumetricRate: { append_range(m_extrusions.ranges.volumetric_rate, 2); break; }
     case EViewType::Tool:
     {
-        // shows only extruders actually used
+        // shows only extruders actually used. When the device reports a non-identity
+        // extruder_map_table, list filaments in device-bay order (matching the device
+        // panel) instead of raw T-number order. model_used_filaments_* are positional
+        // (aligned to m_extruder_ids), so map each T-number back to its position.
         char buf[64];
-        size_t i = 0;
-        for (unsigned char extruder_id : m_extruder_ids) {
+        auto order = wxGetApp().plater()->get_ams_ordered_extruder_ids(m_extruder_ids);
+        const bool reorder = !order.empty();
+        for (size_t pos = 0; pos < (reorder ? order.size() : m_extruder_ids.size()); ++pos) {
+            unsigned int extruder_id = reorder ? order[pos] : m_extruder_ids[pos];
+            size_t i = 0;
+            for (; i < m_extruder_ids.size(); ++i)
+                if (m_extruder_ids[i] == extruder_id) break;
+            if (i >= model_used_filaments_m.size() || i >= model_used_filaments_g.size()) break;
             ::sprintf(buf, imperial_units ? "%.2f in    %.2f g" : "%.2f m    %.2f g", model_used_filaments_m[i], model_used_filaments_g[i]);
-            append_item(EItemType::Rect, m_tools.m_tool_colors[extruder_id], { { _u8L("Extruder") + " " + std::to_string(extruder_id + 1), offsets[0]}, {buf, offsets[1]} });
-            i++;
+            unsigned int label_id = reorder ? wxGetApp().plater()->extruder_id_to_ams_slot(extruder_id)
+                                            : extruder_id;
+            append_item(EItemType::Rect, m_tools.m_tool_colors[extruder_id], { { _u8L("Extruder") + " " + std::to_string(label_id + 1), offsets[0]}, {buf, offsets[1]} });
         }
         break;
     }
@@ -5075,13 +5085,24 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
         if (need_scrollable)
             ImGui::BeginChild("color_prints", { -1.0f, child_height }, false);
 
-        // shows only extruders actually used
-        size_t i = 0;
-        for (auto extruder_idx : m_extruder_ids) {
+        // shows only extruders actually used. When the device reports a non-identity
+        // extruder_map_table, list in device-bay order (matching the device panel).
+        // All *_used_filaments_* arrays are positional (aligned to m_extruder_ids), so
+        // resolve each T-number back to its position i.
+        auto order_cp = wxGetApp().plater()->get_ams_ordered_extruder_ids(m_extruder_ids);
+        const bool reorder_cp = !order_cp.empty();
+        const size_t n_cp = reorder_cp ? order_cp.size() : m_extruder_ids.size();
+        for (size_t pos = 0; pos < n_cp; ++pos) {
+            auto extruder_idx = static_cast<unsigned int>(reorder_cp ? order_cp[pos] : m_extruder_ids[pos]);
+            size_t i = 0;
+            for (; i < m_extruder_ids.size(); ++i)
+                if (m_extruder_ids[i] == extruder_idx) break;
             const bool filament_visible = m_tools.m_tool_visibles[extruder_idx];
             if (i < model_used_filaments_m.size() && i < model_used_filaments_g.size()) {
                 std::vector<std::pair<std::string, float>> columns_offsets;
-                columns_offsets.push_back({ std::to_string(extruder_idx + 1), color_print_offsets[_u8L("Filament")]});
+                unsigned int label_id = reorder_cp ? wxGetApp().plater()->extruder_id_to_ams_slot(extruder_idx)
+                                                   : extruder_idx;
+                columns_offsets.push_back({ std::to_string(label_id + 1), color_print_offsets[_u8L("Filament")]});
 
                 char buf[64];
                 float column_sum_m = 0.0f;
@@ -5127,7 +5148,6 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
                         wxGetApp().plater()->get_current_canvas3D()->set_as_dirty();
                     });
             }
-            i++;
         }
         
         if (need_scrollable)
