@@ -36,6 +36,40 @@
 
 #include <chrono>
 #include <thread>
+#include <sstream>
+#include <string>
+
+#ifdef __WXMSW__
+    #include <wx/msw/wrapwin.h> // HWND, GetForegroundWindow, GetFocus, AttachThreadInput
+#endif
+
+// ---------------------------------------------------------------------------
+// Win32 input-target diagnostics (Windows-only).
+//
+// wxUIActionSimulator's wxMSW backend injects keystrokes/mouse events via
+// keybd_event()/mouse_event() into the OS input stream. Those events are
+// routed to the thread that owns the FOREGROUND window, and keystrokes are
+// delivered to the window with Win32 keyboard focus (GetFocus()). If the
+// foreground window is the console host (this test is a CONSOLE-subsystem exe
+// launched from a shell), the injected events never reach our dialog — even
+// though wxWindow::HasFocus() may report true.
+//
+// These helpers capture, at the moment the simulator runs, the Win32
+// foreground window, the Win32 focus window, and whether they match the
+// dialog / TextCtrl HWNDs. The captured strings surface as INFO diagnostics so
+// a single run settles whether the failure is "wrong foreground target"
+// (route-A needs a foreground/AttachThreadInput fix) vs something else.
+// ---------------------------------------------------------------------------
+#ifdef __WXMSW__
+static std::string hwnd_str(HWND h)
+{
+    // Compact, readable handle rendering for diagnostics (avoid %p variance).
+    std::ostringstream os;
+    if (h == nullptr) { os << "NULL"; return os.str(); }
+    os << "0x" << std::hex << reinterpret_cast<uintptr_t>(h);
+    return os.str();
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // (1) wxApp: derived class registered via NO_MAIN (does NOT define main(),
@@ -56,11 +90,14 @@ wxIMPLEMENT_APP_NO_MAIN(PoCApp);
 
 // ---------------------------------------------------------------------------
 // (2) One-shot wx initialization for the whole test process.
-//     wxEntryStart creates wxTheApp (running PoCApp::OnInit). It is NOT
-//     idempotent after wxEntryCleanup, so we gate it on a static flag and only
-//     clean up never (process exit will reclaim everything). wxInitialize()
-//     alone is insufficient — it does not create a GUI wxApp / Cocoa event
-//     loop, which wxUIActionSimulator's macOS backend requires.
+//     wxEntryStart calls wxApp::Initialize() + common post-init, creating
+//     wxTheApp (our PoCApp). NOTE: unlike wxEntry, wxEntryStart does NOT run
+//     OnInit() or the main message loop (OnRun) — we keep wx alive for the
+//     whole process and rely on per-test modal loops / wxYield() to pump
+//     events. It is NOT idempotent after wxEntryCleanup, so we gate it on a
+//     static flag and never clean up (process exit reclaims everything).
+//     wxInitialize() alone is insufficient — it does not create a GUI wxApp /
+//     Cocoa event loop, which wxUIActionSimulator's macOS backend requires.
 // ---------------------------------------------------------------------------
 static bool ensure_wx_initialized()
 {
@@ -76,11 +113,13 @@ static bool ensure_wx_initialized()
     return s_ok;
 }
 
-// Small helper: pump the event loop for up to ~ms milliseconds so CGEventPost
-// events get routed into the native queue and dispatched to handlers. macOS's
-// wxUIActionSimulator sets shouldWaitForEvent which blocks DispatchTimeout up
-// to 1s waiting for the synthesized event; a plain wxYield() is usually enough
-// but we add a tiny sleep as a safety margin for cross-process event delivery.
+// Small helper: pump the event loop for up to ~ms milliseconds so injected
+// input events get retrieved from the native queue and dispatched to handlers.
+//   - On wxMSW the backend uses keybd_event()/mouse_event() (no shouldWait);
+//     a single wxYield() after the sim call is the canonical pattern, the loop
+//     just adds a safety margin for slower dispatch.
+//   - On wxOSX the backend posts via CGEventPost and sets shouldWaitForEvent,
+//     which can block DispatchTimeout up to ~1s; the sleep margin helps there.
 static void pump_events(int ms = 50)
 {
     wxYield();
@@ -114,6 +153,16 @@ public:
     wxString m_echo_after_click;
     bool     m_textctrl_had_focus = false;
 
+    // Win32 input-target diagnostics, captured at the moment sim.Text() runs.
+    // Surfaced via INFO() lines so one run settles the failure cause.
+    std::string m_diag_foreground;   // GetForegroundWindow() at sim time
+    std::string m_diag_focus;        // GetFocus() at sim time
+    std::string m_diag_dialog_hwnd;  // this dialog's HWND
+    std::string m_diag_textctrl_hwnd;// TextCtrl's HWND
+    bool        m_diag_fg_is_dialog = false;     // foreground == dialog HWND?
+    bool        m_diag_focus_is_textctrl = false; // Win32 focus == TextCtrl HWND?
+    bool        m_used_attach_thread_input = false; // did we apply the foreground fix?
+
     EchoDialog()
         : wxDialog(nullptr, wxID_ANY, "wxUIActionSimulator PoC",
                    wxDefaultPosition, wxDefaultSize,
@@ -142,12 +191,61 @@ public:
     void run_simulation(wxUIActionSimulator& sim)
     {
         CallAfter([this, &sim]() {
+#ifdef __WXMSW__
+            // --- Win32 input-target diagnostics + foreground acquisition ---
+            // keybd_event()/mouse_event() deliver to the foreground thread's
+            // message queue; if the foreground window is the console host (we
+            // are a CONSOLE-subsystem exe), events never reach us. Capture the
+            // ground truth, then try to make ourselves foreground via
+            // AttachThreadInput (shares the input state with whoever currently
+            // has foreground, which lets SetForegroundWindow succeed).
+            HWND hDlg = static_cast<HWND>(GetHWND());
+            HWND hTxt = static_cast<HWND>(m_input->GetHWND());
+            m_diag_dialog_hwnd   = hwnd_str(hDlg);
+            m_diag_textctrl_hwnd = hwnd_str(hTxt);
+
+            m_input->SetFocus();
+            wxYield(); // let WM_FOCUS messages settle
+
+            HWND hFg   = ::GetForegroundWindow();
+            HWND hFocs = ::GetFocus();
+            m_diag_foreground = hwnd_str(hFg);
+            m_diag_focus      = hwnd_str(hFocs);
+            m_diag_fg_is_dialog       = (hFg == hDlg);
+            m_diag_focus_is_textctrl  = (hFocs == hTxt);
+
+            // Attempt foreground acquisition: attach our input state to the
+            // current foreground thread, raise ourselves, detach. This is the
+            // standard workaround when SetForegroundWindow alone would just
+            // flash the taskbar (foreground lock). Cheap and reversible.
+            DWORD  fgPid     = 0;
+            DWORD  fgTid     = ::GetWindowThreadProcessId(hFg, &fgPid);
+            DWORD  ourTid    = ::GetCurrentThreadId();
+            bool   attached  = ::AttachThreadInput(ourTid, fgTid, TRUE);
+            m_used_attach_thread_input = attached;
+            ::SetForegroundWindow(hDlg);
+            ::SetFocus(hTxt);
+            if (attached)
+                ::AttachThreadInput(ourTid, fgTid, FALSE);
+            wxYield(); // let activation/focus changes propagate
+
+            // Re-read foreground/focus after the acquisition attempt.
+            hFg   = ::GetForegroundWindow();
+            hFocs = ::GetFocus();
+            m_diag_foreground        = hwnd_str(hFg);
+            m_diag_focus             = hwnd_str(hFocs);
+            m_diag_fg_is_dialog      = (hFg == hDlg);
+            m_diag_focus_is_textctrl = (hFocs == hTxt);
+#endif
+
             // --- typing test ---
             m_input->SetFocus();
             wxYield();
             m_textctrl_had_focus = m_input->HasFocus();
             sim.Text("hello");
-            // pump within the modal loop so CGEventPost events get dispatched
+            // Pump the modal loop so the injected keybd_event() messages get
+            // retrieved and dispatched (single wxYield() is the canonical wx
+            // pattern; the loop adds margin for slower dispatch).
             for (int i = 0; i < 10 && m_input->GetValue() != "hello"; ++i) {
                 wxYield();
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
@@ -200,6 +298,21 @@ TEST_CASE("wxUIActionSimulator echoes text on button click", "[gui]")
     // ---- assertions (after the modal loop + simulation completed) ----
     INFO("TextCtrl had focus inside modal loop = " << (dlg.m_textctrl_had_focus ? "true" : "false"));
     CHECK(dlg.m_textctrl_had_focus);
+
+#ifdef __WXMSW__
+    // Diagnostics that settle WHY events do/don't arrive. If foreground !=
+    // dialog HWND at sim time, the injected keybd_event()/mouse_event() stream
+    // is routed to the console host (or some other window) and never reaches
+    // the TextCtrl — that is the real failure mode for a CONSOLE-subsystem
+    // test exe, and it is independent of wx focus management.
+    INFO("[diag] dialog HWND=" << dlg.m_diag_dialog_hwnd
+         << " TextCtrl HWND=" << dlg.m_diag_textctrl_hwnd
+         << " | Win32 foreground=" << dlg.m_diag_foreground
+         << " (isDialog=" << (dlg.m_diag_fg_is_dialog ? "yes" : "no") << ")"
+         << " | Win32 focus=" << dlg.m_diag_focus
+         << " (isTextCtrl=" << (dlg.m_diag_focus_is_textctrl ? "yes" : "no") << ")"
+         << " | AttachThreadInput applied=" << (dlg.m_used_attach_thread_input ? "yes" : "no"));
+#endif
 
     INFO("TextCtrl value after sim.Text(\"hello\") = \"" << dlg.m_input_after_text << "\"");
     CHECK(dlg.m_input_after_text == "hello");
