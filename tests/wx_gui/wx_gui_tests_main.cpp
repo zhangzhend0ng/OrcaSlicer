@@ -10,18 +10,20 @@
 //     target and the test FAILS. This is a wxWidgets-on-macOS limitation, not
 //     an OrcaSlicer issue — see the INFO diagnostics in the test output.
 //
-//   - Windows (wxMSW): FOCUS WORKS (m_textctrl_had_focus=true), but on the
-//     machine used to validate this PoC the synthetic events still did NOT
-//     deliver (sim.Text()/MouseClick() produced empty results). That machine
-//     runs NetEase GameViewer (remote display/control) with a "GameViewer
-//     Virtual Display Adapter", which intercepts the session's input subsystem
-//     and suppresses synthetic input injection (keybd_event/SendInput/
-//     mouse_event) from processes in the session. A raw keybd_event + native
-//     PeekMessage loop confirmed injected events never enter the thread's
-//     message queue there. So this PoC could NOT be validated on that machine.
-//     On a clean Windows console with no such remote-control/mirroring layer,
-//     route A is expected to work (focus is confirmed good; the canonical wxMSW
-//     pattern — non-modal frame + sim + single wxYield — is included below).
+//   - Windows (wxMSW): VALIDATED (route A works). Two environment requirements:
+//       1. No remote-control/mirroring layer intercepting session input. This
+//          machine runs NetEase GameViewer (with a "GameViewer Virtual Display
+//          Adapter"); while it is active, synthetic input injection
+//          (keybd_event/SendInput/mouse_event) is suppressed — the test must be
+//          run with GameViewer fully stopped (service included).
+//       2. A non-IME keyboard layout must be active for the thread during
+//          sim.Text(). The default zh-CN layout uses the Microsoft Pinyin IME,
+//          which INTERCEPTS synthesized keystrokes and composes CJK characters
+//          (e.g. VK 'A' -> "奶") instead of the literal 'A'. ScopedUsKeyboard-
+//          Layout (below) activates US English (0x0409) for the thread around
+//          the sim call, after which sim.Text("hello") and sim.MouseClick()
+//          both deliver correctly: focus=PASS, text=PASS, echo=PASS
+//          (deterministic across runs). Mouse clicks are not IME-affected.
 //
 // What this proves (if green on a clean Windows console):
 //   1. wxApp can be initialized WITHOUT taking over main() (via
@@ -77,6 +79,31 @@ static std::string hwnd_str(HWND h)
     os << "0x" << std::hex << reinterpret_cast<uintptr_t>(h);
     return os.str();
 }
+
+// RAII guard that activates a non-IME keyboard layout (US English, 0x0409) for
+// the current thread for its lifetime, then restores the previous layout and
+// unloads the US layout. On zh-CN systems the Microsoft Pinyin IME is active by
+// default and INTERCEPTS synthesized keystrokes — sim.Text('A') gets composed
+// into a CJK character (e.g. "奶") instead of producing the literal 'A'. With
+// a non-IME layout active, keybd_event('A') yields the literal WM_CHAR 'a'.
+// This makes wxUIActionSimulator's keyboard path usable for ASCII text.
+class ScopedUsKeyboardLayout
+{
+public:
+    ScopedUsKeyboardLayout()
+    {
+        m_hUs   = ::LoadKeyboardLayoutW(L"00000409", KLF_NOTELLSHELL | KLF_SUBSTITUTE_OK);
+        m_hPrev = m_hUs ? ::ActivateKeyboardLayout(m_hUs, 0) : nullptr;
+    }
+    ~ScopedUsKeyboardLayout()
+    {
+        if (m_hPrev) ::ActivateKeyboardLayout(m_hPrev, 0);
+        if (m_hUs)   ::UnloadKeyboardLayout(m_hUs);
+    }
+private:
+    HKL m_hUs   = nullptr;
+    HKL m_hPrev = nullptr;
+};
 #endif
 
 // ---------------------------------------------------------------------------
@@ -250,6 +277,11 @@ public:
             m_input->SetFocus();
             wxYield();
             m_textctrl_had_focus = m_input->HasFocus();
+#ifdef __WXMSW__
+            // Activate a non-IME layout so synthesized ASCII keystrokes are not
+            // composed into CJK by the active Microsoft Pinyin IME.
+            ScopedUsKeyboardLayout usLayout;
+#endif
             sim.Text("hello");
             // Pump the modal loop so the injected keybd_event() messages get
             // retrieved and dispatched (single wxYield() is the canonical wx
@@ -382,6 +414,9 @@ TEST_CASE("wxUIActionSimulator drives non-modal frame directly", "[gui]")
     pump_events(30);
     const bool had_focus = input->HasFocus();
 
+#ifdef __WXMSW__
+    ScopedUsKeyboardLayout usLayout;
+#endif
     wxUIActionSimulator sim;
     sim.Text("hello");
     pump_events(150); // canonical uses a single wxYield(); the slack aids dispatch
@@ -413,22 +448,125 @@ TEST_CASE("wxUIActionSimulator drives non-modal frame directly", "[gui]")
 }
 
 // ---------------------------------------------------------------------------
-// (6) DIAGNOSTIC NOTE (removed one-shot probe):
-//     A throwaway probe that called keybd_event() directly (bypassing
-//     wxUIActionSimulator) on a focused, foreground wxTextCtrl, then ran a
-//     raw PeekMessage/TranslateMessage/DispatchMessage loop, was used to
-//     settle where input delivery breaks. Results on this machine:
-//       - OS sometimes accepted the inject (GetAsyncKeyState('A')=0x8001),
-//         sometimes rejected it (0x0) — non-deterministic.
-//       - The raw PeekMessage loop retrieved ZERO WM_KEYDOWN/WM_CHAR in both
-//         cases — the injected events never entered the thread's message queue.
-//     Root cause (confirmed separately): the machine runs NetEase GameViewer
-//     (remote display/control), which installs a "GameViewer Virtual Display
-//     Adapter" and intercepts the session's input subsystem. Synthetic input
-//     injection (keybd_event/SendInput/mouse_event) from a process in this
-//     session is suppressed/filtered by that layer, so wxUIActionSimulator
-//     cannot work HERE regardless of dialog structure, focus, or foreground.
-//     Route A is expected to work on a clean Windows console with no such
-//     remote-control/ mirroring layer active; this machine is NOT a valid
-//     environment to validate route A on.
+// (6) Raw probe (Windows-only, throwaway diagnostic): bypass wxUIActionSimulator
+//     and call keybd_event() directly on a focused, foreground wxTextCtrl, then
+//     run a native PeekMessage/TranslateMessage/DispatchMessage loop. Reports
+//     whether the OS accepted the inject (GetAsyncKeyState) and how many
+//     WM_KEYDOWN/WM_CHAR were actually retrieved. This isolates OS-level input
+//     injection from the wxUIActionSimulator abstraction.
 // ---------------------------------------------------------------------------
+#ifdef __WXMSW__
+TEST_CASE("raw keybd_event reaches focused TextCtrl", "[gui][rawprobe]")
+{
+    REQUIRE(ensure_wx_initialized());
+
+    wxFrame frame(nullptr, wxID_ANY, "raw keybd_event probe");
+    auto* input = new wxTextCtrl(&frame, wxID_ANY, wxEmptyString,
+                                 wxDefaultPosition, wxSize(200, wxDefaultCoord));
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(input, 0, wxALL | wxEXPAND, 10);
+    frame.SetSizerAndFit(sizer);
+    frame.Show();
+    frame.Raise();
+    pump_events(100);
+
+    HWND hTxt = static_cast<HWND>(input->GetHWND());
+    input->SetFocus();
+    pump_events(50);
+    HWND hFocusBefore = ::GetFocus();
+    HWND hFgAfter     = ::GetForegroundWindow();
+
+    ::keybd_event(0x41, 0, 0, 0);                       // WM_KEYDOWN 'A'
+    const short asyncDown = ::GetAsyncKeyState(0x41);
+    const bool  injectedAccepted = (asyncDown & 0x8000) != 0;
+    ::keybd_event(0x41, 0, KEYEVENTF_KEYUP, 0);          // WM_KEYUP   'A'
+
+    int nKey = 0, nChar = 0;
+    for (int i = 0; i < 200; ++i) {
+        MSG msg;
+        while (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_KEYDOWN || msg.message == WM_KEYUP) nKey++;
+            if (msg.message == WM_CHAR) nChar++;
+            ::TranslateMessage(&msg);
+            ::DispatchMessage(&msg);
+        }
+        if (nChar > 0) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    const wxString after = input->GetValue();
+
+    INFO("[rawprobe] frame HWND=" << hwnd_str(static_cast<HWND>(frame.GetHWND()))
+         << " TextCtrl HWND=" << hwnd_str(hTxt)
+         << " | fg after focus=" << hwnd_str(hFgAfter)
+         << " (isFrame=" << ((hFgAfter == static_cast<HWND>(frame.GetHWND())) ? "yes" : "no") << ")"
+         << " | Win32 focus=" << hwnd_str(hFocusBefore)
+         << " (isTextCtrl=" << ((hFocusBefore == hTxt) ? "yes" : "no") << ")"
+         << " | GetAsyncKeyState('A')=0x" << std::hex << (static_cast<unsigned short>(asyncDown))
+         << " (injectedAccepted=" << (injectedAccepted ? "yes" : "no") << ")"
+         << " | raw PeekMessage retrieved: WM_KEYDOWN/UP=" << std::dec << nKey
+         << " WM_CHAR=" << nChar << ")");
+    INFO("TextCtrl value after raw keybd_event('A') = \"" << after << "\"");
+
+    frame.Show(false);
+    frame.Destroy();
+
+    CHECK(after == "A");
+}
+
+// Variant: with IME bypassed. The Chinese IME (active on zh-CN systems)
+// intercepts synthesized keystrokes and composes CJK characters instead of
+// passing the literal VK through. Activate a non-IME layout (US English,
+// 0x0409) for the thread before injecting, so WM_CHAR carries the literal 'A'.
+TEST_CASE("raw keybd_event with US layout bypasses IME", "[gui][rawprobe2]")
+{
+    REQUIRE(ensure_wx_initialized());
+
+    wxFrame frame(nullptr, wxID_ANY, "raw keybd_event IME bypass");
+    auto* input = new wxTextCtrl(&frame, wxID_ANY, wxEmptyString,
+                                 wxDefaultPosition, wxSize(200, wxDefaultCoord));
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(input, 0, wxALL | wxEXPAND, 10);
+    frame.SetSizerAndFit(sizer);
+    frame.Show();
+    frame.Raise();
+    pump_events(100);
+
+    // Load + activate US English layout for THIS thread only (KLF_NOTELLSHELL:
+    // don't broadcast; this won't disturb the user's shell layout).
+    HKL hUs   = ::LoadKeyboardLayoutW(L"00000409", KLF_NOTELLSHELL | KLF_SUBSTITUTE_OK);
+    HKL hPrev = ::ActivateKeyboardLayout(hUs, 0);
+
+    HWND hTxt = static_cast<HWND>(input->GetHWND());
+    input->SetFocus();
+    pump_events(50);
+
+    ::keybd_event(0x41, 0, 0, 0);
+    ::keybd_event(0x41, 0, KEYEVENTF_KEYUP, 0);
+
+    int nChar = 0;
+    for (int i = 0; i < 200; ++i) {
+        MSG msg;
+        while (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_CHAR) nChar++;
+            ::TranslateMessage(&msg);
+            ::DispatchMessage(&msg);
+        }
+        if (nChar > 0) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    const wxString after = input->GetValue();
+
+    // Restore prior layout + unload US layout so we leave the system clean.
+    if (hPrev) ::ActivateKeyboardLayout(hPrev, 0);
+    if (hUs)   ::UnloadKeyboardLayout(hUs);
+
+    frame.Show(false);
+    frame.Destroy();
+
+    INFO("[rawprobe2] US layout activated, WM_CHAR count=" << nChar
+         << " | TextCtrl value = \"" << after << "\"");
+    CHECK(after == "A");
+}
+#endif
