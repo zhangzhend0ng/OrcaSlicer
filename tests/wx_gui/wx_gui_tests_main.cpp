@@ -10,19 +10,27 @@
 //     target and the test FAILS. This is a wxWidgets-on-macOS limitation, not
 //     an OrcaSlicer issue — see the INFO diagnostics in the test output.
 //
-//   - Windows (wxMSW): UNVERIFIED — the primary target for this PoC.
-//     wxMSW's SetFocus() maps to the reliable Win32 focus model, and
-//     wxUIActionSimulator uses keybd_event()/mouse_event() (real input stream)
-//     rather than macOS's CGEventPost-to-session-tap. Focus is expected to
-//     work here. Run this test on Windows to confirm.
+//   - Windows (wxMSW): FOCUS WORKS (m_textctrl_had_focus=true), but on the
+//     machine used to validate this PoC the synthetic events still did NOT
+//     deliver (sim.Text()/MouseClick() produced empty results). That machine
+//     runs NetEase GameViewer (remote display/control) with a "GameViewer
+//     Virtual Display Adapter", which intercepts the session's input subsystem
+//     and suppresses synthetic input injection (keybd_event/SendInput/
+//     mouse_event) from processes in the session. A raw keybd_event + native
+//     PeekMessage loop confirmed injected events never enter the thread's
+//     message queue there. So this PoC could NOT be validated on that machine.
+//     On a clean Windows console with no such remote-control/mirroring layer,
+//     route A is expected to work (focus is confirmed good; the canonical wxMSW
+//     pattern — non-modal frame + sim + single wxYield — is included below).
 //
-// What this proves (if green on Windows):
+// What this proves (if green on a clean Windows console):
 //   1. wxApp can be initialized WITHOUT taking over main() (via
 //      wxIMPLEMENT_APP_NO_MAIN + wxEntryStart), coexisting with Catch2's main.
-//   2. wxUIActionSimulator actually delivers events to a real wxDialog.
+//   2. wxUIActionSimulator actually delivers events to a real wxWindow.
 //   3. The CMake plumbing (wx headers + libslic3r_gui link) is correct.
 //
-// How to run (NOT headless-safe — needs an interactive desktop session):
+// How to run (NOT headless-safe — needs an interactive desktop session with
+// NO remote-display/remote-control layer intercepting input):
 //   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
 //         -DSLIC3R_GUI=ON -DBUILD_TESTS=ON <prefix-path & policy flags>
 //   cmake --build build --target wx_gui_tests
@@ -320,3 +328,107 @@ TEST_CASE("wxUIActionSimulator echoes text on button click", "[gui]")
     INFO("Echo label after sim.MouseClick on button = \"" << dlg.m_echo_after_click << "\"");
     CHECK(dlg.m_echo_after_click == "world");
 }
+
+// ---------------------------------------------------------------------------
+// (5) Variant: NON-MODAL top-level frame, simulator driven DIRECTLY (no
+//     ShowModal, no CallAfter). This is the canonical wxWidgets test pattern
+//     (see tests/controls/textctrltest.cpp and tests/validators/valnum.cpp in
+//     the wxWidgets tree): the control is a child of a shown top-level window
+//     and the sim is driven from the test thread with a single wxYield() per
+//     action. It isolates whether the modal+CallAfter structure (vs foreground
+//     vs focus) is what blocks event delivery on wxMSW.
+// ---------------------------------------------------------------------------
+TEST_CASE("wxUIActionSimulator drives non-modal frame directly", "[gui]")
+{
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    wxFrame frame(nullptr, wxID_ANY, "wxUIActionSimulator non-modal");
+    auto* input = new wxTextCtrl(&frame, wxID_ANY, wxEmptyString,
+                                 wxDefaultPosition, wxSize(200, wxDefaultCoord));
+    auto* btn   = new wxButton(&frame, wxID_ANY, "Echo");
+    auto* echo  = new wxStaticText(&frame, wxID_ANY, "(empty)",
+                                   wxDefaultPosition, wxSize(200, wxDefaultCoord));
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(input, 0, wxALL | wxEXPAND, 10);
+    sizer->Add(btn, 0, wxALL | wxALIGN_CENTER, 10);
+    sizer->Add(echo, 0, wxALL | wxEXPAND, 10);
+    frame.SetSizerAndFit(sizer);
+    frame.Centre(wxBOTH);
+
+    bool clicked = false;
+    btn->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
+        echo->SetLabelText(input->GetValue());
+        clicked = true;
+    });
+
+    frame.Show();
+    frame.Raise();
+
+    // Give the window manager a moment to make the frame foreground + mapped.
+    pump_events(100);
+
+#ifdef __WXMSW__
+    HWND hFrame = static_cast<HWND>(frame.GetHWND());
+    HWND hTxt   = static_cast<HWND>(input->GetHWND());
+    HWND hFg    = ::GetForegroundWindow();
+    INFO("[diag2] frame HWND=" << hwnd_str(hFrame) << " TextCtrl HWND=" << hwnd_str(hTxt)
+         << " | Win32 foreground=" << hwnd_str(hFg)
+         << " (isFrame=" << ((hFg == hFrame) ? "yes" : "no") << ")");
+#endif
+
+    // --- typing: canonical pattern, single yield after sim.Text ---
+    input->SetFocus();
+    pump_events(30);
+    const bool had_focus = input->HasFocus();
+
+    wxUIActionSimulator sim;
+    sim.Text("hello");
+    pump_events(150); // canonical uses a single wxYield(); the slack aids dispatch
+
+    const wxString input_after = input->GetValue();
+
+    // --- click: canonical pattern ---
+    input->SetValue("world");
+    pump_events(30);
+    wxRect br = btn->GetScreenRect();
+    sim.MouseMove(wxPoint(br.x + br.width / 2, br.y + br.height / 2));
+    pump_events(30);
+    sim.MouseClick();
+    pump_events(150);
+
+    const wxString echo_after = echo->GetLabelText();
+
+    frame.Show(false);
+    frame.Destroy();
+
+    INFO("TextCtrl had focus (non-modal frame) = " << (had_focus ? "true" : "false"));
+    CHECK(had_focus);
+
+    INFO("TextCtrl value after sim.Text(\"hello\") [non-modal] = \"" << input_after << "\"");
+    CHECK(input_after == "hello");
+
+    INFO("Echo label after sim.MouseClick [non-modal] = \"" << echo_after << "\"");
+    CHECK(echo_after == "world");
+}
+
+// ---------------------------------------------------------------------------
+// (6) DIAGNOSTIC NOTE (removed one-shot probe):
+//     A throwaway probe that called keybd_event() directly (bypassing
+//     wxUIActionSimulator) on a focused, foreground wxTextCtrl, then ran a
+//     raw PeekMessage/TranslateMessage/DispatchMessage loop, was used to
+//     settle where input delivery breaks. Results on this machine:
+//       - OS sometimes accepted the inject (GetAsyncKeyState('A')=0x8001),
+//         sometimes rejected it (0x0) — non-deterministic.
+//       - The raw PeekMessage loop retrieved ZERO WM_KEYDOWN/WM_CHAR in both
+//         cases — the injected events never entered the thread's message queue.
+//     Root cause (confirmed separately): the machine runs NetEase GameViewer
+//     (remote display/control), which installs a "GameViewer Virtual Display
+//     Adapter" and intercepts the session's input subsystem. Synthetic input
+//     injection (keybd_event/SendInput/mouse_event) from a process in this
+//     session is suppressed/filtered by that layer, so wxUIActionSimulator
+//     cannot work HERE regardless of dialog structure, focus, or foreground.
+//     Route A is expected to work on a clean Windows console with no such
+//     remote-control/ mirroring layer active; this machine is NOT a valid
+//     environment to validate route A on.
+// ---------------------------------------------------------------------------
