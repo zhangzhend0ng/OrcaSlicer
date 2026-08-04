@@ -40,7 +40,9 @@ find_package(JPEG REQUIRED)
 find_package(PNG REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(libnoise REQUIRED)
-find_package(Qhull REQUIRED)
+# qhull is an in-tree INTERFACE target (deps_src/qhull, add_subdirectory'd
+# by the top-level CMakeLists) and is NOT installed — do NOT find_package it.
+# It is already pulled in via ${TEST_LINK_LIBS}.
 
 if(TARGET libslic3r_gui)
     # libslic3r_gui links ${wxWidgets_LIBRARIES} (PUBLIC), so wx libs are
