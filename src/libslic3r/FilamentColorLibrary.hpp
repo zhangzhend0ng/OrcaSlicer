@@ -91,6 +91,10 @@ public:
     bool EnsureLoaded();
     void Reload();
 
+    // Read-only view of the loaded entries (empty until EnsureLoaded succeeds). The view
+    // is invalidated by Reload()/Clear — copy what you need beyond the call site.
+    const std::vector<FilamentColorInfo>& GetAllFilamentInfos() const { return _filamentInfoVec; }
+
     bool FindFilamentById(const std::string& filamentId, FilamentColorInfo& outFilament);
     bool FindFilamentByName(const std::string& filamentName, FilamentColorInfo& outFilament);
 
