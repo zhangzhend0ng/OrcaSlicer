@@ -2273,7 +2273,13 @@ void MixedFilamentBatchDialog::set_recommended_combo_icon(int row)
     if (ab.bmp().IsOk()) {
         wxImage aimg = ab.bmp().ConvertToImage();
         if (!aimg.HasAlpha()) aimg.InitAlpha();
-        int ax = pad, ay = (h - aimg.GetHeight()) / 2;
+        // Center by LOGICAL size: on macOS a raster may carry a Retina scale factor
+        // (physical = logical x2), so raw GetWidth()/GetHeight() mis-centers the paste.
+        // GetScaledSize() divides out the bitmap's own scale factor; it is an identity
+        // op for scale-1.0 rasters (Windows/Linux). Same fix pattern as the preview
+        // panel placeholder (see the GetScaledSize change in build_preview_card).
+        const int a_h = ab.bmp().GetScaledSize().y;
+        int ax = pad, ay = (h - a_h) / 2;
         for (int y = 0; y < aimg.GetHeight() && ay + y < h; ++y)
             for (int x = 0; x < aimg.GetWidth() && ax + x < total_w; ++x) {
                 unsigned char* s = aimg.GetData() + (y * aimg.GetWidth() + x) * 3;
@@ -2289,7 +2295,9 @@ void MixedFilamentBatchDialog::set_recommended_combo_icon(int row)
         hex, std::to_string(row + 1), FromDIP(20), FromDIP(20));
     if (badge_bmp) {
         wxImage bimg = badge_bmp->ConvertToImage();
-        int by = (h - bimg.GetHeight()) / 2;
+        // Logical-size centering, same rationale as the arrow paste above.
+        const int b_h = badge_bmp->GetScaledSize().y;
+        int by = (h - b_h) / 2;
         for (int y = 0; y < bimg.GetHeight() && by + y < h; ++y)
             for (int x = 0; x < bimg.GetWidth() && bx + x < total_w; ++x) {
                 unsigned char* s = bimg.GetData() + (y * bimg.GetWidth() + x) * 3;

@@ -78,3 +78,9 @@
 - F4：已修复 —— 移除未使用的 `<unordered_map>`。
 - F2：未处理（需 rebase 至 `c0d4ab0d`，含行高/标题约定对齐）—— 开 PR 前执行。
 - F5/F6/F7：保留记录。F6 补充：本机 clang-format 与文件既有风格全文件分歧（~200 hunks，仓库使用不同版本工具链），格式合规性 NOT VERIFIED，新代码遵循文件既有风格。
+
+## 补充处置（2026-08-18，多平台/DPI 风险问询后）
+
+- 风险 #1（Retina 光栅居中）：已采纳 upstream 的 `GetScaledSize()` 修法移植到 `set_recommended_combo_icon` 的箭头/徽章两处粘贴居中（提交见 fix "center recommended combo icon pastes on logical bitmap size"）。scale-1.0 平台恒等无影响；与 upstream 修复同等保证级别——Retina 下合成图标的像素密度仍列入手动测试矩阵。
+- 风险 #2（会话中 DPI 变化不重应用复合图标）、#3（深色模式 drop_down 箭头换色）：与 V1.0 手动卡片同款存量行为，未在本期处理；列入测试矩阵观察项。
+- 多平台验证状态：NOT VERIFIED（本机仅 Windows/100%）。测试矩阵（Windows 100/150/200%、macOS Retina、深色模式、跨屏 DPI 拖动、Linux GTK、窄列长标签）已列入 PR 检查清单要求。
