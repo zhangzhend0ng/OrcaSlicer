@@ -1082,18 +1082,15 @@ static const TdEntry* resolve_td_family(const wxString& english_name)
 // Display label of the entry's owning family. The default family (the one whose preset the
 // apply path writes into slots 1-4) shows its preset label; other families (e.g. a future
 // PETG Full Spectrum with no shipped preset) fall back to the raw library name.
+//
+// This is also the dropdown row label: per dev-owner clarification the row text shows the
+// FILAMENT name only (V1.0 convention) — the color identity is carried by the swatch and
+// the per-row tooltip (color name + TD), not by the label.
 static wxString family_display_label(const FullSpectrumPaletteEntry& entry)
 {
     if (entry.family_name == default_full_spectrum_family_name())
         return get_full_spectrum_preset_label();
     return wxString::FromUTF8(entry.family_name.c_str());
-}
-
-// Dropdown row label per the phase-2 spec: "<color name> <family>", e.g.
-// "Cyan（青） Snapmaker PLA Full Spectrum".
-static wxString palette_entry_label(const FullSpectrumPaletteEntry& entry, int position)
-{
-    return localized_color_name(entry, position) + " " + family_display_label(entry);
 }
 
 // Build the hover tooltip string for one palette entry. Two lines:
@@ -1523,10 +1520,12 @@ void MixedFilamentBatchDialog::build_recommended_card(wxBoxSizer& parent)
                                  0, nullptr, wxCB_READONLY);
         for (size_t j = 0; j < m_recommended_palette.size(); ++j) {
             const FullSpectrumPaletteEntry& entry = m_recommended_palette[j];
-            // List row per spec §4: plain (un-numbered) color swatch + "<color name> <family>".
+            // List row per spec §4 (dev-owner clarification): plain (un-numbered) color swatch
+            // + the FILAMENT name only (V1.0 convention) — e.g. "Snapmaker PLA Full Spectrum".
+            // The color identity is carried by the swatch and the per-row tooltip below.
             wxBitmap* icon = FilamentColorUtils::GetFilamentColorIcon(std::string(), FilamentColorMode::Segment,
                 entry.hex, std::string(), FromDIP(20), FromDIP(20));
-            const int append_idx = cb->Append(palette_entry_label(entry, static_cast<int>(j)),
+            const int append_idx = cb->Append(family_display_label(entry),
                                               icon ? icon->ConvertToImage() : wxNullImage);
             // Per-row hover tooltip (spec §4.1): "<family> / <color name> TD : <value>". The
             // custom ComboBox/DropDown shows per-row tooltips natively while the list is open
