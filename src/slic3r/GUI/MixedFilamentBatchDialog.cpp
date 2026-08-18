@@ -100,6 +100,12 @@ static const std::vector<TdEntry> FULL_SPECTRUM_TD = {
     {"grey",    6.5}, // spelling variant, defensive
 };
 
+// Forward declarations — the dialog ctor (and build_footer's Confirm handler) run before
+// these file-static helpers' definitions further down. Definitions carry the full docs.
+static std::vector<FullSpectrumPaletteEntry> load_recommended_palette();
+static std::string                          default_full_spectrum_family_name();
+static bool                                 full_spectrum_family_preset_selectable(const std::string& family_name);
+
 // Effective primary colour of a physical slot for the match. Dual-color slots carry
 // their real colours in filament_multi_colors while filament_colour may stay empty or
 // hold a placeholder; derive the primary (first valid colour — the app-wide rule used
@@ -936,6 +942,23 @@ static wxString get_full_spectrum_preset_label()
 static std::string default_full_spectrum_family_name()
 {
     return GetFilamentMatchName(full_spectrum_preset_name());
+}
+
+// True iff at least one filament preset matching the library family identity (nozzle suffix
+// stripped) is visible and compatible with the current printer — the same gate the Plater
+// apply path uses when deciding whether to write the Full Spectrum preset into slots 1-4.
+// Drives the Confirm-time "not configured" note (spec §5.1). UI-thread only (reads
+// preset_bundle, same convention as the other preset readers in this file).
+static bool full_spectrum_family_preset_selectable(const std::string& family_name)
+{
+    auto* pb = wxGetApp().preset_bundle;
+    if (!pb) return false;
+    for (const Preset& preset : pb->filaments) {
+        if (!preset.is_visible || !preset.is_compatible) continue;
+        if (GetFilamentMatchName(preset.name) == family_name)
+            return true;
+    }
+    return false;
 }
 
 // Load the recommended-mode palette from the hot-updated config: EVERY Full Spectrum family
@@ -1806,6 +1829,29 @@ void MixedFilamentBatchDialog::build_footer()
         // (see handle_batch_match_result), so there is nothing to re-check here — Confirm
         // proceeds directly. Overflow, if any, is dropped silently at apply time by
         // add_batch_custom_filaments.
+        //
+        // Phase-2 note (spec §5.1): in recommended mode, when any Full Spectrum family the
+        // user picked has no selectable preset (not configured for this printer — the same
+        // is_visible && is_compatible gate the Plater apply path uses when deciding whether
+        // to write the preset into slots 1-4), show a one-shot informational note: the match
+        // colors are still applied to the slots, only the preset assignment falls back to
+        // the currently configured filaments. Non-blocking — OK proceeds to EndModal.
+        if (m_result.is_recommended_mode) {
+            bool any_family_missing = false;
+            for (int i = 0; i < 4 && !any_family_missing; ++i) {
+                const int sel = m_recommended_selections[i];
+                if (sel < 0 || sel >= static_cast<int>(m_recommended_palette.size())) continue;
+                if (!full_spectrum_family_preset_selectable(m_recommended_palette[sel].family_name))
+                    any_family_missing = true;
+            }
+            if (any_family_missing) {
+                RichMessageDialog note(this,
+                    _L("Official Full Spectrum filaments are not configured, so your configured filaments will be used automatically. Once they are configured, you can replace them in the filament list without affecting color mixing results."),
+                    _L("Note"), wxOK);
+                note.CentreOnScreen();
+                note.ShowModal();
+            }
+        }
         EndModal(wxID_OK);
     });
 
@@ -2002,7 +2048,7 @@ void MixedFilamentBatchDialog::update_method_combo_tooltip()
     // adding a permanent subtitle row to the UI.
     m_method_combo->SetToolTip(m_matching_method == MANUAL
         ? _L("Manually select filaments from the current list for color mixing.")
-        : wxString::Format(_L("Automatically uses official CMYG filaments for color mixing. The mix ratio for each color is limited to %d%%–%d%%."),
+        : wxString::Format(_L("Automatically uses official color-mixing filament kits for color mixing. The mix ratio for each color is limited to %d%%–%d%%."),
              kMinComponentPercent, kMaxComponentPercent));
 }
 

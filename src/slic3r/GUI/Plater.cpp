@@ -2547,7 +2547,7 @@ Sidebar::Sidebar(Plater *parent)
     p->m_btn_batch_match->SetStyle(ButtonStyle::Confirm, ButtonType::Compact);
     p->m_btn_batch_match->SetToolTip(_L("Automatically calculate the color mixing scheme that best matches the original model colors and complete color mapping.\n"
                                         "Note:\n"
-                                        "1.Color mixing match is based on the official recommended CMYG filaments. The matched colors may differ from the original model.\n"
+                                        "1.Color mixing match is based on the official recommended filaments. The matched colors may differ from the original model.\n"
                                         "2.The order of the Color Mapping list may differ from that of the Color Mixing list."));
     p->m_btn_batch_match->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         if (!wxGetApp().preset_bundle) return;
@@ -2626,9 +2626,9 @@ Sidebar::Sidebar(Plater *parent)
         // NOTE: deliberately NO take_snapshot() here. The UndoRedo stack only
         // captures the Model (object painting), not the preset_bundle palette
         // or mixed_filaments. Snapshotting batch match would make Ctrl+Z revert
-        // painting while leaving the expanded CMYG palette in place → silent
+        // painting while leaving the expanded recommended palette in place → silent
         // wrong colors. Re-enable only after UndoRedo covers preset_bundle.
-        // For recommended mode, apply CMYG to the first 4 physical slots.
+        // For recommended mode, apply the matched palette colors to the first 4 physical slots.
         // < 4 filaments: expand to 4.  >= 4 filaments: keep every slot THROUGH
         // this stage (virtual ids / add_batch compute over the full slot
         // space).  The batch match is a project-wide re-plan of the filament
@@ -2644,7 +2644,7 @@ Sidebar::Sidebar(Plater *parent)
             const size_t current_count = pb->filament_presets.size();
             const size_t target_count  = std::max<size_t>(4, current_count);
 
-            // Build full palette: CMYG in slots 1-4, original in 5+.
+            // Build full palette: matched colors in slots 1-4, original in 5+.
             colors_vec = fc ? fc->values : std::vector<std::string>{};
             colors_vec.resize(target_count);
 
@@ -2668,7 +2668,7 @@ Sidebar::Sidebar(Plater *parent)
                     color_modes->values[i] = 0;
             }
 
-            // Write before set_num_filaments so auto_generate sees CMYG palette.
+            // Write before set_num_filaments so auto_generate sees the matched palette.
             if (fc) fc->values = colors_vec;
 
             // Snapshot the old mixed list BEFORE set_num_filaments clears
