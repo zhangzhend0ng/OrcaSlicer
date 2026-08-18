@@ -19,7 +19,6 @@
 #include "PartPlate.hpp"
 #include "BitmapCache.hpp"
 
-#include <unordered_map>
 #include <set>
 #include <algorithm>
 #include <cctype>
@@ -364,9 +363,15 @@ MixedFilamentBatchDialog::MixedFilamentBatchDialog(wxWindow* parent)
     m_btn_start_match->Enable(!m_model_colors.empty() && recommended_selections_distinct()
                               && m_physical_colors.size() >= 2);
 
-    // Default to recommended mode — show CMYK card
+    // Default to recommended mode — show the palette card
     if (m_recommended_card) {
         m_recommended_card->Show(true);
+        // Re-apply the combo icons now that the card is visible: SetIcon on a hidden
+        // window may not render (the same reason on_method_changed re-applies them on
+        // every mode switch). The card was built hidden (card->Hide()).
+        for (int i = 0; i < 4; ++i)
+            if (m_recommended_combo[i])
+                set_recommended_combo_icon(i);
         m_recommended_card->Layout();
     }
 
@@ -1533,11 +1538,19 @@ void MixedFilamentBatchDialog::build_recommended_card(wxBoxSizer& parent)
         }
         if (m_recommended_selections[i] >= 0 && m_recommended_selections[i] < static_cast<int>(m_recommended_palette.size()))
             cb->SetSelection(m_recommended_selections[i]);
-        else if (!m_recommended_palette.empty())
+        else if (!m_recommended_palette.empty()) {
+            // Keep the recorded selection in lock-step with what the combo shows — the
+            // restore gate and the match input both read m_recommended_selections.
+            m_recommended_selections[i] = 0;
             cb->SetSelection(0);
+        }
+        m_recommended_combo[i] = cb;
         // Combined arrow+badge icon (slot number 1-4 over the selected color) so the combo
         // keeps its drop-down arrow alongside the numbered swatch (ComboBox hides the arrow
-        // when an item image is set).
+        // when an item image is set). MUST run after the m_recommended_combo[i] assignment:
+        // set_recommended_combo_icon reads that member and early-returns while it is null
+        // (unlike the manual card, this card is visible on first show with no later
+        // re-application to paper over a missing icon).
         set_recommended_combo_icon(i);
         cb->Bind(wxEVT_COMBOBOX, [this, i](wxCommandEvent&) {
             if (m_recommended_combo[i]) {
@@ -1549,7 +1562,6 @@ void MixedFilamentBatchDialog::build_recommended_card(wxBoxSizer& parent)
             on_recommended_selection_changed();
         });
         r->Add(cb, 1, wxALIGN_CENTER_VERTICAL);
-        m_recommended_combo[i] = cb;
         panel->SetSizer(r);
         grid->Add(panel, 0, wxEXPAND);
     }
