@@ -1510,9 +1510,11 @@ void MixedFilamentBatchDialog::build_recommended_card(wxBoxSizer& parent)
         // show the dialog's #F8F7F7 through (same as build_manual_card rows).
         panel->SetBackgroundColour(StateColor::darkModeColorFor(wxColour("#FFFFFF")));
         // Pin a fixed column width so the 2×2 slots stay equal regardless of label length
-        // (see build_manual_card for the wxFlexGridSizer rationale).
-        panel->SetMinSize(wxSize(FromDIP(FILAMENT_COL_WIDTH_DIP), -1));
-        panel->SetMaxSize(wxSize(FromDIP(FILAMENT_COL_WIDTH_DIP), -1));
+        // (see build_manual_card for the wxFlexGridSizer rationale). Height pinned to 30
+        // like the manual card's rows (upstream #735 convention), so mode switching doesn't
+        // shift the cards below.
+        panel->SetMinSize(wxSize(FromDIP(FILAMENT_COL_WIDTH_DIP), FromDIP(30)));
+        panel->SetMaxSize(wxSize(FromDIP(FILAMENT_COL_WIDTH_DIP), FromDIP(30)));
         auto* r = new wxBoxSizer(wxHORIZONTAL);
 
         // §68: read-only selection would normally call for wxChoice, but this custom
