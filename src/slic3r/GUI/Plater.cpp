@@ -2547,8 +2547,8 @@ Sidebar::Sidebar(Plater *parent)
     p->m_btn_batch_match->SetStyle(ButtonStyle::Confirm, ButtonType::Compact);
     p->m_btn_batch_match->SetToolTip(_L("Automatically calculate the color mixing scheme that best matches the original model colors and complete color mapping.\n"
                                         "Note:\n"
-                                        "1.Color mixing match is based on the official recommended filaments. The matched colors may differ from the original model.\n"
-                                        "2.The order of the Color Mapping list may differ from that of the Color Mixing list."));
+                                        "1. Color mixing match is based on the official recommended filaments. The matched colors may differ from the original model.\n"
+                                        "2. The order of the Color Mapping list may differ from that of the Color Mixing list."));
     p->m_btn_batch_match->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         if (!wxGetApp().preset_bundle) return;
         // No loaded model → batch match has nothing to map. Surface as a confirmation

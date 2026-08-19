@@ -1862,7 +1862,7 @@ void MixedFilamentBatchDialog::build_footer()
             }
             if (any_family_missing) {
                 RichMessageDialog note(this,
-                    _L("Official Full Spectrum filaments are not configured, so your configured filaments will be used automatically. Once they are configured, you can replace them in the filament list without affecting color mixing results."),
+                    _L("Official Full Spectrum filaments are not configured. Configured filaments will be used instead. Once the official filaments are added, the previously selected filaments can be replaced in the filament list without affecting the color mixing match result."),
                     _L("Note"), wxOK);
                 note.CentreOnScreen();
                 note.ShowModal();
@@ -2064,8 +2064,7 @@ void MixedFilamentBatchDialog::update_method_combo_tooltip()
     // adding a permanent subtitle row to the UI.
     m_method_combo->SetToolTip(m_matching_method == MANUAL
         ? _L("Manually select filaments from the current list for color mixing.")
-        : wxString::Format(_L("Automatically uses official color-mixing filament kits for color mixing. The mix ratio for each color is limited to %d%%–%d%%."),
-             kMinComponentPercent, kMaxComponentPercent));
+        : _L("Automatically select an official filament set for color mixing match. Mix ratio for each color: 0%–70%."));
 }
 
 void MixedFilamentBatchDialog::on_manual_selection_changed()
