@@ -77,10 +77,13 @@ static constexpr double kDeltaEFairMax = 8.0;  // <8.0 → Fair, else Poor
 // in the filament data model (filaments_colours.json carries no TD field), so they are pinned
 // here as product constants — provided by product spec (snapshot in code per request).
 //
-// TODO(phase-3): move these values into the hot-updated filaments_colours.json (per-SKU "td"
-// field) and read them through the color library, replacing this static table with a fallback.
-// Note the phase-2 spec V2.0 lists Gray=8.8 / White=6.5 while this snapshot has White=8.8 /
-// Gray=6.5 — reconcile with product when the values move into config.
+// DECIDED (2026-08-19): TD moves into the hot-updated config (per-SKU "td" field read through
+// FilamentColorLibrary, this table demoted to fallback). Implementation is BLOCKED on the
+// config/interface side (another team owns the field definition) — do NOT pre-implement the
+// client parsing before that contract lands. When it does: also reconcile the static fallback
+// values with the spec — phase-2 spec V2.0 and the test matrix both list Gray=8.8 / White=6.5
+// while this snapshot has White=8.8 / Gray=6.5 (feedback item A in
+// docs/mix-match-map-p2-testcase-comparison.md).
 //
 // KEYED BY COLOR FAMILY (canonical color name), NOT by palette position — the dropdown palette
 // is alphabetical and spans multiple families, so positional indexing would bind the wrong TD
