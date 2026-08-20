@@ -165,6 +165,14 @@ static void pump_events(int ms = 50)
 }
 
 // ---------------------------------------------------------------------------
+// Everything below that drives wxUIActionSimulator is guarded per the
+// wxWidgets unit-test guide (docs/contributing/how-to-write-unit-tests.md):
+// wrap simulator tests in #if wxUSE_UIACTIONSIMULATOR. The raw Win32 probes
+// in section (6) do not use the simulator and stay unguarded.
+// ---------------------------------------------------------------------------
+#if wxUSE_UIACTIONSIMULATOR
+
+// ---------------------------------------------------------------------------
 // (3) The dialog under test: a TextCtrl + an "Echo" button + a StaticText.
 //     Clicking the button (wxEVT_BUTTON) copies the TextCtrl value into the
 //     StaticText. This is the simplest possible "user interaction → observable
@@ -361,6 +369,25 @@ TEST_CASE("wxUIActionSimulator echoes text on button click", "[gui]")
     CHECK(dlg.m_echo_after_click == "world");
 }
 
+// Small RAII event counter, mirroring wxWidgets' test EventCounter pattern
+// (docs/contributing/how-to-write-unit-tests.md): counting the events
+// themselves proves the simulator delivered them, independent of the final
+// control state the assertions also check.
+class EventCounter
+{
+public:
+    // NOTE: no Unbind in the destructor — the lambda functor cannot be
+    // reliably unbound across wx versions, and each counter outlives the
+    // window it is bound to only within a single test scope.
+    EventCounter(wxWindow* win, wxEventTypeTag<wxCommandEvent> type)
+    {
+        win->Bind(type, [this](wxCommandEvent&) { ++m_count; });
+    }
+    int count() const { return m_count; }
+private:
+    int m_count = 0;
+};
+
 // ---------------------------------------------------------------------------
 // (5) Variant: NON-MODAL top-level frame, simulator driven DIRECTLY (no
 //     ShowModal, no CallAfter). This is the canonical wxWidgets test pattern
@@ -393,6 +420,10 @@ TEST_CASE("wxUIActionSimulator drives non-modal frame directly", "[gui]")
         echo->SetLabelText(input->GetValue());
         clicked = true;
     });
+
+    // Event-delivery proof independent of the final-state assertions below.
+    EventCounter text_events(input, wxEVT_TEXT);
+    EventCounter button_events(btn, wxEVT_BUTTON);
 
     frame.Show();
     frame.Raise();
@@ -440,12 +471,19 @@ TEST_CASE("wxUIActionSimulator drives non-modal frame directly", "[gui]")
     INFO("TextCtrl had focus (non-modal frame) = " << (had_focus ? "true" : "false"));
     CHECK(had_focus);
 
+    // SetValue("world") also fires wxEVT_TEXT, so expect 1 (typed) + 1 (seeded).
+    INFO("wxEVT_TEXT delivered = " << text_events.count() << " (expected >= 1 from sim.Text)");
+    CHECK(text_events.count() >= 1);
+    INFO("wxEVT_BUTTON delivered = " << button_events.count() << " (expected 1 from sim.MouseClick)");
+    CHECK(button_events.count() == 1);
+
     INFO("TextCtrl value after sim.Text(\"hello\") [non-modal] = \"" << input_after << "\"");
     CHECK(input_after == "hello");
 
     INFO("Echo label after sim.MouseClick [non-modal] = \"" << echo_after << "\"");
     CHECK(echo_after == "world");
 }
+#endif // wxUSE_UIACTIONSIMULATOR
 
 // ---------------------------------------------------------------------------
 // (6) Raw probe (Windows-only, throwaway diagnostic): bypass wxUIActionSimulator
