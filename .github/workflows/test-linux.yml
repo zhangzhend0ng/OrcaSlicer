@@ -5,6 +5,8 @@ name: Linux Tests
 # green on main, and keep the release/* branches off the required-checks path.
 on:
   workflow_dispatch:
+  push:
+    branches: [ci-run-linux-test]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
