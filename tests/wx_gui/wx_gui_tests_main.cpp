@@ -1,42 +1,43 @@
-// PoC: validate that wxUIActionSimulator can drive a real wxDialog, with
-// Catch2 v3 (Catch2::Catch2WithMain) owning main().
+// Stable smoke tests: wxUIActionSimulator (OS-level input injection) plus the
+// event-layer (ProcessEvent) equivalents. Catch2 v3 (Catch2::Catch2WithMain)
+// owns main(); wxApp is initialized via wxIMPLEMENT_APP_NO_MAIN + wxEntryStart.
 //
 // STATUS (as of this commit):
-//   - macOS (wxOSX/Cocoa): ENVIRONMENT WORKS but EVENTS DON'T DELIVER.
-//     The plumbing (wxApp via wxIMPLEMENT_APP_NO_MAIN + wxEntryStart, modal
-//     loop, dialog show) all succeeds, and wxTheApp->IsActive() is true. But
-//     wxTextCtrl::SetFocus() never grants keyboard focus inside the modal loop
-//     (a known wxOSX/Cocoa defect), so sim.Text()/MouseClick() events have no
-//     target and the test FAILS. This is a wxWidgets-on-macOS limitation, not
-//     an OrcaSlicer issue — see the INFO diagnostics in the test output.
+//   - Windows (wxMSW): Route A VALIDATED — focus/text/echo PASS deterministically
+//     on a clean interactive session. The two environment hazards found during
+//     the investigation are now checked at RUNTIME (the simulator tests SKIP
+//     with the reason + recovery steps instead of failing):
+//       1. Remote-control/mirroring layer (NetEase GameViewer "Virtual Display
+//          Adapter" on this machine): suppresses synthetic input
+//          (keybd_event/SendInput/mouse_event) — tests SKIP until it is fully
+//          stopped (service included).
+//       2. zh-CN Microsoft Pinyin IME composes synthesized keystrokes into CJK
+//          characters (VK 'A' -> "奶"); ScopedUsKeyboardLayout activates US
+//          English (0x0409) for the thread around sim.Text(). If the US layout
+//          is not installed the tests SKIP with install instructions.
+//   - macOS (wxOSX/Cocoa): SKIPPED by design — wxTextCtrl::SetFocus() never
+//     grants keyboard focus inside the modal loop, so synthetic events have no
+//     target (a wxWidgets platform defect, not an OrcaSlicer issue). See
+//     tests/wx_gui/ADVERSARIAL_LOOP_JOURNAL.md for the full conclusion.
 //
-//   - Windows (wxMSW): VALIDATED (route A works). Two environment requirements:
-//       1. No remote-control/mirroring layer intercepting session input. This
-//          machine runs NetEase GameViewer (with a "GameViewer Virtual Display
-//          Adapter"); while it is active, synthetic input injection
-//          (keybd_event/SendInput/mouse_event) is suppressed — the test must be
-//          run with GameViewer fully stopped (service included).
-//       2. A non-IME keyboard layout must be active for the thread during
-//          sim.Text(). The default zh-CN layout uses the Microsoft Pinyin IME,
-//          which INTERCEPTS synthesized keystrokes and composes CJK characters
-//          (e.g. VK 'A' -> "奶") instead of the literal 'A'. ScopedUsKeyboard-
-//          Layout (below) activates US English (0x0409) for the thread around
-//          the sim call, after which sim.Text("hello") and sim.MouseClick()
-//          both deliver correctly: focus=PASS, text=PASS, echo=PASS
-//          (deterministic across runs). Mouse clicks are not IME-affected.
+// Layering (agreed): three injection tiers, from most to least environment-
+// dependent:
+//   1. ProcessEvent — in-process event dispatch. The daily batch path: no
+//      foreground window, no mouse grabbing, immune to IME and remote-control
+//      layers. Headless-safe.
+//   2. Win32MessageSimulator (Windows) — sent WM_* messages through the
+//      NATIVE window procedure (standard controls process them exactly like
+//      real input). Works even while a remote-control layer is running (the
+//      low-level hooks never see sent messages), needs no foreground/focus,
+//      bypasses IME. See section (0c).
+//   3. wxUIActionSimulator — true OS-level injection through the input
+//      pipeline; reserved for a handful of clean-session smoke tests.
+// The "event injection" tests below are the canonical shape for tier 1.
 //
-// What this proves (if green on a clean Windows console):
-//   1. wxApp can be initialized WITHOUT taking over main() (via
-//      wxIMPLEMENT_APP_NO_MAIN + wxEntryStart), coexisting with Catch2's main.
-//   2. wxUIActionSimulator actually delivers events to a real wxWindow.
-//   3. The CMake plumbing (wx headers + libslic3r_gui link) is correct.
-//
-// How to run (NOT headless-safe — needs an interactive desktop session with
-// NO remote-display/remote-control layer intercepting input):
-//   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-//         -DSLIC3R_GUI=ON -DBUILD_TESTS=ON <prefix-path & policy flags>
+// How to run (simulator tests are NOT headless-safe — they need an interactive
+// desktop session with no remote-display layer intercepting input):
 //   cmake --build build --target wx_gui_tests
-//   build/tests/wx_gui/wx_gui_tests "wxUIActionSimulator echoes text on button click"
+//   build/tests/wx_gui/wx_gui_tests "[gui]"
 
 #include <catch_main.hpp>
 
@@ -45,16 +46,19 @@
 #include <wx/uiaction.h>
 
 #include <chrono>
-#include <thread>
+#include <functional>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 #ifdef __WXMSW__
     #include <wx/msw/wrapwin.h> // HWND, GetForegroundWindow, GetFocus, AttachThreadInput
+    #include <winsvc.h>         // OpenSCManager/EnumServicesStatusEx for remote-control scan
 #endif
 
 // ---------------------------------------------------------------------------
-// Win32 input-target diagnostics (Windows-only).
+// (0) Win32 input-target diagnostics (Windows-only).
 //
 // wxUIActionSimulator's wxMSW backend injects keystrokes/mouse events via
 // keybd_event()/mouse_event() into the OS input stream. Those events are
@@ -103,6 +107,188 @@ public:
 private:
     HKL m_hUs   = nullptr;
     HKL m_hPrev = nullptr;
+};
+#endif
+
+// ---------------------------------------------------------------------------
+// (0b) RUNTIME environment prerequisites for OS-level input injection.
+//
+// The simulator posts events through the OS input stream, so it only works in
+// an interactive session with no remote-control layer intercepting input and
+// (on zh-CN Windows) a non-IME keyboard layout it can activate. These were
+// previously documented in comments only; now they are checked at runtime and
+// the tests SKIP with the reason + recovery steps when the environment cannot
+// deliver. Returns a non-empty reason string when the environment is unusable.
+// ---------------------------------------------------------------------------
+#ifdef __WXMSW__
+static std::string windows_sim_env_problem()
+{
+    // --- 1. remote-control / mirroring layer present? ---
+    // NetEase GameViewer (and similar session-level remote-control tools)
+    // suppress keybd_event()/SendInput()/mouse_event() from processes in the
+    // session: the inject is accepted into the global key state but never
+    // queued for retrieval (see ADVERSARIAL_LOOP_JOURNAL.md, iteration 1,
+    // shape T3 — the settled root cause). Scan display-adapter names and
+    // running services for the known tools.
+    static const wchar_t* const kKnownAdapterMarkers[] = {
+        L"gameviewer", L"teamviewer", L"anydesk", L"sunlogin",
+        L"todesk", L"awesun", L"parsec", L"vnc",
+    };
+    DISPLAY_DEVICEW dd;
+    dd.cb = sizeof(dd);
+    for (DWORD i = 0; EnumDisplayDevicesW(nullptr, i, &dd, 0); ++i) {
+        wxString name(dd.DeviceString);
+        name.MakeLower();
+        for (const wchar_t* marker : kKnownAdapterMarkers) {
+            if (name.Contains(wxString(marker))) {
+                return "runtime env check: a known remote-control layer is active "
+                       "(display adapter \"" + wxString(dd.DeviceString).ToStdString() +
+                       "\"), which suppresses synthetic input so wxUIActionSimulator "
+                       "cannot deliver events. Recovery: fully stop it — e.g. NetEase "
+                       "GameViewer tray app plus its 'GameViewerService' service — or "
+                       "uninstall it, then re-run. See tests/wx_gui/"
+                       "ADVERSARIAL_LOOP_JOURNAL.md for background.";
+            }
+        }
+        dd.cb = sizeof(dd); // docs: re-initialize before each call
+    }
+
+    static const wchar_t* const kKnownServiceNames[] = {
+        L"GameViewerService", L"GameViewerServer", L"TeamViewer", L"AnyDesk",
+        L"ToDesk_Service", L"SunloginClient", L"AweSunService", L"uvnc_service",
+        L"Parsec",
+    };
+    SC_HANDLE scm = ::OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ENUMERATE_SERVICE);
+    if (scm) {
+        DWORD needed = 0, returned = 0;
+        ::EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32,
+                                SERVICE_STATE_ALL, nullptr, 0, &needed, &returned,
+                                nullptr, nullptr);
+        if (::GetLastError() == ERROR_MORE_DATA && needed > 0) {
+            std::vector<BYTE> buf(needed);
+            if (::EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32,
+                                        SERVICE_STATE_ALL, buf.data(),
+                                        static_cast<DWORD>(buf.size()), &needed,
+                                        &returned, nullptr, nullptr)) {
+                auto* svc = reinterpret_cast<ENUM_SERVICE_STATUS_PROCESSW*>(buf.data());
+                for (DWORD j = 0; j < returned; ++j, ++svc) {
+                    wxString name(svc->lpServiceName);
+                    name.MakeLower();
+                    for (const wchar_t* known : kKnownServiceNames) {
+                        if (name == wxString(known).MakeLower()) {
+                            ::CloseServiceHandle(scm);
+                            return "runtime env check: remote-control service '" +
+                                   wxString(svc->lpServiceName).ToStdString() +
+                                   "' is running; it suppresses synthetic input so "
+                                   "wxUIActionSimulator cannot deliver events. "
+                                   "Recovery: stop it (net stop " +
+                                   wxString(svc->lpServiceName).ToStdString() +
+                                   " or Services.msc), then re-run. See tests/wx_gui/"
+                                   "ADVERSARIAL_LOOP_JOURNAL.md for background.";
+                        }
+                    }
+                }
+            }
+        }
+        ::CloseServiceHandle(scm);
+    }
+
+    // --- 2. keyboard layout ---
+    // sim.Text() needs a non-IME layout on the thread: the default zh-CN layout
+    // composes synthesized keystrokes into CJK characters. ScopedUsKeyboardLayout
+    // switches to US English (0x0409) around the sim call; if that layout is not
+    // even installed, the sim cannot be made IME-safe.
+    if (LOWORD(reinterpret_cast<DWORD_PTR>(::GetKeyboardLayout(0))) != 0x0409) {
+        HKL hUs = ::LoadKeyboardLayoutW(L"00000409", KLF_NOTELLSHELL | KLF_SUBSTITUTE_OK);
+        if (hUs) {
+            ::UnloadKeyboardLayout(hUs); // probe only; the RAII guard does the real work
+        } else {
+            return "runtime env check: the active keyboard layout is not US English "
+                   "(0x0409) and the US English layout is not installed, so sim.Text() "
+                   "cannot bypass IME composition. Recovery: add 'English (United "
+                   "States)' under Windows Settings -> Time & Language -> Language, "
+                   "or switch the active layout, then re-run.";
+        }
+    }
+    return {};
+}
+#elif defined(__WXOSX__)
+static std::string macos_sim_env_problem()
+{
+    return "SKIP on macOS by design: wxOSX/Cocoa never grants keyboard focus "
+           "inside the modal loop, so synthetic events have no target (a wxWidgets "
+           "platform defect, not an OrcaSlicer issue). See tests/wx_gui/"
+           "ADVERSARIAL_LOOP_JOURNAL.md for the full conclusion.";
+}
+#endif
+
+// Call at the top of every test that drives wxUIActionSimulator (and the raw
+// Win32 probes, which have the same environment requirements): SKIPs the test
+// with the reason + recovery steps when the environment cannot deliver.
+static void skip_if_sim_environment_unusable()
+{
+#ifdef __WXMSW__
+    const std::string reason = windows_sim_env_problem();
+#elif defined(__WXOSX__)
+    const std::string reason = macos_sim_env_problem();
+#else
+    const std::string reason; // wxGTK: no known blockers, run as-is
+#endif
+    if (!reason.empty())
+        SKIP(reason);
+}
+
+// ---------------------------------------------------------------------------
+// (0c) MESSAGE-LEVEL injection (Windows-only): the "works even with a
+//      remote-control layer running" path.
+//
+// wxUIActionSimulator's wxMSW backend goes through the OS input pipeline
+// (keybd_event/mouse_event), which remote-control software (e.g. NetEase
+// GameViewer) filters in a WH_KEYBOARD_LL/WH_MOUSE_LL hook by dropping
+// LLKHF_INJECTED events. SENT messages (SendMessage — the same mechanism as
+// pywinauto's send_chars()/Click() and AutoHotkey's ControlSend) do NOT
+// traverse the low-level hooks: the hook chain only runs for messages fetched
+// from the input queue (Raymond Chen, "You can't simulate keyboard input with
+// PostMessage, revisited") — so this simulator keeps working in that
+// environment. It also needs no foreground window, no keyboard focus, and no
+// non-IME layout: WM_CHAR carries the literal character and the standard
+// controls process it directly. Events flow through the native window
+// procedure (unlike ProcessEvent), but no real input state (GetAsyncKeyState,
+// cursor, focus) is produced.
+// ---------------------------------------------------------------------------
+#ifdef __WXMSW__
+class Win32MessageSimulator
+{
+public:
+    // Type text by SENDING WM_CHAR to the control (synchronous — the same
+    // approach as pywinauto's send_chars() and AutoHotkey's ControlSend:
+    // reliable, works without focus and without the window being visible or
+    // active). Standard edit controls (wxTextCtrl on wxMSW is a plain
+    // single-line EDIT) insert the character and emit wxEVT_TEXT exactly as
+    // for real typing.
+    //
+    // NOTE: SendMessage (not PostMessage) on purpose — posted messages need
+    // the queue pumped, and this test process runs no resident event loop
+    // (wxEntryStart without OnRun), so wxYield() does not reliably dispatch
+    // them. A synchronous send goes straight through the window procedure.
+    void Text(HWND hwnd, const wxString& text)
+    {
+        for (wxChar ch : text)
+            ::SendMessageW(hwnd, WM_CHAR, static_cast<WPARAM>(ch), 0);
+    }
+
+    // Left-click the center of the control by SENDING WM_LBUTTONDOWN + UP.
+    // Standard button controls (wxButton on wxMSW is a plain BS_PUSHBUTTON)
+    // send BN_CLICKED (-> the wxEVT_BUTTON handler) when both the down and the
+    // up point fall inside the client area.
+    void MouseClick(HWND hwnd)
+    {
+        RECT rc{};
+        ::GetClientRect(hwnd, &rc);
+        const LPARAM lp = MAKELPARAM(rc.right / 2, rc.bottom / 2);
+        ::SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp);
+        ::SendMessageW(hwnd, WM_LBUTTONUP, 0, lp);
+    }
 };
 #endif
 
@@ -164,25 +350,30 @@ static void pump_events(int ms = 50)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Everything below that drives wxUIActionSimulator is guarded per the
-// wxWidgets unit-test guide (docs/contributing/how-to-write-unit-tests.md):
-// wrap simulator tests in #if wxUSE_UIACTIONSIMULATOR. The raw Win32 probes
-// in section (6) do not use the simulator and stay unguarded.
-// ---------------------------------------------------------------------------
-#if wxUSE_UIACTIONSIMULATOR
+// Poll cond() up to `attempts` times, yielding + sleeping between tries so
+// injected input gets retrieved from the native queue and dispatched, then
+// return the final state of cond().
+template <typename F>
+static bool wait_until(F&& cond, int attempts = 10, int delay_ms = 30)
+{
+    for (int i = 0; i < attempts; ++i) {
+        if (cond()) return true;
+        wxYield();
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+    }
+    return cond();
+}
 
 // ---------------------------------------------------------------------------
 // (3) The dialog under test: a TextCtrl + an "Echo" button + a StaticText.
 //     Clicking the button (wxEVT_BUTTON) copies the TextCtrl value into the
-//     StaticText. This is the simplest possible "user interaction → observable
-//     state change" loop to exercise with the simulator.
+//     StaticText. This is the simplest possible "user interaction -> observable
+//     state change" loop, shared by the simulator smoke tests and the
+//     event-injection tests.
 //
-// On macOS, wx focus management only works while a modal event loop is running
-// (ShowModal). A non-modal Show() leaves SetFocus() ineffective, so the
-// synthesized keyboard/mouse events have no target. We therefore run the
-// simulator INSIDE the modal loop, scheduled via CallAfter, and capture the
-// observable result in m_result before calling EndModal.
+// Each smoke test installs its own m_sim_step (typing, clicking, or both);
+// run_simulation() executes it INSIDE the modal loop (via CallAfter), where wx
+// focus management works, then EndModal returns to the test.
 // ---------------------------------------------------------------------------
 class EchoDialog : public wxDialog
 {
@@ -196,8 +387,8 @@ public:
     wxString m_echo_after_click;
     bool     m_textctrl_had_focus = false;
 
-    // Win32 input-target diagnostics, captured at the moment sim.Text() runs.
-    // Surfaced via INFO() lines so one run settles the failure cause.
+    // Win32 input-target diagnostics, captured at the moment the simulator
+    // runs. Surfaced via INFO() lines so one run settles the failure cause.
     std::string m_diag_foreground;   // GetForegroundWindow() at sim time
     std::string m_diag_focus;        // GetFocus() at sim time
     std::string m_diag_dialog_hwnd;  // this dialog's HWND
@@ -205,6 +396,11 @@ public:
     bool        m_diag_fg_is_dialog = false;     // foreground == dialog HWND?
     bool        m_diag_focus_is_textctrl = false; // Win32 focus == TextCtrl HWND?
     bool        m_used_attach_thread_input = false; // did we apply the foreground fix?
+
+    // The simulation step for the CURRENT test (simulator tests only).
+#if wxUSE_UIACTIONSIMULATOR
+    std::function<void(EchoDialog&, wxUIActionSimulator&)> m_sim_step;
+#endif
 
     EchoDialog()
         : wxDialog(nullptr, wxID_ANY, "wxUIActionSimulator PoC",
@@ -231,6 +427,7 @@ public:
     // Drive the simulator from inside the modal loop. CallAfter queues this on
     // the modal event loop, so by the time it runs the dialog is shown, mapped,
     // and has working focus management.
+#if wxUSE_UIACTIONSIMULATOR
     void run_simulation(wxUIActionSimulator& sim)
     {
         CallAfter([this, &sim]() {
@@ -281,64 +478,74 @@ public:
             m_diag_focus_is_textctrl = (hFocs == hTxt);
 #endif
 
-            // --- typing test ---
-            m_input->SetFocus();
-            wxYield();
-            m_textctrl_had_focus = m_input->HasFocus();
-#ifdef __WXMSW__
-            // Activate a non-IME layout so synthesized ASCII keystrokes are not
-            // composed into CJK by the active Microsoft Pinyin IME.
-            ScopedUsKeyboardLayout usLayout;
-#endif
-            sim.Text("hello");
-            // Pump the modal loop so the injected keybd_event() messages get
-            // retrieved and dispatched (single wxYield() is the canonical wx
-            // pattern; the loop adds margin for slower dispatch).
-            for (int i = 0; i < 10 && m_input->GetValue() != "hello"; ++i) {
-                wxYield();
-                std::this_thread::sleep_for(std::chrono::milliseconds(30));
-            }
-            m_input_after_text = m_input->GetValue();
-
-            // --- click test ---
-            // Seed the input, then click the button by coordinates.
-            m_input->SetValue("world");
-            wxYield();
-            // Click at the button's screen center.
-            wxRect br = m_btn->GetScreenRect();
-            wxUIActionSimulator msim;
-            msim.MouseMove(wxPoint(br.x + br.width / 2, br.y + br.height / 2));
-            wxYield();
-            msim.MouseClick();
-            for (int i = 0; i < 10 && m_echo->GetLabelText() != "world"; ++i) {
-                wxYield();
-                std::this_thread::sleep_for(std::chrono::milliseconds(30));
-            }
-            m_echo_after_click = m_echo->GetLabelText();
-
+            // Per-test action (installed by the smoke test before ShowModal).
+            m_sim_step(*this, sim);
             EndModal(wxID_OK);
         });
     }
+#endif
+};
+
+// Small RAII event counter, mirroring wxWidgets' test EventCounter pattern
+// (docs/contributing/how-to-write-unit-tests.md): counting the events
+// themselves proves delivery, independent of the final control state that the
+// other assertions also check. Used by both the simulator smoke tests and the
+// event-injection tests.
+class EventCounter
+{
+public:
+    // NOTE: no Unbind in the destructor — the lambda functor cannot be
+    // reliably unbound across wx versions, and each counter outlives the
+    // window it is bound to only within a single test scope.
+    EventCounter(wxWindow* win, wxEventTypeTag<wxCommandEvent> type)
+    {
+        win->Bind(type, [this](wxCommandEvent&) { ++m_count; });
+    }
+    int count() const { return m_count; }
+private:
+    int m_count = 0;
 };
 
 // ---------------------------------------------------------------------------
-// (4) The test itself.
-//     Strategy: show the dialog modally (which runs a proper event loop and
-//     enables wx focus management on macOS), schedule the simulation via
-//     CallAfter so it executes inside that modal loop, capture observable
-//     results on the dialog, then EndModal. Assertions run after the modal
-//     loop returns.
+// (4) Simulator smoke tests.
+//
+// Everything below that drives wxUIActionSimulator is guarded per the
+// wxWidgets unit-test guide (docs/contributing/how-to-write-unit-tests.md):
+// wrap simulator tests in #if wxUSE_UIACTIONSIMULATOR. The raw Win32 probes in
+// section (6) do not use the simulator and stay unguarded. Every test here
+// starts with skip_if_sim_environment_unusable(), so on an environment that
+// cannot deliver synthetic input the tests SKIP (with the reason + recovery
+// steps) instead of failing.
 // ---------------------------------------------------------------------------
-TEST_CASE("wxUIActionSimulator echoes text on button click", "[gui]")
+#if wxUSE_UIACTIONSIMULATOR
+
+// (4a) smoke_text_echo: synthetic keystrokes reach the focused TextCtrl and
+// mutate it. Focus is a precondition of typing, so it is asserted here too.
+TEST_CASE("smoke_text_echo: sim.Text reaches focused TextCtrl", "[gui][smoke]")
 {
+    skip_if_sim_environment_unusable();
+
     REQUIRE(ensure_wx_initialized());
     REQUIRE(wxTheApp != nullptr);
 
     EchoDialog dlg;
-
     wxUIActionSimulator sim;
+    dlg.m_sim_step = [](EchoDialog& d, wxUIActionSimulator& s) {
+        d.m_input->SetFocus();
+        wxYield();
+        d.m_textctrl_had_focus = d.m_input->HasFocus();
+#ifdef __WXMSW__
+        // Activate a non-IME layout so synthesized ASCII keystrokes are not
+        // composed into CJK by the active Microsoft Pinyin IME.
+        ScopedUsKeyboardLayout usLayout;
+#endif
+        s.Text("hello");
+        // Pump the modal loop so the injected keybd_event() messages get
+        // retrieved and dispatched.
+        wait_until([&d]() { return d.m_input->GetValue() == "hello"; });
+        d.m_input_after_text = d.m_input->GetValue();
+    };
     dlg.run_simulation(sim);
-
     // ShowModal runs the modal event loop; run_simulation's CallAfter fires
     // inside it, drives the simulator, and calls EndModal to return here.
     dlg.ShowModal();
@@ -364,41 +571,98 @@ TEST_CASE("wxUIActionSimulator echoes text on button click", "[gui]")
 
     INFO("TextCtrl value after sim.Text(\"hello\") = \"" << dlg.m_input_after_text << "\"");
     CHECK(dlg.m_input_after_text == "hello");
+}
+
+// (4b) smoke_button_click: a synthetic mouse click on the button's screen
+// coordinates drives wxEVT_BUTTON and the echo handler.
+TEST_CASE("smoke_button_click: sim.MouseClick drives the button", "[gui][smoke]")
+{
+    skip_if_sim_environment_unusable();
+
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    EchoDialog dlg;
+    wxUIActionSimulator sim;
+    dlg.m_sim_step = [](EchoDialog& d, wxUIActionSimulator& s) {
+        // Seed the input, then click the button by coordinates.
+        d.m_input->SetValue("world");
+        wxYield();
+        wxRect br = d.m_btn->GetScreenRect();
+        s.MouseMove(wxPoint(br.x + br.width / 2, br.y + br.height / 2));
+        wxYield();
+        s.MouseClick();
+        wait_until([&d]() { return d.m_echo->GetLabelText() == "world"; });
+        d.m_echo_after_click = d.m_echo->GetLabelText();
+    };
+    dlg.run_simulation(sim);
+    dlg.ShowModal();
 
     INFO("Echo label after sim.MouseClick on button = \"" << dlg.m_echo_after_click << "\"");
     CHECK(dlg.m_echo_after_click == "world");
 }
 
-// Small RAII event counter, mirroring wxWidgets' test EventCounter pattern
-// (docs/contributing/how-to-write-unit-tests.md): counting the events
-// themselves proves the simulator delivered them, independent of the final
-// control state the assertions also check.
-class EventCounter
+// (4c) smoke_event_delivery: EventCounter proves the events the simulator
+// produces actually arrive at the controls, independent of the final control
+// state that (4a)/(4b) assert.
+TEST_CASE("smoke_event_delivery: EventCounter proves sim events arrive", "[gui][smoke]")
 {
-public:
-    // NOTE: no Unbind in the destructor — the lambda functor cannot be
-    // reliably unbound across wx versions, and each counter outlives the
-    // window it is bound to only within a single test scope.
-    EventCounter(wxWindow* win, wxEventTypeTag<wxCommandEvent> type)
-    {
-        win->Bind(type, [this](wxCommandEvent&) { ++m_count; });
-    }
-    int count() const { return m_count; }
-private:
-    int m_count = 0;
-};
+    skip_if_sim_environment_unusable();
+
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    EchoDialog dlg;
+    // Event-delivery proof independent of the final-state assertions.
+    EventCounter text_events(dlg.m_input, wxEVT_TEXT);
+    EventCounter button_events(dlg.m_btn, wxEVT_BUTTON);
+
+    wxUIActionSimulator sim;
+    dlg.m_sim_step = [](EchoDialog& d, wxUIActionSimulator& s) {
+        // --- typing ---
+        d.m_input->SetFocus();
+        wxYield();
+#ifdef __WXMSW__
+        ScopedUsKeyboardLayout usLayout; // bypass IME composition
+#endif
+        s.Text("hello");
+        wait_until([&d]() { return d.m_input->GetValue() == "hello"; });
+        d.m_input_after_text = d.m_input->GetValue();
+
+        // --- click ---
+        d.m_input->SetValue("world"); // seeds the echo target (also fires wxEVT_TEXT)
+        wxYield();
+        wxRect br = d.m_btn->GetScreenRect();
+        s.MouseMove(wxPoint(br.x + br.width / 2, br.y + br.height / 2));
+        wxYield();
+        s.MouseClick();
+        wait_until([&d]() { return d.m_echo->GetLabelText() == "world"; });
+        d.m_echo_after_click = d.m_echo->GetLabelText();
+    };
+    dlg.run_simulation(sim);
+    dlg.ShowModal();
+
+    // SetValue("world") also fires wxEVT_TEXT, so expect >= 1 from sim.Text;
+    // the button event can only come from the click.
+    INFO("wxEVT_TEXT delivered = " << text_events.count() << " (expected >= 1 from sim.Text)");
+    CHECK(text_events.count() >= 1);
+    INFO("wxEVT_BUTTON delivered = " << button_events.count() << " (expected exactly 1 from sim.MouseClick)");
+    CHECK(button_events.count() == 1);
+}
 
 // ---------------------------------------------------------------------------
-// (5) Variant: NON-MODAL top-level frame, simulator driven DIRECTLY (no
-//     ShowModal, no CallAfter). This is the canonical wxWidgets test pattern
-//     (see tests/controls/textctrltest.cpp and tests/validators/valnum.cpp in
-//     the wxWidgets tree): the control is a child of a shown top-level window
-//     and the sim is driven from the test thread with a single wxYield() per
-//     action. It isolates whether the modal+CallAfter structure (vs foreground
-//     vs focus) is what blocks event delivery on wxMSW.
+// (4d) Variant: NON-MODAL top-level frame, simulator driven DIRECTLY (no
+// ShowModal, no CallAfter). This is the canonical wxWidgets test pattern (see
+// tests/controls/textctrltest.cpp and tests/validators/valnum.cpp in the
+// wxWidgets tree): the control is a child of a shown top-level window and the
+// sim is driven from the test thread with a single wxYield() per action. It
+// keeps exercising the non-modal delivery path (the journal settled that the
+// modal structure was NOT the blocker — the environment was).
 // ---------------------------------------------------------------------------
 TEST_CASE("wxUIActionSimulator drives non-modal frame directly", "[gui]")
 {
+    skip_if_sim_environment_unusable();
+
     REQUIRE(ensure_wx_initialized());
     REQUIRE(wxTheApp != nullptr);
 
@@ -486,16 +750,172 @@ TEST_CASE("wxUIActionSimulator drives non-modal frame directly", "[gui]")
 #endif // wxUSE_UIACTIONSIMULATOR
 
 // ---------------------------------------------------------------------------
+// (5) EVENT-LAYER injection tests (NO wxUIActionSimulator, NOT guarded).
+//
+// The daily-batch path: deliver events in-process via ProcessEvent(). This is
+// synchronous, needs no foreground window, does not steal the mouse, and is
+// immune to IME composition and remote-control input interception — so these
+// tests are headless-safe and need no environment gates. They mirror the three
+// smoke tests above (button click / text echo / event arrival) through the
+// event layer only:
+//
+//   wxCommandEvent evt(wxEVT_BUTTON, btn->GetId());
+//   evt.SetEventObject(btn);
+//   btn->GetEventHandler()->ProcessEvent(evt);
+// ---------------------------------------------------------------------------
+
+// Button click: the command event reaches the echo handler and the label
+// updates — the same observable state change as smoke_button_click.
+TEST_CASE("event_inject_button_click: ProcessEvent(wxEVT_BUTTON) echoes the input", "[gui][eventinject]")
+{
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    EchoDialog dlg;
+    dlg.m_input->SetValue("world");
+
+    wxCommandEvent evt(wxEVT_BUTTON, dlg.m_btn->GetId());
+    evt.SetEventObject(dlg.m_btn);
+    const bool handled = dlg.m_btn->GetEventHandler()->ProcessEvent(evt);
+
+    INFO("ProcessEvent(wxEVT_BUTTON) handled = " << (handled ? "true" : "false"));
+    REQUIRE(handled); // the echo handler must receive the event
+    CHECK(dlg.m_echo->GetLabelText() == "world");
+}
+
+// Text echo: what the wxMSW port dispatches when the user types — the value is
+// set (state) and wxEVT_TEXT is sent (notification) — flows through the event
+// layer, and the full echo path (text -> click -> label) works end to end.
+TEST_CASE("event_inject_text_echo: ProcessEvent(wxEVT_TEXT) carries the text", "[gui][eventinject]")
+{
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    EchoDialog dlg;
+    EventCounter text_events(dlg.m_input, wxEVT_TEXT);
+
+    dlg.m_input->SetValue("hello");
+    wxCommandEvent tevt(wxEVT_TEXT, dlg.m_input->GetId());
+    tevt.SetEventObject(dlg.m_input);
+    tevt.SetString("hello");
+    const bool text_handled = dlg.m_input->GetEventHandler()->ProcessEvent(tevt);
+
+    wxCommandEvent bevt(wxEVT_BUTTON, dlg.m_btn->GetId());
+    bevt.SetEventObject(dlg.m_btn);
+    const bool btn_handled = dlg.m_btn->GetEventHandler()->ProcessEvent(bevt);
+
+    REQUIRE(text_handled);
+    REQUIRE(btn_handled);
+    INFO("wxEVT_TEXT delivered = " << text_events.count() << " (expected >= 1)");
+    CHECK(text_events.count() >= 1);
+    INFO("Echo label after event-layer text + click = \"" << dlg.m_echo->GetLabelText() << "\"");
+    CHECK(dlg.m_echo->GetLabelText() == "hello");
+}
+
+// Event arrival: EventCounter counts exactly the events ProcessEvent delivers
+// (the same proof as smoke_event_delivery, deterministic per dispatch).
+TEST_CASE("event_inject_event_delivery: EventCounter sees ProcessEvent deliveries", "[gui][eventinject]")
+{
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    EchoDialog dlg;
+    EventCounter text_events(dlg.m_input, wxEVT_TEXT);
+    EventCounter button_events(dlg.m_btn, wxEVT_BUTTON);
+
+    const int text_before = text_events.count();
+    wxCommandEvent tevt(wxEVT_TEXT, dlg.m_input->GetId());
+    tevt.SetEventObject(dlg.m_input);
+    tevt.SetString("hello");
+    REQUIRE(dlg.m_input->GetEventHandler()->ProcessEvent(tevt));
+    CHECK(text_events.count() == text_before + 1);
+
+    const int button_before = button_events.count();
+    wxCommandEvent bevt(wxEVT_BUTTON, dlg.m_btn->GetId());
+    bevt.SetEventObject(dlg.m_btn);
+    REQUIRE(dlg.m_btn->GetEventHandler()->ProcessEvent(bevt));
+    CHECK(button_events.count() == button_before + 1);
+}
+
+// ---------------------------------------------------------------------------
+// (5b) MESSAGE-LEVEL injection tests (Windows-only, NO wxUIActionSimulator).
+//
+// The same three smoke behaviors (text echo / button click / event arrival)
+// driven by Win32MessageSimulator: sent WM_* messages to the control HWNDs.
+// These work even while a remote-control layer (GameViewer) is running, need
+// no foreground window, no keyboard focus, and bypass IME — so they need none
+// of the environment gates from section (0b), and they run headless (the
+// dialog is never shown).
+// ---------------------------------------------------------------------------
+#ifdef __WXMSW__
+
+TEST_CASE("msg_inject_text_echo: WM_CHAR reaches the TextCtrl", "[gui][msginject]")
+{
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    EchoDialog dlg;
+    Win32MessageSimulator sim;
+    sim.Text(static_cast<HWND>(dlg.m_input->GetHWND()), "hello");
+    wait_until([&]() { return dlg.m_input->GetValue() == "hello"; });
+
+    INFO("TextCtrl value after sent WM_CHAR = \"" << dlg.m_input->GetValue() << "\"");
+    CHECK(dlg.m_input->GetValue() == "hello");
+}
+
+TEST_CASE("msg_inject_button_click: WM_LBUTTONDOWN/UP drives the button", "[gui][msginject]")
+{
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    EchoDialog dlg;
+    dlg.m_input->SetValue("world");
+
+    Win32MessageSimulator sim;
+    sim.MouseClick(static_cast<HWND>(dlg.m_btn->GetHWND()));
+    wait_until([&]() { return dlg.m_echo->GetLabelText() == "world"; });
+
+    INFO("Echo label after sent WM_LBUTTONDOWN/UP = \"" << dlg.m_echo->GetLabelText() << "\"");
+    CHECK(dlg.m_echo->GetLabelText() == "world");
+}
+
+TEST_CASE("msg_inject_event_delivery: EventCounter sees sent messages", "[gui][msginject]")
+{
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    EchoDialog dlg;
+    EventCounter text_events(dlg.m_input, wxEVT_TEXT);
+    EventCounter button_events(dlg.m_btn, wxEVT_BUTTON);
+
+    Win32MessageSimulator sim;
+    sim.Text(static_cast<HWND>(dlg.m_input->GetHWND()), "hello");
+    wait_until([&]() { return dlg.m_input->GetValue() == "hello"; });
+    dlg.m_input->SetValue("world"); // seeds the echo target (also fires wxEVT_TEXT)
+    sim.MouseClick(static_cast<HWND>(dlg.m_btn->GetHWND()));
+    wait_until([&]() { return dlg.m_echo->GetLabelText() == "world"; });
+
+    INFO("wxEVT_TEXT delivered = " << text_events.count() << " (expected >= 1 from WM_CHAR)");
+    CHECK(text_events.count() >= 1);
+    INFO("wxEVT_BUTTON delivered = " << button_events.count() << " (expected exactly 1 from WM_LBUTTONDOWN/UP)");
+    CHECK(button_events.count() == 1);
+}
+#endif // __WXMSW__
+
+// ---------------------------------------------------------------------------
 // (6) Raw probe (Windows-only, throwaway diagnostic): bypass wxUIActionSimulator
 //     and call keybd_event() directly on a focused, foreground wxTextCtrl, then
 //     run a native PeekMessage/TranslateMessage/DispatchMessage loop. Reports
 //     whether the OS accepted the inject (GetAsyncKeyState) and how many
 //     WM_KEYDOWN/WM_CHAR were actually retrieved. This isolates OS-level input
-//     injection from the wxUIActionSimulator abstraction.
+//     injection from the wxUIActionSimulator abstraction. Same environment
+//     requirements as the simulator, hence the same runtime gate.
 // ---------------------------------------------------------------------------
 #ifdef __WXMSW__
 TEST_CASE("raw keybd_event reaches focused TextCtrl", "[gui][rawprobe]")
 {
+    skip_if_sim_environment_unusable();
+
     REQUIRE(ensure_wx_initialized());
 
     wxFrame frame(nullptr, wxID_ANY, "raw keybd_event probe");
@@ -558,6 +978,8 @@ TEST_CASE("raw keybd_event reaches focused TextCtrl", "[gui][rawprobe]")
 // 0x0409) for the thread before injecting, so WM_CHAR carries the literal 'A'.
 TEST_CASE("raw keybd_event with US layout bypasses IME", "[gui][rawprobe2]")
 {
+    skip_if_sim_environment_unusable();
+
     REQUIRE(ensure_wx_initialized());
 
     wxFrame frame(nullptr, wxID_ANY, "raw keybd_event IME bypass");
