@@ -73,35 +73,6 @@ static constexpr size_t kMaxColors = 64;
 static constexpr double kDeltaEGoodMax = 4.0;  // <4.0 → Good
 static constexpr double kDeltaEFairMax = 8.0;  // <8.0 → Fair, else Poor
 
-// Recommended-mode (Full Spectrum) per-color transmittance-density (TD) values. These are NOT
-// in the filament data model (filaments_colours.json carries no TD field), so they are pinned
-// here as product constants — provided by product spec (snapshot in code per request).
-//
-// DECIDED (2026-08-19): TD moves into the hot-updated config (per-SKU "td" field read through
-// FilamentColorLibrary, this table demoted to fallback). Implementation is BLOCKED on the
-// config/interface side (another team owns the field definition) — do NOT pre-implement the
-// client parsing before that contract lands. When it does: also reconcile the static fallback
-// values with the spec — phase-2 spec V2.0 and the test matrix both list Gray=8.8 / White=6.5
-// while this snapshot has White=8.8 / Gray=6.5 (feedback item A in
-// docs/mix-match-map-p2-testcase-comparison.md).
-//
-// KEYED BY COLOR FAMILY (canonical color name), NOT by palette position — the dropdown palette
-// is alphabetical and spans multiple families, so positional indexing would bind the wrong TD
-// to a color. Looking up by the color's identity avoids that.
-//
-// Each entry: {substring-to-match-against-English-name, TD-value}. The match is
-// case-insensitive substring on the EN color name (the SKU's canonical name in
-// filaments_colours.json, always present in the palette entry regardless of UI locale).
-struct TdEntry { const char* family; double value; };
-static const std::vector<TdEntry> FULL_SPECTRUM_TD = {
-    {"cyan",    5.5},
-    {"magenta", 5.5},
-    {"yellow",  9.5},
-    {"white",   8.8},
-    {"gray",    6.5},
-    {"grey",    6.5}, // spelling variant, defensive
-};
-
 // Forward declarations — the dialog ctor (and build_footer's Confirm handler) run before
 // these file-static helpers' definitions further down. Definitions carry the full docs.
 static std::vector<FullSpectrumPaletteEntry> load_recommended_palette();
@@ -363,7 +334,7 @@ MixedFilamentBatchDialog::MixedFilamentBatchDialog(wxWindow* parent)
     load_palette_colors();
     build_ui();
     set_match_buttons_state(false);
-    m_btn_start_match->Enable(!m_model_colors.empty() && recommended_selections_distinct()
+    m_btn_start_match->Enable(!m_model_colors.empty()
                               && m_physical_colors.size() >= 2);
 
     // Default to recommended mode — show the palette card
@@ -1036,10 +1007,8 @@ static bool color_name_for_lang(const FullSpectrumPaletteEntry& entry, const wxS
 }
 
 // The ENGLISH color name — the SKU's canonical name in filaments_colours.json regardless of
-// UI locale. Used as a STABLE identity for TD family matching (FULL_SPECTRUM_TD is keyed by
-// EN substrings: cyan/magenta/yellow/...). Falls back to whatever name is present, then to
-// the entry's en_name field (set directly for synthesized fallback entries), then to a
-// positional "F<n>" label.
+// UI locale. Falls back to whatever name is present, then to the entry's en_name field (set
+// directly for synthesized fallback entries), then to a positional "F<n>" label.
 static wxString english_color_name(const FullSpectrumPaletteEntry& entry, int position)
 {
     wxString s;
@@ -1067,21 +1036,6 @@ static wxString localized_color_name(const FullSpectrumPaletteEntry& entry, int 
     return english_color_name(entry, position);
 }
 
-// Resolve the TD family for a filament color by matching the ENGLISH color name against the
-// canonical-family substrings in FULL_SPECTRUM_TD (e.g. "Semi-Translucent Cyan" → "cyan").
-// Returns nullptr if no family matches. Case-insensitive substring match on the EN name so it
-// tolerates adjectives ("Semi-Translucent") and prefix/suffix variation.
-//
-// Why English: the EN name is the SKU's canonical identity in filaments_colours.json and is
-// always present regardless of UI locale, so family detection is locale-independent and stable.
-static const TdEntry* resolve_td_family(const wxString& english_name)
-{
-    wxString lower = english_name.Lower();
-    for (const TdEntry& e : FULL_SPECTRUM_TD)
-        if (lower.find(e.family) != wxString::npos) return &e;
-    return nullptr;
-}
-
 // Display label of the entry's owning family. The default family (the one whose preset the
 // apply path writes into slots 1-4) shows its preset label; other families (e.g. a future
 // PETG Full Spectrum with no shipped preset) fall back to the raw library name.
@@ -1099,13 +1053,11 @@ static wxString family_display_label(const FullSpectrumPaletteEntry& entry)
 // Build the hover tooltip string for one palette entry. Two lines:
 //   <family label>          e.g. "Snapmaker PLA Full Spectrum"
 //   <color name> TD : <val> e.g. "Translucent Cyan TD : 5.5"
-// The color name is localized; TD is resolved by the color's family via its English name
-// (see resolve_td_family), NOT by palette position. When TD is unknown (color family not in
-// FULL_SPECTRUM_TD) the value shows "-".
-static wxString make_recommended_tooltip(const wxString& family_label, const wxString& localized_name, const wxString& english_name)
+// The TD value is displayed as-read from the config (FilamentColorLibrary
+// tdValue); when the config has no TD field yet it is simply 0.0.
+static wxString make_recommended_tooltip(const wxString& family_label, const wxString& localized_name, double entry_td)
 {
-    const TdEntry* td = resolve_td_family(english_name);
-    const wxString td_disp = td ? wxString::Format("%.1f", td->value) : wxString("-");
+    const wxString td_disp = wxString::Format("%.1f", entry_td);
     return wxString::Format("%s\n%s %s : %s",
         family_label,
         localized_name,
@@ -1538,7 +1490,7 @@ void MixedFilamentBatchDialog::build_recommended_card(wxBoxSizer& parent)
             cb->SetItemTooltip(append_idx,
                 make_recommended_tooltip(family_display_label(entry),
                                          localized_color_name(entry, static_cast<int>(j)),
-                                         english_color_name(entry, static_cast<int>(j))));
+                                         entry.td_value));
         }
         if (m_recommended_selections[i] >= 0 && m_recommended_selections[i] < static_cast<int>(m_recommended_palette.size()))
             cb->SetSelection(m_recommended_selections[i]);
@@ -2085,35 +2037,12 @@ void MixedFilamentBatchDialog::on_manual_selection_changed()
         check_manual_recipe_ratio();
 }
 
-bool MixedFilamentBatchDialog::recommended_selections_distinct() const
-{
-    // Four slots, four distinct hexes. Two entries with the same hex (possible across
-    // families — e.g. PLA cyan and PETG cyan) count as duplicates: the mixing algorithm
-    // would blend a color with itself. -1 (no selection, degenerate palette) also fails.
-    for (int i = 0; i < 4; ++i) {
-        const int a = m_recommended_selections[i];
-        if (a < 0 || a >= static_cast<int>(m_recommended_palette.size())) return false;
-        for (int j = i + 1; j < 4; ++j) {
-            const int b = m_recommended_selections[j];
-            if (b < 0 || b >= static_cast<int>(m_recommended_palette.size())) return false;
-            if (m_recommended_palette[a].hex == m_recommended_palette[b].hex) return false;
-        }
-    }
-    return true;
-}
-
 void MixedFilamentBatchDialog::on_recommended_selection_changed()
 {
     // Mirror on_manual_selection_changed: preserve the previous match result, only
-    // Start/Re-match clears it.
+    // Start/Re-match clears it. No selection-validity gating — duplicates and
+    // unselected slots are allowed; the worker degrades gracefully either way.
     set_match_buttons_state(false);
-    // set_match_buttons_state blindly enables Start (!m_match_completed) / Re-match
-    // (m_match_completed) — re-gate both on the distinct-colors rule when in
-    // recommended mode with duplicates on screen.
-    if (m_matching_method == RECOMMENDED && !recommended_selections_distinct()) {
-        m_btn_start_match->Disable();
-        m_btn_rematch->Disable();
-    }
     // check_manual_recipe_ratio is a manual-mode no-op (early-returns for RECOMMENDED);
     // kept for symmetry with on_manual_selection_changed's post-match re-evaluation.
     if (m_match_completed)
@@ -2413,13 +2342,9 @@ void MixedFilamentBatchDialog::start_batch_match()
         dlg.ShowModal();
         return;
     }
-    // Defensive re-check of the distinct-colors rule (Start/Re-match are already disabled
-    // on duplicates via on_recommended_selection_changed; this covers any other trigger
-    // path). A duplicate hex would make the mix degenerate.
-    if (m_matching_method == RECOMMENDED && !recommended_selections_distinct()) {
-        set_error(_L("Please select four distinct colors in the color palette before matching."));
-        return;
-    }
+    // No selection-completeness gate: unselected slots / degenerate palettes degrade
+    // gracefully in the worker (selections with <4 colors fall back to the canonical
+    // FULL_SPECTRUM_FALLBACK_COLORS palette).
     m_match_running = true;
     m_error_panel->Hide();
     m_warning_panel->Hide();
@@ -2482,7 +2407,7 @@ void MixedFilamentBatchDialog::launch_background_match()
     // the palette dropdowns, snapshotted here on the UI thread and captured by value into
     // the worker lambda below — the worker never touches FilamentColorLibrary or the combos.
     // The canonical constant only covers a degenerate mid-session palette (cannot happen via
-    // the UI — start_batch_match is gated on distinct selections; kept as a guard).
+    // the UI — start_batch_match is gated on complete selections; kept as a guard).
     std::vector<std::string> preset_colors;
     if (m_matching_method == RECOMMENDED) {
         for (int i = 0; i < 4; ++i) {

@@ -50,9 +50,10 @@ private:
     void on_method_changed(wxCommandEvent&);
     void update_method_combo_tooltip(); // refresh combo tooltip to describe the active mode
     void on_manual_selection_changed();
-    // Recommended-mode counterpart of on_manual_selection_changed: re-evaluates the Start /
-    // Re-match button state after a palette dropdown edit. Duplicate colors across the four
-    // slots disable both buttons — the mixing algorithm needs four distinct inputs.
+    // Recommended-mode counterpart of on_manual_selection_changed: clears the previous
+    // match result (Start/Re-match re-enables via set_match_buttons_state). No
+    // selection-validity gating — duplicates and unselected slots are allowed; the
+    // worker falls back to the canonical palette when fewer than four colors exist.
     void on_recommended_selection_changed();
     void update_add_remove_buttons(); // mirrors MixedFilamentDialog: hide add at max, remove at min
     // Compose drop_down arrow + numbered color badge into one transparent icon and set it as
@@ -95,9 +96,6 @@ private:
     void check_manual_recipe_ratio();
 
     void set_match_buttons_state(bool matching);
-    // True when the four recommended dropdowns hold four DISTINCT palette colors (duplicate
-    // hexes across slots make the mix degenerate — gate Start/Re-match on this).
-    bool recommended_selections_distinct() const;
     // Predict whether applying m_result would exceed MAXIMUM_FILAMENT_NUMBER (64)
     // at the add_batch_custom_filaments gate (the authoritative cap). The estimate
     // is an UPPER BOUND: post_apply_total = n + enabled_mixed + new_mixed_rows.

@@ -360,6 +360,7 @@ std::vector<FullSpectrumPaletteEntry> BuildFullSpectrumPalette(const std::vector
 
             entry.family_name = info.filamentName;
             entry.color_names = item.colorNames;
+            entry.td_value = item.tdValue;
             auto englishIt = item.colorNames.find("en");
             if (englishIt != item.colorNames.end())
                 entry.en_name = englishIt->second;
@@ -369,13 +370,17 @@ std::vector<FullSpectrumPaletteEntry> BuildFullSpectrumPalette(const std::vector
         }
     }
 
-    // Alphabetical dropdown order (phase-2 spec), keyed on the canonical EN name so the
-    // order is identical in every UI locale. family_name then hex break ties deterministically.
+    // Family-grouped dropdown order (phase-2 spec, test matrix #10): entries are
+    // grouped by family (families in alphabetical order), colors within a family by
+    // canonical EN name. Single-family configs (bundled today) get the same plain
+    // alphabetical list as before; multi-family configs (after hot update) show the
+    // PLA/PETG groups. Case-insensitive and locale-independent (EN name is the SKU's
+    // canonical identity). en_name then hex break remaining ties deterministically.
     std::stable_sort(palette.begin(), palette.end(),
                      [](const FullSpectrumPaletteEntry& lhs, const FullSpectrumPaletteEntry& rhs)
                      {
-                         const std::string left = AsciiLowerCopy(lhs.en_name) + " " + AsciiLowerCopy(lhs.family_name) + " " + AsciiLowerCopy(lhs.hex);
-                         const std::string right = AsciiLowerCopy(rhs.en_name) + " " + AsciiLowerCopy(rhs.family_name) + " " + AsciiLowerCopy(rhs.hex);
+                         const std::string left = AsciiLowerCopy(lhs.family_name) + " " + AsciiLowerCopy(lhs.en_name) + " " + AsciiLowerCopy(lhs.hex);
+                         const std::string right = AsciiLowerCopy(rhs.family_name) + " " + AsciiLowerCopy(rhs.en_name) + " " + AsciiLowerCopy(rhs.hex);
                          return left < right;
                      });
     return palette;

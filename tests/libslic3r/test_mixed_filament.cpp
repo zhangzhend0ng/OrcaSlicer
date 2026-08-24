@@ -5245,7 +5245,8 @@ TEST_CASE("Dual-color primary drops invalid tokens and falls back on empty", "[M
 // [MixedFilament][FilamentColor] — phase-2 recommended-mode palette. The
 // palette is config-driven: BuildFullSpectrumPalette enumerates every library
 // filament whose type contains "Full Spectrum" and keeps its single-color
-// SKUs, sorted alphabetically; DefaultFullSpectrumSelections picks the default
+// SKUs, sorted family-grouped (families alphabetical, colors alphabetical
+// within each family); DefaultFullSpectrumSelections picks the default
 // dropdown slots (cyan/magenta/yellow/white, default family preferred). These
 // cases pin both pure functions against constructed library data.
 // ============================================================================
@@ -5301,15 +5302,23 @@ TEST_CASE("Full Spectrum palette enumerates single-color SKUs across families, a
     // 5 PLA entries (multi/gradient SKUs would be dropped) + 2 PETG entries; the
     // PLA Basic "White" is excluded (its type has no "Full Spectrum").
     REQUIRE(palette.size() == 7);
-    // Alphabetical by EN name: cyan(PETG) < cyan(PLA) < gray < magenta(PETG) < magenta(PLA) < white < yellow.
+    // Family-grouped (test matrix #10): families in alphabetical order (PETG < PLA),
+    // colors alphabetical within each family — cyan/magenta (PETG), then cyan/gray/
+    // magenta/white/yellow (PLA).
     CHECK(palette[0].en_name == "Semi-Translucent Cyan");
     CHECK(palette[0].family_name == "Snapmaker PETG Full Spectrum @U1");
-    CHECK(palette[1].family_name == "Snapmaker PLA Full Spectrum @U1");
-    CHECK(palette[2].en_name == "Semi-Translucent Gray");
-    CHECK(palette[3].family_name == "Snapmaker PETG Full Spectrum @U1");
+    CHECK(palette[1].en_name == "Semi-Translucent Magenta");
+    CHECK(palette[1].family_name == "Snapmaker PETG Full Spectrum @U1");
+    CHECK(palette[2].en_name == "Semi-Translucent Cyan");
+    CHECK(palette[2].family_name == "Snapmaker PLA Full Spectrum @U1");
+    CHECK(palette[3].en_name == "Semi-Translucent Gray");
+    CHECK(palette[3].family_name == "Snapmaker PLA Full Spectrum @U1");
+    CHECK(palette[4].en_name == "Semi-Translucent Magenta");
     CHECK(palette[4].family_name == "Snapmaker PLA Full Spectrum @U1");
     CHECK(palette[5].en_name == "Semi-Translucent White");
+    CHECK(palette[5].family_name == "Snapmaker PLA Full Spectrum @U1");
     CHECK(palette[6].en_name == "Semi-Translucent Yellow");
+    CHECK(palette[6].family_name == "Snapmaker PLA Full Spectrum @U1");
     // Hex normalization and the locale name map survive into the entry.
     CHECK(palette[0].hex == "#08ABFB");
     CHECK(palette[0].color_names.at("zh_CN") == "半透青色");
@@ -5363,4 +5372,30 @@ TEST_CASE("Full Spectrum palette default selections degrade on short palettes", 
 
     CHECK(BuildFullSpectrumPalette({}).empty());
     CHECK(DefaultFullSpectrumSelections({}, "any").empty());
+}
+
+TEST_CASE("Full Spectrum palette passes config td values through as-read (no fallback)", "[MixedFilament][FilamentColor]")
+{
+    // TD comes from the hot-updated config (per-SKU "td" field, parsed by the config
+    // side). The palette builder passes the value through untouched — there is NO
+    // static fallback table: a color whose config entry has no td simply carries 0.0
+    // (test matrix #1: Cyan 5.5 -> 6.0 after hot update; #11: unread td shows 0.0).
+    FilamentColorItem cyan  = palette_item("#08ABFB", "Semi-Translucent Cyan", "半透青色");
+    cyan.tdValue = 6.0;  // post-hot-update value
+    FilamentColorItem gray  = palette_item("#9199A4", "Semi-Translucent Gray", "半透灰色");
+    gray.tdValue = 8.8;
+    FilamentColorItem white = palette_item("#FFFFFF", "Semi-Translucent White", "半透白色"); // no td in config
+
+    const std::vector<FilamentColorInfo> library = {
+        palette_family("Snapmaker PLA Full Spectrum @U1", "PLA Full Spectrum", {cyan, gray, white}),
+    };
+    const auto palette = BuildFullSpectrumPalette(library);
+    REQUIRE(palette.size() == 3);
+    // Palette is alphabetical: Cyan, Gray, White.
+    CHECK(palette[0].en_name == "Semi-Translucent Cyan");
+    CHECK(palette[0].td_value == 6.0);
+    CHECK(palette[1].en_name == "Semi-Translucent Gray");
+    CHECK(palette[1].td_value == 8.8);
+    CHECK(palette[2].en_name == "Semi-Translucent White");
+    CHECK(palette[2].td_value == 0.0);
 }

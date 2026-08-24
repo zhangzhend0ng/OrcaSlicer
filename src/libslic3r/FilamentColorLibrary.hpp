@@ -44,6 +44,7 @@ struct FilamentColorItem
 {
     std::unordered_map<std::string, std::string> colorNames;
     std::string sku;
+    double tdValue = 0.0;
     FilamentColor colorData;
 };
 
@@ -62,15 +63,18 @@ struct FullSpectrumPaletteEntry
     std::string hex;         // normalized "#RRGGBB"
     std::string en_name;     // canonical English color name (sort key, never empty for entries built by BuildFullSpectrumPalette)
     std::string family_name; // owning filament name, e.g. "Snapmaker PLA Full Spectrum @U1"
+    double td_value = 0.0;   // transmittance density from FilamentColorItem::tdValue; 0 = no value
     std::unordered_map<std::string, std::string> color_names; // locale -> display name (copied from the SKU entry)
 };
 
 // Recommended-mode palette for the batch color match: every library filament whose
 // filament_type contains "Full Spectrum" contributes its single-color SKUs (multi-color /
 // gradient SKUs are skipped, same rule as the GUI's legacy load_full_spectrum_colors filter).
-// Entries are sorted case-insensitively by "<en_name> <family_name> <hex>" so the dropdown
-// order is alphabetical and stable across UI locales. Pure function over its input (no
-// singleton access, no file IO) — unit-testable with constructed FilamentColorInfo inputs.
+// Entries are sorted case-insensitively by "<family_name> <en_name> <hex>" — grouped by
+// family (families in alphabetical order), colors alphabetically within a family — so the
+// dropdown order matches the phase-2 test matrix #10 and is stable across UI locales.
+// Pure function over its input (no singleton access, no file IO) — unit-testable with
+// constructed FilamentColorInfo inputs.
 std::vector<FullSpectrumPaletteEntry> BuildFullSpectrumPalette(const std::vector<FilamentColorInfo>& library_data);
 
 // Default dropdown selections (palette indices, one per slot 0..3) per the phase-2 spec:
