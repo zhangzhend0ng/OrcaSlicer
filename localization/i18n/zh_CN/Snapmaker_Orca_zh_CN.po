@@ -15494,6 +15494,3 @@ msgstr "手动选择当前列表中的耗材进行混色匹配。"
 
 msgid "Official Full Spectrum filaments are not configured. Configured filaments will be used instead. Once the official filaments are added, the previously selected filaments can be replaced in the filament list without affecting the color mixing match result."
 msgstr "未配置官方 Full Spectrum 全光谱耗材，将自动使用已配置的耗材。完成官方耗材配置后，可在耗材列表中进行替换，不影响混色匹配结果。"
-
-msgid "Please select four distinct colors in the color palette before matching."
-msgstr "请先在色板中选择四种互不相同的颜色再进行匹配。"
