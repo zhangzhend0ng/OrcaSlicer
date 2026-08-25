@@ -42,3 +42,11 @@ deps_src/build/
 .claude/
 .hermes/
 CLAUDE.md
+# git worktrees live outside version control
+.worktrees/
+
+# vision_gui sandbox experiment (sandboxes/vision_gui)
+sandboxes/vision_gui/.venv/
+sandboxes/vision_gui/artifacts/
+__pycache__/
+*.pyc

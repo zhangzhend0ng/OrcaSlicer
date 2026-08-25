@@ -1,0 +1,15 @@
+{
+    "click_preview_builtin": {
+        "recognition": "TemplateMatch",
+        "template": "tab_preview_inactive.png",
+        "roi": [170, 25, 160, 50],
+        "action": "Click"
+    },
+    "click_preview_custom": {
+        "recognition": "TemplateMatch",
+        "template": "tab_preview_inactive.png",
+        "roi": [170, 25, 160, 50],
+        "action": "Custom",
+        "custom_action": "MsgClick"
+    }
+}

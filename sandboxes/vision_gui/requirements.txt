@@ -1,0 +1,3 @@
+MaaFw>=2.0
+opencv-python
+mss
