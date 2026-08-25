@@ -217,6 +217,28 @@ bool GUI_App::has_filament_hot_bed_nozzle_rules() const
 
 class MainFrame;
 
+// GUI test mode (ORCA_GUI_TEST_MODE=1): run the real GUI_App startup but skip
+// the side-effecting/heavy parts that tests do not need — TLS trust dialog,
+// splash screen, file-association registry writes, preset updater, network
+// plugin initialization. The MainFrame/Plater/presets still come up, so tests
+// can drive real dialogs via ProcessEvent/SendMessage in a dedicated desktop.
+// Set via environment so no build flag / config plumbing is required.
+// Public (declared in GUI_App.hpp): MainFrame also consults it to skip
+// device-dependent panels (MonitorPanel) that crash without a DeviceManager.
+bool gui_test_mode()
+{
+    static const bool enabled = [] {
+        const char* value = std::getenv("ORCA_GUI_TEST_MODE");
+        if (value == nullptr)
+            return false;
+
+        std::string normalized(value);
+        std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
+    }();
+    return enabled;
+}
+
 namespace {
 
 bool startup_profile_enabled()
@@ -2640,7 +2662,7 @@ bool GUI_App::on_init_inner()
         std::string ssl_cert_store = app_config->get("tls_accepted_cert_store_location");
         bool ssl_accept = app_config->get("tls_cert_store_accepted") == "yes" && ssl_cert_store == Slic3r::Http::tls_system_cert_store();
 
-        if (!msg.empty() && !ssl_accept) {
+        if (!gui_test_mode() && !msg.empty() && !ssl_accept) {
             RichMessageDialog
                 dlg(nullptr,
                     wxString::Format(_L("%s\nDo you want to continue?"), msg),
@@ -2725,7 +2747,7 @@ bool GUI_App::on_init_inner()
     }
 
     SplashScreen * scrn = nullptr;
-    if (app_config->get("show_splash_screen") == "true") {
+    if (!gui_test_mode() && app_config->get("show_splash_screen") == "true") {
         // make a bitmap with dark grey banner on the left side
         //BBS make BBL splash screen bitmap
         wxBitmap bmp = SplashScreen::MakeBitmap();
@@ -2762,7 +2784,7 @@ bool GUI_App::on_init_inner()
         copy_older_config();
     profiler.mark("copy_older_config_if_needed");
 
-    if (is_editor()) {
+    if (is_editor() && !gui_test_mode()) {
 #ifdef __WXMSW__
         if (app_config->get("associate_3mf") == "true")
             associate_files(L"3mf");
@@ -2779,7 +2801,8 @@ bool GUI_App::on_init_inner()
             associate_files(L"gcode");
 #endif // __WXMSW__
 
-        preset_updater = new PresetUpdater();
+        if (!gui_test_mode())
+            preset_updater = new PresetUpdater();
         // filament_hot_bed_nozzles.json is copied here; FilamentHotBedNozzleRules reloads in load_current_presets() (startup, recreate_GUI, preset UI sync).
         Bind(EVT_SLIC3R_VERSION_ONLINE, [this](const wxCommandEvent& evt) {
             if (this->plater_ != nullptr) {
@@ -2911,10 +2934,12 @@ bool GUI_App::on_init_inner()
             wxMessageBox("Force using legacy bambu networking plugin because debugger is attached! If the app terminates itself immediately, please delete installed plugin and try again!");
         }
     } */
-    copy_network_if_available();
-    profiler.mark("copy_network_if_available");
-    on_init_network();
-    profiler.mark("on_init_network");
+    if (!gui_test_mode()) {
+        copy_network_if_available();
+        profiler.mark("copy_network_if_available");
+        on_init_network();
+        profiler.mark("on_init_network");
+    }
 
     if (m_agent && m_agent->is_user_login()) {
         enable_user_preset_folder(true);
@@ -2935,6 +2960,7 @@ bool GUI_App::on_init_inner()
         }
     //}
     profiler.mark("preset_bundle->load_presets");
+    Slic3r::I18N::set_translate_callback(libslic3r_translate_callback);
 
 #ifdef WIN32
 #if !wxVERSION_EQUAL_OR_GREATER_THAN(3,1,3)
@@ -2994,7 +3020,10 @@ bool GUI_App::on_init_inner()
 #ifdef __WINDOWS__
     mainframe->topbar()->SaveNormalRect();
 #endif
-    mainframe->Show(true);
+    // In test mode keep the main window hidden so tests do not flash windows
+    // over the user's desktop (the frame is still fully created/functional).
+    if (!gui_test_mode())
+        mainframe->Show(true);
     BOOST_LOG_TRIVIAL(info) << "main frame firstly shown";
     profiler.mark("mainframe->Show");
 
@@ -3073,7 +3102,8 @@ bool GUI_App::on_init_inner()
                        "configuration file.\nPlease note, application settings will be lost, but printer profiles will not be affected."));
     }
 
-    do_notify_flutter_web_copy_failure();
+    if (!gui_test_mode())
+        do_notify_flutter_web_copy_failure();
 
     // WebSocket debug server: only when Preferences → "Web Debug Mode" (websocket_debug) is on.
     // When off, explicitly stop the debug server so port 8766 is not left listening.

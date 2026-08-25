@@ -233,6 +233,12 @@ public:
     }
 };
 
+// GUI test mode (ORCA_GUI_TEST_MODE=1): GUI_App::on_init_inner skips the
+// network/splash/registry side effects; MainFrame additionally skips the
+// device-dependent panels (MonitorPanel) that need a DeviceManager.
+// See GUI_App.cpp for the full semantics.
+bool gui_test_mode();
+
 class GUI_App : public wxApp
 {
 public:
