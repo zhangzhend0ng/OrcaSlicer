@@ -52,6 +52,9 @@
 #if defined(ORCA_FULL_GUI_APP)
     #include "slic3r/GUI/GUI_App.hpp"  // wxGetApp(), GUI_App
     #include "slic3r/GUI/GUI_Init.hpp" // GUI_InitParams
+    #include "slic3r/GUI/MainFrame.hpp" // mainframe (GL-init block below)
+    #include "slic3r/Utils/PresetUpdater.hpp" // install_bundles_rsrc (ConfigWizard's real install path)
+    #include "libslic3r/PresetBundle.hpp"     // PresetBundle::SM_BUNDLE
 #endif
 
 #include <chrono>
@@ -59,8 +62,8 @@
 #include <filesystem>
 #include <functional>
 #include <sstream>
-#include <string>
 #include <thread>
+#include <string>
 #include <vector>
 
 #ifdef __WXMSW__
@@ -329,10 +332,14 @@ wxIMPLEMENT_APP_NO_MAIN(PoCApp);
 
 // Full-app mode: create an isolated data dir so the test boot never touches
 // the user's real configuration (app_config.ini, preset backups, ...). The
-// installed system presets (vendor bundles, installed by ConfigWizard into
-// %APPDATA%\Snapmaker_Orca\system) are copied in READ-ONLY fashion so
-// PresetBundle::load_presets() finds real presets and load_selections() has
-// something to select — an empty system dir crashes in load_selections.
+// Snapmaker system presets are pre-installed into it at the wx entry point
+// (see ensure_wx_initialized) through the REAL install path
+// (PresetUpdater::install_bundles_rsrc from resources/profiles), so the app
+// boots against a data dir that looks like a configured first run.
+// The user's real Snapmaker_Orca.conf is COPIED in (read-only source) so the
+// app starts with the exact same global configuration the real application
+// runs with (mixed-filament keys, language, ...) — behavior parity with the
+// user's environment, while all writes go to the temp copy.
 static std::string make_test_data_dir()
 {
 #ifdef __WXMSW__
@@ -340,24 +347,30 @@ static std::string make_test_data_dir()
     ::GetTempPathW(MAX_PATH, tmp);
     const std::wstring dir = std::wstring(tmp) + L"wx_gui_tests_data_" + std::to_wstring(::GetCurrentProcessId());
     ::CreateDirectoryW(dir.c_str(), nullptr);
-
-    namespace fs = std::filesystem;
-    const fs::path test_data(dir);
-    const fs::path system_src = fs::path(std::getenv("APPDATA") != nullptr ? std::getenv("APPDATA") : "") /
-                                "Snapmaker_Orca" / "system";
-    if (fs::exists(system_src)) {
-        std::error_code ec;
-        fs::copy(system_src, test_data / "system", fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
-        if (ec)
-            std::fprintf(stderr, "[wx_gui] warning: could not copy system presets from %ls: %s\n",
-                         system_src.c_str(), ec.message().c_str());
-    } else {
-        std::fprintf(stderr, "[wx_gui] warning: no installed system presets at %ls — full-app boot may crash in load_selections\n",
-                     system_src.c_str());
-    }
-    return wxString(dir).ToStdString();
+    const std::string dir_u8 = wxString(dir).ToStdString();
 #else
-    return "/tmp/wx_gui_tests_data";
+    const std::string dir_u8 = "/tmp/wx_gui_tests_data";
+    ::mkdir(dir_u8.c_str(), 0755);
+#endif
+
+    // Copy the user's real AppConfig into the temp data dir if present. The
+    // app's config_path() is data_dir/Snapmaker_Orca.conf, so a copy here is
+    // picked up by init_app_config() exactly like the real one.
+    if (const char* appdata = ::getenv("APPDATA"); appdata != nullptr) {
+        const boost::filesystem::path src_conf = boost::filesystem::path(appdata) / "Snapmaker_Orca" / "Snapmaker_Orca.conf";
+        const boost::filesystem::path dst_conf = boost::filesystem::path(dir_u8) / "Snapmaker_Orca.conf";
+        if (boost::filesystem::exists(src_conf)) {
+            boost::system::error_code ec;
+            boost::filesystem::copy_file(src_conf, dst_conf, boost::filesystem::copy_option::overwrite_if_exists, ec);
+            if (ec)
+                std::fprintf(stderr, "[ensure] warning: could not copy user config (%s)\n", ec.message().c_str());
+        }
+    }
+
+#ifdef __WXMSW__
+    return dir_u8;
+#else
+    return dir_u8;
 #endif
 }
 
@@ -385,6 +398,17 @@ static std::string make_test_data_dir()
 // Not static: wx_gui_app_tests.cpp (full-app tests) declares it extern.
 bool ensure_wx_initialized()
 {
+    // stderr becomes fully buffered when piped; unbuffer it so diagnostic
+    // output is not lost when a test hangs and gets killed.
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+
+    // Keep the display awake for the whole test process: on this machine a
+    // monitor that falls asleep mid-test wedges wx/GL initialization and the
+    // event pump (observed as random hangs, with "Console display state
+    // changed: off" in the app log right before). Restore the previous
+    // execution state flags on exit.
+    ::SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
+
     static bool s_tried = false;
     static bool s_ok    = false;
     if (s_tried) return s_ok;
@@ -425,6 +449,33 @@ bool ensure_wx_initialized()
             wxAppConsole::SetInstance(gui_app);
         }
         gui_app->init_params = &test_init_params;
+
+        // Give the app a data dir that already contains its system presets —
+        // the same end state ConfigWizard leaves behind on a normal first run
+        // (RR_DATA_EMPTY: install_bundles_rsrc copies resources/profiles →
+        // data_dir/system). Install AFTER wxEntryStart (PresetUpdater's ctor
+        // reads GUI::wxGetApp().app_config, which only exists once the app
+        // instance is up) and BEFORE OnInit(), so on_init_inner's own
+        // load_presets() loads real machines on its first (and only) pass.
+        // The wizard always installs the Snapmaker bundle, which is also what
+        // the project 3mf below references.
+        {
+            Slic3r::PresetUpdater test_updater;
+            if (!test_updater.install_bundles_rsrc({Slic3r::PresetBundle::SM_BUNDLE}, /*snapshot=*/false)) {
+                std::fprintf(stderr, "[ensure] failed to install Snapmaker vendor bundle into test data dir\n");
+                return false;
+            }
+        }
+
+        // The copied user config enables autobackup and points at the user's
+        // real last-backup dir. Plater's ctor captures that value, and its
+        // EVT_RESTORE_PROJECT handler pops a MODAL "restore previous project?"
+        // dialog (has_restore_data on the user's path) — the test would hang
+        // waiting for input. Neutralize both settings BEFORE OnInit so the
+        // captured value is already empty.
+        gui_app->app_config->set("app", "last_backup_path", "");
+        gui_app->app_config->set("backup_switch", "false");
+
         try {
             s_ok = gui_app->OnInit();
         } catch (const std::exception& e) {
@@ -448,6 +499,25 @@ bool ensure_wx_initialized()
                         wxEntryCleanup();
                     }
                 });
+            }
+
+            // post_init() (which initializes the GL context via load_gl_resources)
+            // runs exactly once, on the first wxYield/IDLE — and it only
+            // initializes GL when the canvas is on screen (IsShownOnScreen
+            // guard). Whichever test case pumps events first decides GL's fate,
+            // so do it HERE, once: show the frame briefly (no activation, no
+            // focus steal), let the real post_init/GL init chain run, then hide
+            // it again. The context stays valid while hidden, so the slicing
+            // progress path can refresh the 3D scene later without crashing and
+            // without flashing a window over the user's desktop.
+            if (gui_app->mainframe != nullptr) {
+                gui_app->mainframe->ShowWithoutActivating();
+                gui_app->mainframe->Lower();
+                wxYield();
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                wxYield();
+                gui_app->mainframe->Show(false);
+                wxYield();
             }
         }
     }
