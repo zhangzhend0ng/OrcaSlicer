@@ -45,28 +45,29 @@ python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
 | M1 闭环（纯自研） | ✅ GREEN | click→verify→back 全通，含回弹重试 |
 | M1b A：MaaFw 内置 Click | ❌ FAIL | 识别 3/3 全中，但 SendMessage→顶层 HWND 不路由到 wx 子控件，tab 从未切换 |
 | M1b B：自定义 action | ✅ PASS | WindowFromPoint→子 HWND 一次成功且稳定 |
-| M2 模型自动加载 | ✅ | CLI 位置参数 + fresh datadir（用过一次的 datadir 会阻断自动加载） |
-| M2 点击 Slice→切片启动 | ✅ | 按钮离开 idle、进度条出现 |
-| M2 切片完成 | ❌ **BLOCKED（app 侧）** | 见下 |
+| M2 模型自动加载 | ✅ | CLI 位置参数 + fresh datadir；**启动期必须 hands-off**（早期前台/移动干预会静默杀死 input_files 自动加载） |
+| M2 点击 Slice→切片完成 | ✅ | 完成信号 = 按钮带绿勾的 done 态模板（`slice_button_done.png`，≥0.85） |
+| M2 Preview 工具路径 | ✅ | 彩色占比 5.66% ≈ 2.7× 切片前基线（2.12%），且 >4% 绝对阈值 |
 
-### M2 切片冻结 — 已 falsify 的假设（均留有证据）
+### ~~M2 切片冻结~~ 已撤回：真实的因果链（2026-08-26 复盘）
 
-切片进入进度态后**永不完成**（无 gcode 产物、无后台切片进程、UI 线程存活
-WM_NULL 即答、截图字节级不变）。以下假设逐一被实验否定：
+早期 Prusa 跑出的"切片冻结在 30%、app 侧问题"结论**是误诊**，两个叠加的驱动层 bug：
 
-| 假设 | 否定实验 | 结果 |
-|---|---|---|
-| 窗口在 GameViewer 虚拟屏被 DWM 节流 | drop `window_mainframe` + 启动后二次移窗主屏+前台 | 移窗成功仍冻结 |
-| 驱动轮询（PrintWindow/2s）干扰 | 点击后完全 hands-off 3 分钟 | 仍无 gcode |
-| 用户 conf 悬空预设引用 | 最小 conf（仅沙盒覆写键） | 仍无 gcode |
-| 慢机切片慢 | 25 分钟超时 + 进度条冻结不动 | 卡住非慢 |
+1. **launcher 启动期前台抢占杀死 CLI 模型自动加载**（排查中途引入的回归）：启动早期
+   `SetForegroundWindow`/移动窗口会与 post_init 首个 idle 的 input_files 加载竞态——
+   hands-off 启动（sleep 12s 不碰窗口）模型 100% 加载，有干预则静默不加载。
+   模型没加载 → 点 Slice 无效果或仅按钮按压态变化 → "进度条 30% 冻结"实为无米之炊。
+2. **完成检测模板错误**：切片完成后按钮渲染"Slice plate + 绿勾"，与点击前 idle 模板的
+   归一化相关只有 0.666 —— 把已完成误判为"仍在切片"。
 
-对照：同机 `tests/wx_gui` 进程内测试（`plate->reslice()`）切片正常完成。
-差异维度收窄到：**交互式 app 进程 vs 测试进程**（后者 ORCA_GUI_TEST_MODE=1
-跳过 PresetUpdater/网络，且无真实 UI 主循环形态）。启动日志有一条可疑错误：
-`[Orca Updater] Update install failed: staging validation failed (resources/printers -> datadir/printers)`
-——沙盒 datadir 中 printers/ 从未建立。后续可在干净 Windows 控制台（无远控层）
-复跑 m2 归因，或在 app 侧排查 PresetUpdater 失败对切片链的影响。
+修正后（hands-off 启动 + done 模板）`混色级联删除测试.3mf`（Snapmaker U1 0.8 + 0.40
+Standard 嵌入预设）端到端 GREEN。此机（GameViewer 虚拟显示）切片偏慢（该 3mf 约十
+分钟量级），超时预算 1500s。
+
+保留有效的教训：
+- `window_mainframe` 位置恢复键必须 drop（否则窗口落在虚拟屏）
+- 早期窗口干预有害；后期按需干预（仅当窗口真的在虚拟屏时）才安全
+- 视觉模型对低分辨率截图的"进度百分比/图标"读数可靠性有限，关键判定用模板/像素级确定性证据
 
 ### 引擎选型结论（M1b 决定性实验）
 

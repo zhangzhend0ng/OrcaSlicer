@@ -67,33 +67,29 @@ def wait_model_loaded(session, timeout_s=45):
     return False, 0.0
 
 
-def wait_slicing_done(session, timeout_s=600):
-    """Slicing finished = the Slice button returns to its idle rendering.
-
-    While slicing, the button region morphs into a progress display; polling
-    for the idle template coming BACK is the black-box completion signal.
-    NOTE: on this GameViewer-hosted machine slicing is SLOW (Prusa.stl can
-    take minutes on first run) — the timeout must be generous.
-    """
-    tpl = cv2.imread(str(RESOURCE / "slice_plate_button.png"))
+def wait_slicing_done(session, timeout_s=1500):
+    """Slicing finished = the 'Slice plate' button shows its DONE rendering
+    (green checkmark badge; template slice_button_done.png). The plain idle
+    template is NOT a valid completion signal: the done state scores only
+    ~0.67 against it (the checkmark shifts the normalized correlation), which
+    masqueraded as 'still slicing' in earlier runs while slicing had in fact
+    COMPLETED."""
+    tpl = cv2.imread(str(RESOURCE / "slice_button_done.png"))
     deadline = time.monotonic() + timeout_s
-    saw_busy = False
     n_polls = 0
-    last_score = 0.0
+    last = 0.0
     while time.monotonic() < deadline:
         img = capture_bgr(session)
-        if n_polls in (2, 10, 60, 150):  # diagnostic snapshots during the wait
+        if n_polls in (2, 10, 60, 150):
             cv2.imwrite(str(HERE / "artifacts" / f"m2_diag_wait{n_polls}.png"), img)
         n_polls += 1
         res = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
         _, score, _, _ = cv2.minMaxLoc(res)
-        last_score = float(score)
-        if score < 0.7:
-            saw_busy = True  # button changed shape -> slicing in progress
-        elif saw_busy and score >= MATCH_THRESHOLD:
-            return True, last_score
+        last = float(score)
+        if score >= 0.85:
+            return True, last
         time.sleep(2.0)
-    return False, last_score
+    return False, last
 
 
 def click_slice_start(session, attempts=3):
@@ -135,14 +131,17 @@ def main() -> int:
     try:
         env_check.print_preflight(session.hwnd)
 
-        # 1) boot settles on Prepare with the model loaded (auto via CLI arg)
-        score, _, _ = wait_for(session, RESOURCE / "tab_prepare_active.png", timeout_s=60.0)
-        print(f"[m2] Prepare settled: {score:.3f}")
-        # Re-assert position AFTER startup: window_pos_restore runs late in
-        # on_init_inner and can drag the window back to the GameViewer virtual
-        # display, where DWM throttling freezes the slicing pipeline.
-        winutil.move_to_primary_and_foreground(session.hwnd)
-        print(f"[m2] window rect now: {winutil.window_rect(session.hwnd)}")
+        # 1) HANDS-OFF boot: any early interference with the window (capture
+        # polling, foreground grabbing) races post_init's first-idle
+        # input_files load and SILENTLY KILLS the CLI model auto-load —
+        # proven by the m3mf hands-off experiment. Sleep through it.
+        time.sleep(12.0)
+        img_boot = capture_bgr(session)
+        cv2.imwrite(str(HERE / "artifacts" / "m2_boot.png"), img_boot)
+        from m1_minimal_loop import match as tpl_match
+        score, _, _, _, _ = tpl_match(img_boot, RESOURCE / "tab_prepare_active.png")
+        print(f"[m2] boot state: Prepare tab score {score:.3f} "
+              f"(rect {session.rect()})")
         ok_model, mdiff = wait_model_loaded(session)
         print(f"[m2] model arrival observed: {ok_model} (viewport diff {mdiff:.1f})")
         # best-effort: a fast load can precede our reference capture; the
@@ -168,12 +167,21 @@ def main() -> int:
         colored = has_colored_content(img)
         print(f"[m2] Preview switched={ok_pv}, colored-viewport fraction: "
               f"{colored:.3%} (was {empty_frac0:.3%} before slicing)")
-        results["preview toolpath"] = "PASS" if (ok_pv and colored > 0.02) else "FAIL"
+        # toolpath = colored fraction both absolutely high AND ~2x the
+        # pre-slice colored-model baseline (a colored MODEL alone used to
+        # false-positive the old fixed threshold)
+        results["preview toolpath"] = (
+            "PASS" if (ok_pv and colored > 0.04 and colored >= 2 * max(empty_frac0, 1e-4)) else "FAIL")
 
         print("\n[m2] === verdict ===")
+        # A successful end-to-end slice is itself proof the model loaded
+        # (slicing an empty plate produces nothing); upgrade the best-effort
+        # arrival detector's UNVERIFIED accordingly.
+        if results.get("slice + completion") == "PASS" and results["model loaded"].startswith("UNVERIFIED"):
+            results["model loaded"] = "PASS (proven by successful slicing)"
         for k, v in results.items():
             print(f"  {k}: {v}")
-        ok = all(v.startswith("PASS") or v.startswith("UNVERIFIED") for v in results.values())
+        ok = all(v.startswith("PASS") for v in results.values())
         print("[m2] " + ("GREEN" if ok else "RED"))
         return 0 if ok else 1
     finally:

@@ -80,11 +80,11 @@ def launch(exe: Path | str | None = None,
         # Never leak a launched app when window discovery fails.
         popen.kill()
         raise
-    # Bring the app into a real interactive state: the restored window
-    # position may be the GameViewer virtual display, where DWM throttles
-    # timers enough to FREEZE slicing (observed: progress stuck at 30%
-    # forever; a vision test needs the app behaving like a user is present).
-    winutil.move_to_primary_and_foreground(hwnd)
+    # NOTE: do NOT touch window position/foreground here. Early interference
+    # (before post_init's first-idle input_files load) BREAKS the CLI model
+    # auto-load — proven experimentally: hands-off boots load the model,
+    # foreground-grabbing boots do not. Late, conditional repositioning is
+    # the caller's job (see m2_slice_chain after boot settles).
     dpi = winutil.get_dpi_for_window(hwnd)
     print(f"[launcher] pid={popen.pid} hwnd=0x{hwnd:x} rect={winutil.window_rect(hwnd)} dpi={dpi}")
     return AppSession(popen, hwnd)
