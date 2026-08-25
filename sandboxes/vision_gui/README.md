@@ -45,7 +45,28 @@ python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
 | M1 闭环（纯自研） | ✅ GREEN | click→verify→back 全通，含回弹重试 |
 | M1b A：MaaFw 内置 Click | ❌ FAIL | 识别 3/3 全中，但 SendMessage→顶层 HWND 不路由到 wx 子控件，tab 从未切换 |
 | M1b B：自定义 action | ✅ PASS | WindowFromPoint→子 HWND 一次成功且稳定 |
-| M2 切片链 | 见下 | 模型自动加载 ✅（需 fresh datadir）、切片真实启动（进度条） |
+| M2 模型自动加载 | ✅ | CLI 位置参数 + fresh datadir（用过一次的 datadir 会阻断自动加载） |
+| M2 点击 Slice→切片启动 | ✅ | 按钮离开 idle、进度条出现 |
+| M2 切片完成 | ❌ **BLOCKED（app 侧）** | 见下 |
+
+### M2 切片冻结 — 已 falsify 的假设（均留有证据）
+
+切片进入进度态后**永不完成**（无 gcode 产物、无后台切片进程、UI 线程存活
+WM_NULL 即答、截图字节级不变）。以下假设逐一被实验否定：
+
+| 假设 | 否定实验 | 结果 |
+|---|---|---|
+| 窗口在 GameViewer 虚拟屏被 DWM 节流 | drop `window_mainframe` + 启动后二次移窗主屏+前台 | 移窗成功仍冻结 |
+| 驱动轮询（PrintWindow/2s）干扰 | 点击后完全 hands-off 3 分钟 | 仍无 gcode |
+| 用户 conf 悬空预设引用 | 最小 conf（仅沙盒覆写键） | 仍无 gcode |
+| 慢机切片慢 | 25 分钟超时 + 进度条冻结不动 | 卡住非慢 |
+
+对照：同机 `tests/wx_gui` 进程内测试（`plate->reslice()`）切片正常完成。
+差异维度收窄到：**交互式 app 进程 vs 测试进程**（后者 ORCA_GUI_TEST_MODE=1
+跳过 PresetUpdater/网络，且无真实 UI 主循环形态）。启动日志有一条可疑错误：
+`[Orca Updater] Update install failed: staging validation failed (resources/printers -> datadir/printers)`
+——沙盒 datadir 中 printers/ 从未建立。后续可在干净 Windows 控制台（无远控层）
+复跑 m2 归因，或在 app 侧排查 PresetUpdater 失败对切片链的影响。
 
 ### 引擎选型结论（M1b 决定性实验）
 

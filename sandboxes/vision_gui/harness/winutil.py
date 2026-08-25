@@ -282,3 +282,34 @@ def msg_text(hwnd: int, text: str) -> None:
 
 def close_window(hwnd: int) -> None:
     user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+
+
+def move_to_primary_and_foreground(hwnd: int) -> bool:
+    """Move the window onto the primary monitor and make it foreground.
+
+    WHY: the app restores its last window position, which on this machine can
+    be the GameViewer VIRTUAL display; a window that lives on a non-interactive
+    display is DWM-throttled — its wx timers barely fire and the slicing
+    pipeline (timer-driven progress polling) FREEZES at ~30% forever. A vision
+    driver needs the app in a real "user is using it" state: visible, on the
+    interactive monitor, foreground.
+    """
+    l, t, r, b = _window_rect(hwnd)
+    w, h = r - l, b - t
+    if l >= 1900 or t < 0:  # on the virtual display / off-screen
+        user32.SetWindowPos(hwnd, 0, 40, 40, 0, 0, 0x0001 | 0x0002)  # NOSIZE | NOZORDER
+        print(f"[winutil] moved window from ({l},{t}) to (40,40)")
+    user32.ShowWindow(hwnd, 5)  # SW_SHOW
+    # Foreground acquisition via AttachThreadInput (plain SetForegroundWindow
+    # is a no-op under the foreground lock — same lesson as wx_gui's journal).
+    hFg = user32.GetForegroundWindow()
+    fgTid = user32.GetWindowThreadProcessId(hFg, None)
+    ourTid = kernel32.GetCurrentThreadId()
+    attached = user32.AttachThreadInput(ourTid, fgTid, True)
+    user32.SetForegroundWindow(hwnd)
+    user32.SetFocus(hwnd)
+    if attached:
+        user32.AttachThreadInput(ourTid, fgTid, False)
+    ok = user32.GetForegroundWindow() == hwnd
+    print(f"[winutil] foreground = our window: {ok}")
+    return ok

@@ -29,9 +29,13 @@ import shutil
 from pathlib import Path
 
 # Keys dropped from the source conf: recent files leak paths and can trigger
-# UI affordances; window geometry keys force a deterministic default layout.
+# UI affordances; window geometry forces a deterministic default layout.
+# NOTE window_mainframe is THE restore key (GUI_App::window_pos_restore
+# reads app_config "window_mainframe") — a saved position on the GameViewer
+# virtual display would put every sandbox window on a throttled, non-interactive
+# screen where DWM starves wx timers and FREEZES slicing.
 _DROP_APP_KEYS = [
-    "main_frame_pos", "main_frame_size", "last_backup_path",
+    "window_mainframe", "main_frame_pos", "main_frame_size", "last_backup_path",
     "object_settings_maximized", "object_settings_pos", "object_settings_size",
 ]
 _DROP_SECTIONS = ["recent", "recent_projects"]
