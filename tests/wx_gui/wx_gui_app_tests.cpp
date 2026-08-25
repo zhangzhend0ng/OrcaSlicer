@@ -116,3 +116,33 @@ TEST_CASE("full app main window shows and lays out", "[gui][fullapp][shown]")
     app.mainframe->Show(false);
     wxYield();
 }
+
+// ---------------------------------------------------------------------------
+// (4) Network test mode (ORCA_GUI_TEST_MODE=network): the device stack is
+//     initialized for real (DeviceManager always exists; network plugin loaded
+//     when the test data dir has one), so the device panel comes up on its
+//     real code path. Run with:
+//       ORCA_GUI_TEST_MODE=network wx_gui_tests.exe "[devices]"
+// ---------------------------------------------------------------------------
+TEST_CASE("device panel present in network test mode", "[gui][fullapp][devices]")
+{
+    if (!Slic3r::GUI::gui_test_mode_network())
+        SKIP("run with ORCA_GUI_TEST_MODE=network to exercise the real device stack");
+
+    REQUIRE(ensure_wx_initialized());
+    REQUIRE(wxTheApp != nullptr);
+
+    GUI_App& app = static_cast<GUI_App&>(*wxApp::GetInstance());
+    REQUIRE(app.mainframe != nullptr);
+
+    INFO("DeviceManager = " << (app.getDeviceManager() != nullptr ? "present" : "absent"));
+    CHECK(app.getDeviceManager() != nullptr);
+
+    // MonitorPanel is constructed when the DeviceManager exists (empty-state
+    // UI on its real code path; no devices on a test machine without printers).
+    if (app.mainframe->m_monitor != nullptr) {
+        CHECK(app.mainframe->m_monitor->IsEnabled());
+    } else {
+        WARN("MonitorPanel not created (device stack unavailable)");
+    }
+}

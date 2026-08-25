@@ -1257,8 +1257,10 @@ void MainFrame::init_tabpanel() {
     create_preset_tabs();
 
         //BBS add pages
-    // Device panel needs a live DeviceManager (network); skip it in test mode.
-    if (!gui_test_mode()) {
+    // Device panel needs a live DeviceManager (network); in plain test mode it
+    // is skipped, in network test mode (ORCA_GUI_TEST_MODE=network) it comes up
+    // on its real code path.
+    if (!gui_test_mode() || gui_test_mode_network()) {
         m_monitor = new MonitorPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
         m_monitor->SetBackgroundColour(*wxWHITE);
         m_tabpanel->AddPage(m_monitor, _L("Device"), std::string("tab_monitor_active"), std::string("tab_monitor_active"), false);

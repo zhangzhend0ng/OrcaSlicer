@@ -239,6 +239,11 @@ public:
 // See GUI_App.cpp for the full semantics.
 bool gui_test_mode();
 
+// Network test mode (ORCA_GUI_TEST_MODE=network): same as gui_test_mode() but
+// the network/device stack initializes for real (DeviceManager always exists,
+// plugin loaded when installed) and MainFrame keeps the device panel.
+bool gui_test_mode_network();
+
 class GUI_App : public wxApp
 {
 public:

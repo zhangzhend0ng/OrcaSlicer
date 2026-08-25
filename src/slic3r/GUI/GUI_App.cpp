@@ -234,7 +234,22 @@ bool gui_test_mode()
 
         std::string normalized(value);
         std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
+        return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on" || normalized == "network";
+    }();
+    return enabled;
+}
+
+// Network test mode (ORCA_GUI_TEST_MODE=network): like gui_test_mode() but the
+// network/device stack is initialized for real — DeviceManager is created (and
+// the network plugin is loaded when the test data dir has one installed), so
+// MonitorPanel and the device UI come up on their real code paths. Without an
+// installed plugin the agent stays absent but an empty DeviceManager still
+// exists, which is enough for the device panel's empty-state UI.
+bool gui_test_mode_network()
+{
+    static const bool enabled = [] {
+        const char* value = std::getenv("ORCA_GUI_TEST_MODE");
+        return value != nullptr && std::string(value) == "network";
     }();
     return enabled;
 }
@@ -2934,11 +2949,17 @@ bool GUI_App::on_init_inner()
             wxMessageBox("Force using legacy bambu networking plugin because debugger is attached! If the app terminates itself immediately, please delete installed plugin and try again!");
         }
     } */
-    if (!gui_test_mode()) {
+    if (!gui_test_mode() || gui_test_mode_network()) {
         copy_network_if_available();
         profiler.mark("copy_network_if_available");
         on_init_network();
         profiler.mark("on_init_network");
+        // Network test mode without an installed plugin: on_init_network() skips
+        // creating the agent/DeviceManager, but the device UI (MonitorPanel)
+        // requires a DeviceManager object to exist. Create an empty one so the
+        // panel comes up on its real code path with an empty device list.
+        if (gui_test_mode_network() && m_device_manager == nullptr)
+            m_device_manager = new Slic3r::DeviceManager();
     }
 
     if (m_agent && m_agent->is_user_login()) {
