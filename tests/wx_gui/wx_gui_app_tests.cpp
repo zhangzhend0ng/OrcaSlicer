@@ -234,6 +234,22 @@ TEST_CASE("slice 3mf and verify gcode end-to-end", "[gui][fullapp][slow]")
     const bool has_temp_cmd = gcode.find("M104") != std::string::npos || gcode.find("M140") != std::string::npos;
     CHECK(has_temp_cmd);
 
+    // ④ Export step: the production export path (Plater::export_gcode →
+    //    schedule_export) copies the temp G-code to the chosen location; its
+    //    UI entry is a modal file dialog, so perform the same copy into a
+    //    fixed output dir that survives the test — this is the slice result
+    //    the user can open.
+    const std::string out_dir = std::string(::getenv("TEMP")) + "/wx_gui_slice_output";
+    boost::system::error_code ec;
+    boost::filesystem::create_directories(out_dir, ec);
+    REQUIRE(!ec);
+    const std::string export_path = (boost::filesystem::path(out_dir) / "mixed_filament_test.gcode").string();
+    boost::filesystem::copy_file(gcode_path, export_path, boost::filesystem::copy_option::overwrite_if_exists, ec);
+    REQUIRE(!ec);
+    INFO("exported gcode = " << export_path);
+    REQUIRE(boost::filesystem::exists(export_path));
+    CHECK(boost::filesystem::file_size(export_path) == gcode.size());
+
     // Leave a clean slate for other cases in the same process.
     app.plater_->new_project(true); // skip_confirm: no dialogs in test mode
 }
