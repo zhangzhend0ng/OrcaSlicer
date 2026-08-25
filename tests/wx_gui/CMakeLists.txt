@@ -14,10 +14,33 @@ if (NOT SLIC3R_GUI)
     return()
 endif()
 
+# Full-app mode: boot the REAL GUI_App (Orca itself) in wx_gui tests instead of
+# the minimal PoCApp. Requires ORCA_GUI_TEST_MODE=1 at runtime to skip network/
+# splash/registry side effects. Turn OFF for the fast EchoDialog-only smoke.
+option(WX_GUI_FULL_APP "Boot the real GUI_App in wx_gui tests" ON)
+
 get_filename_component(_TEST_NAME ${CMAKE_CURRENT_LIST_DIR} NAME)
 add_executable(${_TEST_NAME}_tests
     ${_TEST_NAME}_tests_main.cpp
+    wx_gui_app_tests.cpp
     )
+
+if (WX_GUI_FULL_APP)
+    target_compile_definitions(${_TEST_NAME}_tests PRIVATE ORCA_FULL_GUI_APP=1)
+    # libslic3r_gui's BitmapCache already contains the nanoSVG implementation;
+    # linking test_nanosvg_impl as well would duplicate every nsvg* symbol.
+    list(REMOVE_ITEM TEST_LINK_LIBS test_nanosvg_impl)
+    # Full-app mode pulls in the rest of libslic3r_gui, whose objects reference
+    # the main-app utility sources (compiled directly into Snapmaker_Orca.exe):
+    # crash/exception handling, sentry reporting, bury point, common helpers.
+    target_sources(${_TEST_NAME}_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/dev-utils/BaseException.cpp
+        ${CMAKE_SOURCE_DIR}/src/dev-utils/StackWalker.cpp
+        ${CMAKE_SOURCE_DIR}/src/sentry_wrapper/SentryWrapper.cpp
+        ${CMAKE_SOURCE_DIR}/src/bury_cfg/bury_point.cpp
+        ${CMAKE_SOURCE_DIR}/src/common_func/common_func.cpp
+        )
+endif()
 
 # wx headers (e.g. <wx/uiaction.h>) are NOT propagated by libslic3r_gui:
 # src/CMakeLists.txt adds wx include dirs via a directory-scope

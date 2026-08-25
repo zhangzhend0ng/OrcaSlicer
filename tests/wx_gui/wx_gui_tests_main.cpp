@@ -45,7 +45,18 @@
 #include <wx/evtloop.h>
 #include <wx/uiaction.h>
 
+#include "libslic3r/Utils.hpp" // Slic3r::set_data_dir / set_var_dir / resources_dir
+
+#include <boost/filesystem.hpp> // path join for var_dir
+
+#if defined(ORCA_FULL_GUI_APP)
+    #include "slic3r/GUI/GUI_App.hpp"  // wxGetApp(), GUI_App
+    #include "slic3r/GUI/GUI_Init.hpp" // GUI_InitParams
+#endif
+
 #include <chrono>
+#include <cstdlib>
+#include <filesystem>
 #include <functional>
 #include <sstream>
 #include <string>
@@ -296,7 +307,13 @@ public:
 // (1) wxApp: derived class registered via NO_MAIN (does NOT define main(),
 //     which Catch2::Catch2WithMain already owns). wxEntryStart will instantiate
 //     this class as wxTheApp.
+//
+//     Full-app mode (ORCA_FULL_GUI_APP, see CMake option WX_GUI_FULL_APP):
+//     PoCApp is compiled OUT and the REAL GUI_App (wxIMPLEMENT_APP in
+//     GUI_App.cpp, linked via libslic3r_gui) becomes wxTheApp, so tests can
+//     drive the actual application (MainFrame, Plater, dialogs).
 // ---------------------------------------------------------------------------
+#if !defined(ORCA_FULL_GUI_APP)
 class PoCApp : public wxApp
 {
 public:
@@ -308,30 +325,137 @@ public:
     }
 };
 wxIMPLEMENT_APP_NO_MAIN(PoCApp);
+#endif
+
+// Full-app mode: create an isolated data dir so the test boot never touches
+// the user's real configuration (app_config.ini, preset backups, ...). The
+// installed system presets (vendor bundles, installed by ConfigWizard into
+// %APPDATA%\Snapmaker_Orca\system) are copied in READ-ONLY fashion so
+// PresetBundle::load_presets() finds real presets and load_selections() has
+// something to select — an empty system dir crashes in load_selections.
+static std::string make_test_data_dir()
+{
+#ifdef __WXMSW__
+    wchar_t tmp[MAX_PATH]{};
+    ::GetTempPathW(MAX_PATH, tmp);
+    const std::wstring dir = std::wstring(tmp) + L"wx_gui_tests_data_" + std::to_wstring(::GetCurrentProcessId());
+    ::CreateDirectoryW(dir.c_str(), nullptr);
+
+    namespace fs = std::filesystem;
+    const fs::path test_data(dir);
+    const fs::path system_src = fs::path(std::getenv("APPDATA") != nullptr ? std::getenv("APPDATA") : "") /
+                                "Snapmaker_Orca" / "system";
+    if (fs::exists(system_src)) {
+        std::error_code ec;
+        fs::copy(system_src, test_data / "system", fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+        if (ec)
+            std::fprintf(stderr, "[wx_gui] warning: could not copy system presets from %ls: %s\n",
+                         system_src.c_str(), ec.message().c_str());
+    } else {
+        std::fprintf(stderr, "[wx_gui] warning: no installed system presets at %ls — full-app boot may crash in load_selections\n",
+                     system_src.c_str());
+    }
+    return wxString(dir).ToStdString();
+#else
+    return "/tmp/wx_gui_tests_data";
+#endif
+}
 
 // ---------------------------------------------------------------------------
 // (2) One-shot wx initialization for the whole test process.
 //     wxEntryStart calls wxApp::Initialize() + common post-init, creating
-//     wxTheApp (our PoCApp). NOTE: unlike wxEntry, wxEntryStart does NOT run
-//     OnInit() or the main message loop (OnRun) — we keep wx alive for the
-//     whole process and rely on per-test modal loops / wxYield() to pump
-//     events. It is NOT idempotent after wxEntryCleanup, so we gate it on a
-//     static flag and never clean up (process exit reclaims everything).
-//     wxInitialize() alone is insufficient — it does not create a GUI wxApp /
-//     Cocoa event loop, which wxUIActionSimulator's macOS backend requires.
+//     wxTheApp. NOTE: unlike wxEntry, wxEntryStart does NOT run OnInit() or
+//     the main message loop (OnRun) — we keep wx alive for the whole process
+//     and rely on per-test modal loops / wxYield() to pump events. It is NOT
+//     idempotent after wxEntryCleanup, so we gate it on a static flag and
+//     never clean up (process exit reclaims everything).
+//
+//     Full-app mode additionally: points Slic3r::data_dir() at a temp folder
+//     BEFORE the GUI_App constructor runs (init_app_config() reads it in the
+//     ctor), then calls wxTheApp->OnInit() manually (that is where the real
+//     on_init_inner boots MainFrame/Plater — ORCA_GUI_TEST_MODE=1 skips the
+//     network/splash/registry side effects and hides the main window).
+//
+//     NOTE on a private desktop (CreateDesktop/SetThreadDesktop): verified
+//     experimentally that wx startup HANGS on any desktop other than the
+//     interactive one — wxEntryStart never returns, with or without
+//     SwitchDesktop — so that "background desktop" idea is abandoned; the
+//     hidden main window keeps tests out of the user's way instead.
 // ---------------------------------------------------------------------------
-static bool ensure_wx_initialized()
+// Not static: wx_gui_app_tests.cpp (full-app tests) declares it extern.
+bool ensure_wx_initialized()
 {
     static bool s_tried = false;
     static bool s_ok    = false;
     if (s_tried) return s_ok;
     s_tried = true;
 
-    static int         argc = 1;
-    static char        arg0[] = "wx_gui_tests";
-    static char*       argv[] = {arg0, nullptr};
+    static int   argc = 1;
+    static char  arg0[] = "wx_gui_tests";
+    static char* argv[] = {arg0, nullptr};
+
+#if defined(ORCA_FULL_GUI_APP)
+    // The real app flow wires init_params in GUI::GUI_Run(); wxEntryStart never
+    // does, so feed a default params block ourselves or on_init_inner crashes
+    // dereferencing the null init_params in load_presets.
+    static int                 test_argc = 1;
+    static char                test_arg0[] = "wx_gui_tests";
+    static char*               test_argv[] = {test_arg0, nullptr};
+    static Slic3r::GUI::GUI_InitParams test_init_params;
+    test_init_params.argc = test_argc;
+    test_init_params.argv = test_argv;
+
+    Slic3r::set_data_dir(make_test_data_dir());
+    // Snapmaker_Orca.cpp does these during its own startup; the test process
+    // has no main app, so do them here: var_dir() feeds every ScalableBitmap
+    // lookup, and save_main_thread_id() marks this thread as the main thread
+    // (AppConfig::save() throws CriticalException otherwise).
+    Slic3r::set_var_dir((boost::filesystem::path(Slic3r::resources_dir()) / "images").string());
+    Slic3r::save_main_thread_id();
+    s_ok = wxEntryStart(argc, argv) && wxTheApp != nullptr;
+    if (s_ok) {
+        // wxEntryStart instantiates whatever wxCreateApp() resolves to. With the
+        // GUI_App factory pulled in (this TU references GUI_App directly) it is
+        // the real GUI_App; if the link order ever resolves the inline
+        // wxWidgets default (wxDummyConsoleApp) instead, replace it explicitly.
+        auto* gui_app = dynamic_cast<Slic3r::GUI::GUI_App*>(wxAppConsole::GetInstance());
+        if (gui_app == nullptr) {
+            gui_app = new Slic3r::GUI::GUI_App();
+            delete wxAppConsole::GetInstance();
+            wxAppConsole::SetInstance(gui_app);
+        }
+        gui_app->init_params = &test_init_params;
+        try {
+            s_ok = gui_app->OnInit();
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[ensure] OnInit threw: %s\n", e.what());
+            s_ok = false;
+        } catch (...) {
+            std::fprintf(stderr, "[ensure] OnInit threw unknown exception\n");
+            s_ok = false;
+        }
+        if (s_ok) {
+            // The app now owns a live MainFrame (+ render threads/timers). If we
+            // let process exit reclaim everything, wx static destruction races
+            // with those and SIGSEGVs after the test summary. Clean up wx in an
+            // atexit hook (runs before static dtors) instead.
+            static bool cleanup_registered = false;
+            if (!cleanup_registered) {
+                cleanup_registered = true;
+                std::atexit([]() {
+                    if (wxTheApp != nullptr) {
+                        wxTheApp->ExitMainLoop();
+                        wxEntryCleanup();
+                    }
+                });
+            }
+        }
+    }
+    return s_ok;
+#else
     s_ok = wxEntryStart(argc, argv);
     return s_ok;
+#endif
 }
 
 // Small helper: pump the event loop for up to ~ms milliseconds so injected
