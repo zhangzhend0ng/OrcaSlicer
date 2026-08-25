@@ -23,6 +23,7 @@ get_filename_component(_TEST_NAME ${CMAKE_CURRENT_LIST_DIR} NAME)
 add_executable(${_TEST_NAME}_tests
     ${_TEST_NAME}_tests_main.cpp
     wx_gui_app_tests.cpp
+    wx_gui_business_tests.cpp
     )
 
 if (WX_GUI_FULL_APP)

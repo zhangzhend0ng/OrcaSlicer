@@ -238,12 +238,15 @@ TEST_CASE("slice 3mf and verify gcode end-to-end", "[gui][fullapp][slow]")
     //    schedule_export) copies the temp G-code to the chosen location; its
     //    UI entry is a modal file dialog, so perform the same copy into a
     //    fixed output dir that survives the test — this is the slice result
-    //    the user can open.
+    //    the user can open. The file name is unique per run: a fixed name
+    //    collides with a still-open export from a previously running app
+    //    instance (the file stays locked -> copy_file fails).
     const std::string out_dir = std::string(::getenv("TEMP")) + "/wx_gui_slice_output";
     boost::system::error_code ec;
     boost::filesystem::create_directories(out_dir, ec);
     REQUIRE(!ec);
-    const std::string export_path = (boost::filesystem::path(out_dir) / "mixed_filament_test.gcode").string();
+    const std::string export_path = (boost::filesystem::path(out_dir) /
+        ("mixed_filament_test_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".gcode")).string();
     boost::filesystem::copy_file(gcode_path, export_path, boost::filesystem::copy_option::overwrite_if_exists, ec);
     REQUIRE(!ec);
     INFO("exported gcode = " << export_path);
