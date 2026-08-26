@@ -1065,6 +1065,18 @@ static wxString make_recommended_tooltip(const wxString& family_label, const wxS
         td_disp);
 }
 
+// Tooltip for the palette entry at palette_idx — the same text used for the dropdown
+// row (SetItemTooltip) and for the closed control (SetToolTip below): the per-row
+// tips only reach the popup list, so the SELECTED entry's tip is attached to the
+// ComboBox itself on build and refreshed on selection change.
+static wxString recommended_entry_tooltip(const std::vector<FullSpectrumPaletteEntry>& palette, int palette_idx)
+{
+    const FullSpectrumPaletteEntry& entry = palette[palette_idx];
+    return make_recommended_tooltip(family_display_label(entry),
+                                    localized_color_name(entry, palette_idx),
+                                    entry.td_value);
+}
+
 // ---------------------------------------------------------------------------
 // UI — aligned to Figma design (node 27535:68094 "auto match")
 // ---------------------------------------------------------------------------
@@ -1485,12 +1497,8 @@ void MixedFilamentBatchDialog::build_recommended_card(wxBoxSizer& parent)
             const int append_idx = cb->Append(family_display_label(entry),
                                               icon ? icon->ConvertToImage() : wxNullImage);
             // Per-row hover tooltip (spec §4.1): "<family> / <color name> TD : <value>". The
-            // custom ComboBox/DropDown shows per-row tooltips natively while the list is open
-            // and on the closed control for the selected row.
-            cb->SetItemTooltip(append_idx,
-                make_recommended_tooltip(family_display_label(entry),
-                                         localized_color_name(entry, static_cast<int>(j)),
-                                         entry.td_value));
+            // custom ComboBox/DropDown shows per-row tooltips natively while the list is open.
+            cb->SetItemTooltip(append_idx, recommended_entry_tooltip(m_recommended_palette, static_cast<int>(j)));
         }
         if (m_recommended_selections[i] >= 0 && m_recommended_selections[i] < static_cast<int>(m_recommended_palette.size()))
             cb->SetSelection(m_recommended_selections[i]);
@@ -1500,6 +1508,12 @@ void MixedFilamentBatchDialog::build_recommended_card(wxBoxSizer& parent)
             m_recommended_selections[i] = 0;
             cb->SetSelection(0);
         }
+        // Closed-control hover: SetItemTooltip only attaches tips to the popup list, so the
+        // ComboBox itself never shows anything on hover. Attach the SELECTED entry's tooltip
+        // to the control (wxWindow::SetToolTip works on the TextInput base) and keep it in
+        // sync on selection change (wxEVT_COMBOBOX handler below).
+        if (m_recommended_selections[i] >= 0 && m_recommended_selections[i] < static_cast<int>(m_recommended_palette.size()))
+            cb->SetToolTip(recommended_entry_tooltip(m_recommended_palette, m_recommended_selections[i]));
         m_recommended_combo[i] = cb;
         // Combined arrow+badge icon (slot number 1-4 over the selected color) so the combo
         // keeps its drop-down arrow alongside the numbered swatch (ComboBox hides the arrow
@@ -1510,10 +1524,15 @@ void MixedFilamentBatchDialog::build_recommended_card(wxBoxSizer& parent)
         set_recommended_combo_icon(i);
         cb->Bind(wxEVT_COMBOBOX, [this, i](wxCommandEvent&) {
             if (m_recommended_combo[i]) {
-                // Record the user's selection so the failed/cancelled re-match restore gate
-                // (input_intact) can detect that the recommended input changed.
-                m_recommended_selections[i] = m_recommended_combo[i]->GetSelection();
-                set_recommended_combo_icon(i);
+                const int sel = m_recommended_combo[i]->GetSelection();
+                if (sel >= 0 && sel < static_cast<int>(m_recommended_palette.size())) {
+                    // Record the user's selection so the failed/cancelled re-match restore gate
+                    // (input_intact) can detect that the recommended input changed.
+                    m_recommended_selections[i] = sel;
+                    set_recommended_combo_icon(i);
+                    // Closed-control tooltip follows the new selection (see build comment).
+                    m_recommended_combo[i]->SetToolTip(recommended_entry_tooltip(m_recommended_palette, sel));
+                }
             }
             on_recommended_selection_changed();
         });
