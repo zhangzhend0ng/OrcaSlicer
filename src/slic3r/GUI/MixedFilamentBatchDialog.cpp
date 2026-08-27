@@ -925,19 +925,14 @@ static std::string default_full_spectrum_family_name()
 
 // True iff at least one filament preset matching the library family identity (nozzle suffix
 // stripped) is visible and compatible with the current printer — the same gate the Plater
-// apply path uses when deciding whether to write the Full Spectrum preset into slots 1-4.
-// Drives the Confirm-time "not configured" note (spec §5.1). UI-thread only (reads
-// preset_bundle, same convention as the other preset readers in this file).
+// apply path uses when writing per-slot Full Spectrum presets into slots 1-4.
+// Drives the Confirm-time "not configured" note (spec §5.1). Thin wrapper over the shared
+// find_selectable_full_spectrum_family_preset so the note and the actual write-back can
+// never drift apart. UI-thread only (reads preset_bundle, same convention as the other
+// preset readers in this file).
 static bool full_spectrum_family_preset_selectable(const std::string& family_name)
 {
-    auto* pb = wxGetApp().preset_bundle;
-    if (!pb) return false;
-    for (const Preset& preset : pb->filaments) {
-        if (!preset.is_visible || !preset.is_compatible) continue;
-        if (GetFilamentMatchName(preset.name) == family_name)
-            return true;
-    }
-    return false;
+    return !find_selectable_full_spectrum_family_preset(family_name).empty();
 }
 
 // Load the recommended-mode palette from the hot-updated config: EVERY Full Spectrum family
@@ -2428,14 +2423,25 @@ void MixedFilamentBatchDialog::launch_background_match()
     // The canonical constant only covers a degenerate mid-session palette (cannot happen via
     // the UI — start_batch_match is gated on complete selections; kept as a guard).
     std::vector<std::string> preset_colors;
+    // Per-slot library family, parallel to preset_colors (see BatchMatchResult::
+    // recommended_physical_family_names). Snapshotted on the UI thread so the
+    // worker never touches FilamentColorLibrary for this either.
+    std::vector<std::string> preset_family_names;
     if (m_matching_method == RECOMMENDED) {
         for (int i = 0; i < 4; ++i) {
             const int sel = m_recommended_selections[i];
-            if (sel >= 0 && sel < static_cast<int>(m_recommended_palette.size()))
+            if (sel >= 0 && sel < static_cast<int>(m_recommended_palette.size())) {
                 preset_colors.push_back(m_recommended_palette[sel].hex);
+                preset_family_names.push_back(m_recommended_palette[sel].family_name);
+            }
         }
-        if (preset_colors.size() < 4)
+        if (preset_colors.size() < 4) {
             preset_colors = FULL_SPECTRUM_FALLBACK_COLORS;
+            // Preserve the parallel-array invariant: synthesized canonical entries
+            // belong to the default family (same as load_recommended_palette's
+            // fallback synthesis).
+            preset_family_names.assign(preset_colors.size(), default_full_spectrum_family_name());
+        }
     }
     // Use enabled_count() (skips deleted/disabled) to match the virtual ID
     // numbering scheme used by mixed_index_from_filament_id() and
@@ -2449,7 +2455,7 @@ void MixedFilamentBatchDialog::launch_background_match()
     auto progress_bar = m_progress_bar;
 
     m_worker_thread = std::thread([this, model_colors, manual_colors, all_physical,
-                                    preset_colors, matching_method, existing_mixed_count,
+                                    preset_colors, preset_family_names, matching_method, existing_mixed_count,
                                     destroyed, cancel_token, progress_bar,
                                     manual_full_ids = std::move(manual_full_ids_c)]()
     {
@@ -2652,6 +2658,12 @@ void MixedFilamentBatchDialog::launch_background_match()
             if (matching_method == RECOMMENDED) {
                 result.is_recommended_mode = true;
                 result.recommended_physical_colors = physical_colors;
+                // Families are parallel to the PALETTE snapshot, so only carry them
+                // when the palette actually made it into the result (the defensive
+                // all_physical branch below has no per-slot families — leave empty
+                // and let the Plater size guard fall back to the legacy behavior).
+                if (physical_colors.size() == preset_family_names.size())
+                    result.recommended_physical_family_names = preset_family_names;
             }
         }
 
