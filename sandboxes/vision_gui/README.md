@@ -91,6 +91,31 @@ Standard 嵌入预设）端到端 GREEN。
 - 不可用：Win32 内置 Click——设计目标是游戏"单一大窗口"，对 wx 复合子窗口 UI 无效
 - `harness/winutil.py` 的 `msg_click_screen`（WindowFromPoint+SendMessageTimeout）即是补洞层，纯自研路线也直接复用它
 
+### 批量回归结论（2026-08-28，9 个模型）
+
+| 模型 | 嵌入预设 | 结果 | 说明 |
+|---|---|---|---|
+| 混色级联删除测试.3mf | Snapmaker U1 (0.8) | ✅ GREEN | 标准样例 |
+| 立方体.3mf | Snapmaker U1 (0.4) | ✅ GREEN | |
+| 四料混色.3mf | Snapmaker U1 (0.4) | ✅ GREEN | 修复 WebView2 后 5/5 稳定（修复前 2/5 flaky） |
+| Prusa.stl（m2 默认） | — | ✅ GREEN | 色度检测走"切片成功兜底"升级 |
+| 混色.gcode.3mf | Snapmaker U1 (0.4) | ⏸ 已知限制 | 含 gcode，按钮渲染 0.666 拒点，需 gcode 态按钮变体模板 |
+| lithophane.3mf | Bambu P1S | ⏸ 预期 | 预设缺失 → Slice 按钮 WS_DISABLED → 点击无效（坑 #10） |
+| Pikachu X1C | Bambu X1 Carbon | ⏸ 预期 | 同上；模型未渲染（加载失败回滚） |
+| A1mini+R3dPETG罗隐 | Bambu A1 mini | ⏸ 预期 | 同上 |
+
+三类脆弱点与处理：
+1. **WebView2 透明层吞点击**（间歇 flaky ~40%）→ winutil 穿透修复（坑 #9）
+2. **非 U1 预设 → Slice 按钮 disabled**：预设缺失时按钮 WS_DISABLED，WindowFromPoint
+   跳过禁用窗口返回主窗口 → 点击无效；这是 app 预期行为（用户工作流：先切 U1），
+   m2 的"预设切换"节点是下一步
+3. **含 gcode 的 3mf**：按钮渲染不同（0.666）→ 需 gcode 态按钮模板
+
+附带发现：2.3.6 分支预设布局是 `system/Snapmaker/{machine,filament,process}`（非标准
+`printers/filament`）；本机无 Bambu 预设 → Bambu 项目天然走"预设缺失"路径；app 启动的
+`[Orca Updater] staging validation failed (printers)` 即由此而来（bbl 预设子目录缺失，
+待办 #5）。
+
 ### 已知坑（踩过并已规避）
 
 1. **复用 datadir 后 CLI 位置参数不再自动加载模型** —— 首次运行后 app 写回的状态会阻断
@@ -109,6 +134,16 @@ Standard 嵌入预设）端到端 GREEN。
    首帧即含模型），任何晚于启动的参考帧都包含模型 → 差分永不触发（m2 曾因此恒
    UNVERIFIED）。改用绝对阈值：空床彩色占比 ~0.15% vs 带模型 ~2.1%，≥1% + 双轮稳定即判定；
    低饱和模型（默认 Prusa.stl 实测仅 ~0.7%）会漏检，由"切片成功兜底升级"覆盖
+9. **WCP WebView2 全屏透明层吞点击（间歇 flaky 根因）**：首页 WebView2 的渲染窗口
+   （`Chrome_RenderWidgetHostHWND`，WS_EX_TRANSPARENT，全屏 1920x1040）间歇性出现在
+   z-order 顶部——不绘制任何内容（截图无痕）但参与命中测试（WS_EX_TRANSPARENT 只影响
+   绘制顺序），WindowFromPoint 命中它 → 注入点击被吞，m2 曾 ~40% flaky "click didn't
+   take"（tab/按钮都中招）。修复：`msg_click_screen` 传 `root_hwnd`（主窗口）后改用
+   `ChildWindowFromPointEx(CWP_SKIPINVISIBLE|SKIPDISABLED|SKIPTRANSPARENT)` 在 app
+   窗口树内递归定位最深含点窗口——WebView2 是独立顶层窗口，天然不在树内
+10. **非 U1 预设的模型 → Slice 按钮 WS_DISABLED**：预设缺失（本机无 Bambu 预设）时
+    Slice 按钮 disabled，且 **WindowFromPoint 会跳过禁用窗口**返回主窗口 → 点击无效是
+    app 预期行为（真实工作流：先切 Snapmaker U1 再切片）；m2 的"预设切换"节点待实现
 
 ## 关键设计事实（源码核对过，改动 app 时需复查）
 

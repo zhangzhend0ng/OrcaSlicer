@@ -94,7 +94,7 @@ def click_and_verify(session, click_tpl: Path, expect_tpl: Path, attempts: int =
         if score < MATCH_THRESHOLD:
             print(f"[m1] attempt {i+1}: click target not found ({score:.3f})")
             continue
-        hwnd = winutil.msg_click_screen(sx, sy)
+        hwnd = winutil.msg_click_screen(sx, sy, session.hwnd)
         print(f"[m1] attempt {i+1}: clicked {click_tpl.name} at ({sx},{sy}) -> hwnd 0x{hwnd:x}")
         score2, _, _ = wait_for(session, expect_tpl, timeout_s=6.0)
         last = score2
@@ -164,7 +164,7 @@ def main() -> int:
                 print("[m1] FAIL: preview tab not found"); return 2
             img1 = None
             for i in range(4):
-                winutil.msg_click_screen(sx, sy)
+                winutil.msg_click_screen(sx, sy, session.hwnd)
                 time.sleep(1.0)
                 probe = capture_bgr(session)
                 if is_tab_teal(probe, 244, 49):

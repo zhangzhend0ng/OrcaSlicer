@@ -58,7 +58,7 @@ def main() -> int:
         def run(self, context, argv: CustomAction.RunArg) -> CustomAction.RunResult:
             x, y, w, h = argv.box
             ox, oy = winutil.client_to_screen(_MAIN[0].hwnd, 0, 0)
-            hwnd = winutil.msg_click_screen(x + w // 2 + ox, y + h // 2 + oy)
+            hwnd = winutil.msg_click_screen(x + w // 2 + ox, y + h // 2 + oy, _MAIN[0].hwnd)
             print(f"[m1b] custom MsgClick at box {argv.box} -> hwnd 0x{hwnd:x}")
             return CustomAction.RunResult(success=True)
 
@@ -122,7 +122,7 @@ def main() -> int:
                 sx = 108; sy = 49
                 ox, oy = winutil.client_to_screen(session.hwnd, 0, 0)
                 for _ in range(3):
-                    winutil.msg_click_screen(sx + ox, sy + oy)
+                    winutil.msg_click_screen(sx + ox, sy + oy, session.hwnd)
                     time.sleep(1.0)
                     s2, _, _ = wait_for(session, RESOURCE / "image" / "tab_prepare_active.png", timeout_s=4.0)
                     if s2 >= MATCH_THRESHOLD and is_tab_teal(capture_bgr(session), 108, 49):

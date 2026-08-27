@@ -120,7 +120,7 @@ def click_slice_start(session, attempts=3):
         if score < MATCH_THRESHOLD:
             print(f"[m2] slice button not found ({score:.3f})")
             continue
-        winutil.msg_click_screen(sx, sy)
+        winutil.msg_click_screen(sx, sy, session.hwnd)
         time.sleep(3.0)
         img = capture_bgr(session)
         cv2.imwrite(str(HERE / "artifacts" / f"m2_diag_click{i}.png"), img)

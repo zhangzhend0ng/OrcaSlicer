@@ -245,15 +245,49 @@ def window_from_screen_point(x: int, y: int) -> int:
     return user32.WindowFromPoint(pt)
 
 
-def msg_click_screen(x: int, y: int) -> int:
-    """Left-click at screen (x, y) via WindowFromPoint + SendMessage.
+# ChildWindowFromPointEx skip flags.
+CWP_SKIPINVISIBLE = 0x0001
+CWP_SKIPDISABLED = 0x0002
+CWP_SKIPTRANSPARENT = 0x0004
+
+
+def deepest_child_at(root_hwnd: int, x: int, y: int) -> int:
+    """Deepest descendant of `root_hwnd` containing screen point (x, y).
+
+    WHY: the WCP home keeps a FULLSCREEN transparent render host
+    (Chrome_RenderWidgetHostHWND, WS_EX_TRANSPARENT) that WindowFromPoint
+    hit-tests above everything while drawing nothing — clicks routed to it
+    are silently swallowed (observed ~30% flaky 'click didn't take' in m2,
+    both tabs and buttons). WS_EX_TRANSPARENT affects paint order only, NOT
+    hit testing, so WindowFromPoint cannot be fixed from outside; instead we
+    resolve the target inside the app's OWN window tree, where the WebView2
+    host does not exist. ChildWindowFromPointEx with CWP_SKIPTRANSPARENT
+    skips transparent layers; recursion walks to the deepest window.
+    """
+    hwnd = root_hwnd
+    while True:
+        ox, oy = client_to_screen(hwnd, 0, 0)
+        pt = wt.POINT(x - ox, y - oy)
+        child = user32.ChildWindowFromPointEx(
+            hwnd, pt, CWP_SKIPINVISIBLE | CWP_SKIPDISABLED | CWP_SKIPTRANSPARENT)
+        if not child or child == hwnd:
+            return hwnd
+        hwnd = child
+
+
+def msg_click_screen(x: int, y: int, root_hwnd: int | None = None) -> int:
+    """Left-click at screen (x, y) via SendMessage.
 
     Synchronous send through the native window procedure: the low-level
     keyboard/mouse hooks (NetEase GameViewer et al.) never see sent messages,
     so this works even when SendInput-style injection is suppressed. Needs no
     foreground window and no focus. Returns the HWND that received it.
+
+    `root_hwnd` (the app's main window) makes the target resolution
+    WebView2-proof via `deepest_child_at` — pass it from the drivers.
     """
-    hwnd = window_from_screen_point(x, y)
+    hwnd = (deepest_child_at(root_hwnd, x, y) if root_hwnd
+            else window_from_screen_point(x, y))
     lp = _lparam_from_screen(hwnd, x, y)
     _send_msg(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp)
     _send_msg(hwnd, WM_LBUTTONUP, 0, lp)
@@ -268,10 +302,10 @@ def _lparam_from_screen(hwnd: int, x: int, y: int) -> int:
     return (cy << 16) | (cx & 0xFFFF)
 
 
-def msg_click_client(hwnd: int, cx: int, cy: int) -> int:
+def msg_click_client(hwnd: int, cx: int, cy: int, root_hwnd: int | None = None) -> int:
     """Left-click client coords (cx, cy) of `hwnd` via SendMessage."""
     sx, sy = client_to_screen(hwnd, cx, cy)
-    return msg_click_screen(sx, sy)
+    return msg_click_screen(sx, sy, root_hwnd)
 
 
 def msg_text(hwnd: int, text: str) -> None:
