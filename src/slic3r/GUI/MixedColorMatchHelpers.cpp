@@ -20,6 +20,7 @@
 #include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/FilamentColorLibrary.hpp" // GetFilamentMatchName (family preset scan)
 
 namespace Slic3r { namespace GUI {
 wxColour parse_mixed_color(const std::string& value)
@@ -694,6 +695,41 @@ bool full_spectrum_preset_exists_for_current_nozzle()
     auto*            pb        = wxGetApp().preset_bundle;
     const std::string candidate = std::string(kFullSpectrumBase) + format_nozzle_label(nozzle) + " nozzle";
     return pb != nullptr && pb->filaments.find_preset(candidate) != nullptr;
+}
+
+std::string find_selectable_full_spectrum_family_preset(const std::string& family_name)
+{
+    if (family_name.empty())
+        return std::string();
+    auto* pb = wxGetApp().preset_bundle;
+    if (pb == nullptr)
+        return std::string();
+
+    // Scan by MATCH IDENTITY (GetFilamentMatchName strips the "<diameter> nozzle"
+    // suffix), never by name composition: composing "family + nozzle + nozzle" would
+    // re-encode the naming convention and inherit its case-sensitivity pitfalls
+    // (see #742, the U1 preset filename case mismatch).
+    const double nozzle = current_nozzle_diameter();
+    std::string fallback_sku;   // 0.4 SKU of the family, if present (selectable or not)
+    std::string first_match;    // first visible+compatible match, lowest preference
+    for (const Preset& preset : pb->filaments) {
+        if (GetFilamentMatchName(preset.name) != family_name)
+            continue;
+        const bool selectable = preset.is_visible && preset.is_compatible;
+        if (!selectable)
+            continue;
+        const bool current_nozzle = preset.name.find(format_nozzle_label(nozzle) + " nozzle") != std::string::npos;
+        const bool fallback_nozzle = preset.name.find(format_nozzle_label(kFallbackNozzle) + " nozzle") != std::string::npos;
+        if (current_nozzle)
+            return preset.name;              // highest preference: current nozzle SKU
+        if (fallback_nozzle)
+            fallback_sku = preset.name;      // second preference: 0.4 SKU
+        else if (first_match.empty())
+            first_match = preset.name;       // lowest preference: any other SKU
+    }
+    if (!fallback_sku.empty())
+        return fallback_sku;
+    return first_match;
 }
 
 MixedFilamentDisplayContext build_mixed_filament_display_context(const std::vector<std::string>& physical_colors)

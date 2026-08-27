@@ -43,6 +43,17 @@ std::string full_spectrum_preset_name();
 // to gate Recommended mode on preset availability rather than a hard-coded 0.4.
 bool full_spectrum_preset_exists_for_current_nozzle();
 
+// Resolve the selectable (visible + compatible) preset of a Full Spectrum FAMILY
+// (a library filament name, e.g. "Snapmaker PETG Full Spectrum @U1" -- pass
+// FullSpectrumPaletteEntry::family_name or GetFilamentMatchName(preset_name)).
+// Nozzle preference order: current-nozzle SKU, then the 0.4 SKU, then the first
+// selectable match. Matching is by GetFilamentMatchName identity (never by name
+// composition), so it is immune to the naming-convention case pitfalls (#742).
+// Returns the preset name, or "" when the family has no selectable preset (also
+// for an empty family_name). UI-thread only (reads preset_bundle, same
+// convention as above).
+std::string find_selectable_full_spectrum_family_preset(const std::string& family_name);
+
 // ---- CIELAB color space types ----
 
 struct CIELab {
@@ -210,6 +221,12 @@ struct BatchMatchResult
     int                            error_code   = 0; // 0=ok, 1=partial, 2=cancelled, 3=timeout
     bool                           is_recommended_mode       = false;
     std::vector<std::string>       recommended_physical_colors;
+    // Per-slot library FAMILY of the recommended palette. INVARIANT: parallel to
+    // recommended_physical_colors (same size; the canonical-fallback path fills the
+    // default family name per slot). Empty for manual mode. Single writer: the
+    // launch_background_match worker lambda (value projection -- treat as derived
+    // data, do not mutate elsewhere).
+    std::vector<std::string>       recommended_physical_family_names;
 };
 
 /// Extract all unique colors from a multi-color 3D model.

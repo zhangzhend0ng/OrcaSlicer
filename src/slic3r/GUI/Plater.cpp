@@ -2760,14 +2760,30 @@ Sidebar::Sidebar(Plater *parent)
                 }
             }
 
-            // Write Full Spectrum to slots 1-4 only when the preset is
-            // selectable under the current printer (present + visible +
-            // compatible, matching the filament combobox filter).
-            const std::string full_spectrum_preset = full_spectrum_preset_name();
-            const Preset*     fs_preset = pb->filaments.find_preset(full_spectrum_preset);
-            if (fs_preset != nullptr && fs_preset->is_visible && fs_preset->is_compatible) {
-                for (size_t i = 0; i < std::min<size_t>(4, target_count); ++i)
-                    pb->set_filament_preset(i, full_spectrum_preset);
+            // Write a Full Spectrum preset into each of slots 1-4, per the FAMILY the
+            // user selected in that slot's palette dropdown (phase 2 multi-family:
+            // e.g. PLA in slots 1-2, PETG in 3-4). When a slot's family has no
+            // selectable preset, the slot KEEPS its current preset — per spec §5.1
+            // ("Configured filaments will be used instead", the same promise the
+            // Confirm-time note in MixedFilamentBatchDialog makes). The
+            // default-family single preset is only used for legacy results that
+            // carry no per-slot family info (pre-phase-2 behavior).
+            for (size_t i = 0; i < std::min<size_t>(4, target_count); ++i) {
+                std::string preset_name;
+                if (i < result.recommended_physical_family_names.size()) {
+                    preset_name = find_selectable_full_spectrum_family_preset(result.recommended_physical_family_names[i]);
+                    // Family not selectable: leave empty on purpose — the slot keeps
+                    // the user's configured preset (§5.1). Do NOT substitute the
+                    // default family here: the user explicitly chose this family.
+                } else {
+                    // Legacy result without per-slot family info: the pre-phase-2
+                    // single default-family preset, all-or-nothing per slot.
+                    const Preset* fs_preset = pb->filaments.find_preset(full_spectrum_preset_name());
+                    if (fs_preset != nullptr && fs_preset->is_visible && fs_preset->is_compatible)
+                        preset_name = fs_preset->name;
+                }
+                if (!preset_name.empty())
+                    pb->set_filament_preset(i, preset_name);
             }
 
             wxGetApp().plater()->on_filaments_change(static_cast<int>(target_count));
@@ -2960,6 +2976,9 @@ Sidebar::Sidebar(Plater *parent)
         for (size_t i = 0; i < fcombos.size(); ++i) {
             if (fcombos[i]) fcombos[i]->update();
         }
+        // No undo snapshot in this apply path: mark dirty so close-without-save prompts
+        // instead of silently dropping the match result.
+        wxGetApp().plater()->update_project_dirty_from_presets();
         // §70: wxPD_AUTO_HIDE only fires at 100%, so reach 100 here for a clean
         // dismiss (otherwise the bar visibly aborts when the dialog leaves scope).
         set_progress(100);
