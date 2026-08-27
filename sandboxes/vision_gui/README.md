@@ -45,9 +45,9 @@ python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
 | M1 闭环（纯自研） | ✅ GREEN | click→verify→back 全通，含回弹重试 |
 | M1b A：MaaFw 内置 Click | ❌ FAIL | 识别 3/3 全中，但 SendMessage→顶层 HWND 不路由到 wx 子控件，tab 从未切换 |
 | M1b B：自定义 action | ✅ PASS | WindowFromPoint→子 HWND 一次成功且稳定 |
-| M2 模型自动加载 | ✅ | CLI 位置参数 + fresh datadir；**启动期必须 hands-off**（早期前台/移动干预会静默杀死 input_files 自动加载） |
+| M2 模型自动加载 | ✅ | CLI 位置参数 + fresh datadir；**启动期必须 hands-off**（早期前台/移动干预会静默杀死 input_files 自动加载）；到达检测 = viewport 彩色占比 ≥1%（空床实测 ~0.15%，模型 ~2.1%，双轮稳定确认） |
 | M2 点击 Slice→切片完成 | ✅ | 完成信号 = 按钮带绿勾的 done 态模板（`slice_button_done.png`，≥0.85） |
-| M2 Preview 工具路径 | ✅ | 彩色占比 5.66% ≈ 2.7× 切片前基线（2.12%），且 >4% 绝对阈值 |
+| M2 Preview 工具路径 | ✅ | 彩色占比 ≥1% 且 ≥2× 切片前基线（混色模型 4.88% vs 1.90%；默认 Prusa.stl 2.22% vs 0.69% 亦绿） |
 
 ### ~~M2 切片冻结~~ 已撤回：真实的因果链（2026-08-26 复盘）
 
@@ -99,12 +99,16 @@ Standard 嵌入预设）端到端 GREEN。
    `EVT_GLVIEWTOOLBAR_3D` 弹回 Prepare → 驱动必须 wait_for + 稳定性确认 + 重试，禁止定时假设
 3. **模板必须从"稳态"截图切**：启动 ~3s 内是主题应用前的瞬态（白底），稳态是深色主题
 4. **MaaFw 默认把截图降采样到 720p**：模板是原生分辨率切的，必须开 raw size
-5. **切片在本机很慢**（GameViewer 虚拟显示 + 首启预设索引）：Prusa.stl 可达数分钟，
-   完成检测超时给足 600s
+5. **"切片很慢"是测量假象**（已撤回，见上方 08-28 复盘）：实际 ~3s；完成检测超时
+   给足 1500s 仅作安全阀，模型未加载时 m2 会把上限压到 60s 快速失败
 6. **模板状态区分用颜色不用模板分**：tab 选中=teal(0,150,136)/未选=(59,68,70)（源自
    Notebook.cpp ButtonsListCtrl），TM_CCOEFF_NORMED 对纯背景变化不敏感（0.926 仍误判）
 7. **沙盒卫生待办**：种子的用户 conf 无明显 token，但 app 启动后有云端订阅回调（WCP 日志）；
    对外交发沙盒 profile 前需核实数据面
+8. **模型到达检测不能用"差分 vs 参考帧"**：模型在 hands-off 启动期内已渲染完（t=12s
+   首帧即含模型），任何晚于启动的参考帧都包含模型 → 差分永不触发（m2 曾因此恒
+   UNVERIFIED）。改用绝对阈值：空床彩色占比 ~0.15% vs 带模型 ~2.1%，≥1% + 双轮稳定即判定；
+   低饱和模型（默认 Prusa.stl 实测仅 ~0.7%）会漏检，由"切片成功兜底升级"覆盖
 
 ## 关键设计事实（源码核对过，改动 app 时需复查）
 

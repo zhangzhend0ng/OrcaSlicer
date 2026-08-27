@@ -2,7 +2,7 @@
 # m2_slice_chain.py — M2: the black-box SLICING business chain.
 #
 #   launch(with model) -> vision-confirm model loaded -> click "Slice plate"
-#   -> wait for slicing to finish (button region returns to idle) ->
+#   -> wait for slicing to finish (green-check done badge on the button) ->
 #   switch to Preview -> assert toolpath rendering (colored travel/extrusion
 #   lines raise viewport color variance).
 #
@@ -29,6 +29,18 @@ RESOURCE = HERE / "resource" / "image"
 # 3D viewport region (client px): right of the settings panel, below topbar.
 VP_X0, VP_Y0, VP_X1, VP_Y1 = 430, 70, 1155, 1030
 
+# Fraction of viewport pixels that must be clearly chromatic for the model
+# to count as loaded: empty bed measures ~0.15%, a loaded (multicolor) model
+# ~2.1% — 1% sits with >5x margin on both sides (measured 2026-08-28).
+MODEL_COLORED_THRESHOLD = 0.010
+
+# Absolute floor for the toolpath assertion: the pre-slice model baseline
+# is 0.7-2.1% depending on the model (default Prusa.stl 0.69%, multicolor
+# 1.9-2.1%) — 1% keeps the gate model-agnostic while far above empty-bed
+# noise (~0.15%). The >=2x ratio gate does the real discrimination; this
+# floor only excludes sub-1% jitter.
+TOOLPATH_COLORED_FLOOR = 0.010
+
 
 def viewport_stats(img):
     vp = img[VP_Y0:VP_Y1, VP_X0:VP_X1].astype(int)
@@ -46,25 +58,31 @@ def has_colored_content(img) -> float:
     return float((spread > 40).mean())
 
 
-def wait_model_loaded(session, timeout_s=45):
-    """Best-effort model-arrival detector: after a short settle, any large
-    viewport CHANGE means the loaded model rendered (absolute levels are too
-    boot-dependent to threshold — camera angle and bed fade-in vary)."""
-    time.sleep(4.0)  # let boot animations settle; the model loads in parallel
-    ref = capture_bgr(session)[VP_Y0:VP_Y1, VP_X0:VP_X1].astype(int)
+def wait_model_loaded(session, timeout_s=30):
+    """Model-arrival detector: a loaded model renders saturated colors into
+    the 3D viewport while the empty bed/grid is essentially monochrome
+    (measured: empty ~0.15% chromatic pixels, multicolor model ~2.1% — a 14x
+    separation; the 1% threshold has >5x margin on both sides).
+
+    The earlier diff-vs-reference detector was structurally blind: the model
+    loads DURING the hands-off boot (the t=12s boot frame already carries
+    it), so any reference captured after the hands-off sleep already contains
+    the model and a change never fires. An absolute chromatic threshold needs
+    no reference at all. Stability across two polls rules out theme/UI
+    animation transients (they would only trip a single poll).
+    Returns (ok, colored_fraction)."""
+    last_frac = 0.0
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        img = capture_bgr(session)
-        vp = img[VP_Y0:VP_Y1, VP_X0:VP_X1].astype(int)
-        diff = float(np.abs(vp - ref).mean())
-        if diff > 6.0:
-            # require stability: next capture close to this one
-            time.sleep(1.5)
-            vp2 = capture_bgr(session)[VP_Y0:VP_Y1, VP_X0:VP_X1].astype(int)
-            if float(np.abs(vp2 - vp).mean()) < 2.0:
-                return True, diff
+        frac = has_colored_content(capture_bgr(session))
+        if frac >= MODEL_COLORED_THRESHOLD:
+            time.sleep(1.0)
+            frac2 = has_colored_content(capture_bgr(session))
+            if frac2 >= MODEL_COLORED_THRESHOLD:
+                return True, max(frac, frac2)
+        last_frac = frac
         time.sleep(1.0)
-    return False, 0.0
+    return False, last_frac
 
 
 def wait_slicing_done(session, timeout_s=1500):
@@ -80,7 +98,7 @@ def wait_slicing_done(session, timeout_s=1500):
     last = 0.0
     while time.monotonic() < deadline:
         img = capture_bgr(session)
-        if n_polls in (2, 10, 60, 150):
+        if n_polls in (2, 10, 60, 150):  # diag snapshots: 1s/5s/30s/75s at 0.5s poll
             cv2.imwrite(str(HERE / "artifacts" / f"m2_diag_wait{n_polls}.png"), img)
         n_polls += 1
         res = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
@@ -88,7 +106,7 @@ def wait_slicing_done(session, timeout_s=1500):
         last = float(score)
         if score >= 0.85:
             return True, last
-        time.sleep(2.0)
+        time.sleep(0.5)
     return False, last
 
 
@@ -142,11 +160,12 @@ def main() -> int:
         score, _, _, _, _ = tpl_match(img_boot, RESOURCE / "tab_prepare_active.png")
         print(f"[m2] boot state: Prepare tab score {score:.3f} "
               f"(rect {session.rect()})")
-        ok_model, mdiff = wait_model_loaded(session)
-        print(f"[m2] model arrival observed: {ok_model} (viewport diff {mdiff:.1f})")
-        # best-effort: a fast load can precede our reference capture; the
-        # preview-toolpath assertion below is the authoritative gate.
-        results["model loaded"] = "PASS" if ok_model else "UNVERIFIED (best-effort)"
+        ok_model, col_frac = wait_model_loaded(session)
+        print(f"[m2] model arrival observed: {ok_model} (viewport colored {col_frac:.2%})")
+        # Slicing an empty plate produces nothing, so a successful slice also
+        # proves the model loaded — the detector verdict is upgraded below
+        # for models whose colors are too muted for the chromatic threshold.
+        results["model loaded"] = "PASS" if ok_model else "FAIL (no chromatic model content)"
         time.sleep(1.0)
 
         # 2) click "Slice plate" and wait for the button to come back idle
@@ -154,7 +173,13 @@ def main() -> int:
         started = click_slice_start(session)
         done, done_score = (False, 0.0)
         if started:
-            done, done_score = wait_slicing_done(session, timeout_s=1500)
+            # Model-arrival FAIL means slicing probably has nothing to work
+            # on; cap the wait so a dead run fails in ~1min with a clear
+            # diagnosis instead of spinning out the full 1500s. A muted-color
+            # model that slipped past the detector can still finish a real
+            # slice inside the cap and get upgraded below.
+            timeout_s = 1500 if ok_model else 60
+            done, done_score = wait_slicing_done(session, timeout_s=timeout_s)
         print(f"[m2] slicing started={started} done={done} (idle score {done_score:.3f})")
         results["slice + completion"] = "PASS" if done else "FAIL"
 
@@ -167,17 +192,19 @@ def main() -> int:
         colored = has_colored_content(img)
         print(f"[m2] Preview switched={ok_pv}, colored-viewport fraction: "
               f"{colored:.3%} (was {empty_frac0:.3%} before slicing)")
-        # toolpath = colored fraction both absolutely high AND ~2x the
-        # pre-slice colored-model baseline (a colored MODEL alone used to
-        # false-positive the old fixed threshold)
+        # toolpath = colored fraction well above the noise floor AND >=2x
+        # the pre-slice colored-model baseline (a colored MODEL alone used
+        # to false-positive the old fixed threshold; the ratio gate already
+        # excludes that — the floor only excludes sub-1% empty-bed jitter)
         results["preview toolpath"] = (
-            "PASS" if (ok_pv and colored > 0.04 and colored >= 2 * max(empty_frac0, 1e-4)) else "FAIL")
+            "PASS" if (ok_pv and colored > TOOLPATH_COLORED_FLOOR
+                       and colored >= 2 * max(empty_frac0, 1e-4)) else "FAIL")
 
         print("\n[m2] === verdict ===")
         # A successful end-to-end slice is itself proof the model loaded
-        # (slicing an empty plate produces nothing); upgrade the best-effort
-        # arrival detector's UNVERIFIED accordingly.
-        if results.get("slice + completion") == "PASS" and results["model loaded"].startswith("UNVERIFIED"):
+        # (slicing an empty plate produces nothing); upgrade a detector FAIL
+        # for models whose colors are too muted to trip the chromatic gate.
+        if results.get("slice + completion") == "PASS" and not results["model loaded"].startswith("PASS"):
             results["model loaded"] = "PASS (proven by successful slicing)"
         for k, v in results.items():
             print(f"  {k}: {v}")
