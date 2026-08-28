@@ -73,7 +73,14 @@ def launch(exe: Path | str | None = None,
     print(f"[launcher] {args[0]} --datadir {args[2]}" + (f" {args[3]}" if model else ""))
 
     winutil.make_dpi_aware()
-    popen = subprocess.Popen(args, env=env, cwd=str(exe.parent))
+    # SW_SHOWNOACTIVATE: show the window WITHOUT activating/raising it, so
+    # the app never steals focus from whatever the user is doing. wx may or
+    # may not honor it; the late background_tool_window() call in the
+    # drivers is the authoritative enforcement.
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 4  # SW_SHOWNOACTIVATE
+    popen = subprocess.Popen(args, env=env, cwd=str(exe.parent), startupinfo=si)
     try:
         hwnd = winutil.find_main_window(popen.pid, timeout_s=wait_window_s)
     except BaseException:

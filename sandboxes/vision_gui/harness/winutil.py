@@ -318,6 +318,28 @@ def close_window(hwnd: int) -> None:
     user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
 
 
+WS_EX_TOOLWINDOW = 0x00000080
+
+
+def background_tool_window(hwnd: int) -> bool:
+    """Make the window a background TOOL window: no taskbar button and no
+    foreground grabbing, while rendering/hit-testing stay untouched.
+
+    The sandbox UI shell owns the taskbar entry; the app under test should
+    not pop to the top over whatever the user is doing. Two lightweight
+    changes (no window-tree surgery, fully reversible on close):
+      - GWL_EXSTYLE |= WS_EX_TOOLWINDOW  -> no taskbar button
+      - SetWindowPos(HWND_BOTTOM, NOACTIVATE) -> bottom of the z-order
+    Safe to call only AFTER the hands-off boot window (early window
+    interference kills the CLI model auto-load, README pitfall #3).
+    """
+    ex = user32.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
+    user32.SetWindowLongW(hwnd, -20, ex | WS_EX_TOOLWINDOW)
+    user32.SetWindowPos(hwnd, 1, 0, 0, 0, 0,  # HWND_BOTTOM = 1
+                        0x0001 | 0x0002 | 0x0010)  # NOMOVE | NOSIZE | NOACTIVATE
+    return bool(user32.GetWindowLongW(hwnd, -20) & WS_EX_TOOLWINDOW)
+
+
 def move_to_primary_and_foreground(hwnd: int) -> bool:
     """Move the window onto the primary monitor and make it foreground.
 

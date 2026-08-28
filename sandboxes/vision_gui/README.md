@@ -20,6 +20,7 @@ harness/            驱动核心（纯 ctypes，零第三方依赖即可跑 m0�
   launcher.py       黑盒启动（显式剥除 ORCA_GUI_TEST_MODE！）
 m0_boot_check.py    里程碑0：启动→定位→截图→关闭 冒烟
 ui_runner.py        薄 UI 封装（CustomTkinter）：选模型→跑 m1/m2/批量→流式日志
+                    + live view 截图面板（按进程名找 app → PrintWindow 轮询显示）
 resource/image/     模板图（提交入库，测试资产）
 artifacts/          运行产物（gitignored）
 ```
@@ -159,8 +160,14 @@ Standard 嵌入预设）端到端 GREEN。
     后强杀（或外部 timeout 杀进程）会让 Sentry 的 crashpad 数据库
     （`%LOCALAPPDATA%\Snapmaker_Orca\`，**跨 datadir 共享**）处于半写状态，之后所有
     启动在 sentry_start_session 段抛未捕获 C++ 异常（0xE06D7363，静默崩溃）。恢复：
-    用任意 datadir 正常启动一次（Sentry 重建 DB）或改名/删除该目录。**教训：永远用
+    改名/删除该目录后正常启动一次（Sentry 重建 DB）。**教训：永远用
     `session.close()` 优雅退出，不要在诊断脚本里用 timeout/kill 杀 app**
+12. **窗口隐身化（2026-08-28）**：m1/m2 在 hands-off 结束后调用
+    `background_tool_window()`——`WS_EX_TOOLWINDOW`（无任务栏按钮）+ `HWND_BOTTOM`
+    （z-order 底部），让被测 app 不打扰用户桌面（任务栏只留 UI 壳）；launcher 启动用
+    `SW_SHOWNOACTIVATE`。渲染/命中测试不受影响（截图/注入全兼容，已回归验证）。
+    这是"嵌入到 UI 壳"的零侵入替代——SetParent 嵌入会破坏 wx 窗口树语义并违反
+    hands-off 教条，**不要做**
 
 ## 关键设计事实（源码核对过，改动 app 时需复查）
 
