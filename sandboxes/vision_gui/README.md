@@ -210,6 +210,29 @@ seed 的一切都来自**仓库 `resources/`**（exe 旁 `resources/` 兜底）�
 沙盒卫生（待办 #4）随本改动大部分完成——seed 不再接触用户数据；剩余项：app 运行期
 WCP 云端订阅回调（datadir/web 与 %LOCALAPPDATA% Sentry/WebView2 数据，见坑 #11）。
 
+## 打包为自包含 exe（2026-08-28）
+
+```bat
+build_ui.bat        rem 在 sandboxes/vision_gui 下运行
+```
+
+产物：`dist\vision_gui_runner\vision_gui_runner.exe`（onedir，~183MB，含
+customtkinter/Pillow/opencv/numpy；已排除 mss 与 MaaFw——沙盒代码不用 mss，
+MaaFw 仅 m1b 定案实验需要）。打包布局：
+
+- 驱动脚本 + `harness/` + `resource/`（模板）以数据形式随 exe 分发
+  （PyInstaller 6.x 放 `_internal/`）；打包版内部用 `run` 子命令分发
+  （`<exe> run m2_slice_chain.py --model x`）
+- **被测 app 不在包内**（snapmaker-orca.exe 只是 720K loader，主体是
+  Snapmaker_Orca.dll + resources ~200MB）：放到 `dist\vision_gui_runner\orca\`
+  或用环境变量 `ORCA_VISION_APP_EXE` 指定
+- 查找链：`ORCA_VISION_APP_EXE` → `<runner>/orca/` → dev build 兜底
+  （launcher.default_exe / profile.default_resources_dir 同构）
+
+边界（诚实声明）：模板绑定当前机器 DPI（换缩放需重采模板）；PyInstaller
+产物有杀软误报风险；打包版 UI 与驱动行为与开发版一致（run 分发已端到端
+验证：打包 exe 跑完整 m2 全链路 GREEN）。
+
 ## DPI
 
 驱动进程 per-monitor-v2 感知，坐标/像素均为物理像素。模板与 DPI 绑定：

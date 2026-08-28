@@ -48,5 +48,8 @@ CLAUDE.md
 # vision_gui sandbox experiment (sandboxes/vision_gui)
 sandboxes/vision_gui/.venv/
 sandboxes/vision_gui/artifacts/
+sandboxes/vision_gui/dist/
+sandboxes/vision_gui/build/
+sandboxes/vision_gui/*.spec
 __pycache__/
 *.pyc

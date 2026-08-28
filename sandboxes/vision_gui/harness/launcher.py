@@ -10,12 +10,33 @@
 
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 from . import winutil
 
-DEFAULT_EXE = Path(r"C:\coil\Projects\SnapmakerOrca_dev\build\src\Release\snapmaker-orca.exe")
+# App-under-test resolution order (see default_exe):
+#   1. ORCA_VISION_APP_EXE env var (any layout, CI/packaged)
+#   2. <runner>/orca/snapmaker-orca.exe (packaged layout — app shipped next
+#      to the UI shell)
+#   3. the dev build (this checkout)
+_DEV_EXE = Path(r"C:\coil\Projects\SnapmakerOrca_dev\build\src\Release\snapmaker-orca.exe")
+
+
+def default_exe() -> Path:
+    env = os.environ.get("ORCA_VISION_APP_EXE")
+    if env:
+        return Path(env)
+    runner_dir = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
+                  else Path(__file__).resolve().parents[2])
+    # PyInstaller 6.x onedir ships add-data under _internal/
+    data_dir = runner_dir / "_internal" if (runner_dir / "_internal").exists() else runner_dir
+    for bundled in (data_dir / "orca" / "snapmaker-orca.exe",
+                    runner_dir / "orca" / "snapmaker-orca.exe"):
+        if bundled.exists():
+            return bundled
+    return _DEV_EXE
 
 
 class AppSession:
@@ -56,7 +77,7 @@ def launch(exe: Path | str | None = None,
            model: Path | str | None = None,
            wait_window_s: float = 90.0) -> AppSession:
     """Launch the app; wait for its main window; return the session."""
-    exe = Path(exe) if exe else DEFAULT_EXE
+    exe = Path(exe) if exe else default_exe()
     if not exe.exists():
         raise FileNotFoundError(f"app exe not found: {exe} (pass --exe)")
     if datadir is None:

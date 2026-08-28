@@ -42,6 +42,7 @@
 import hashlib
 import json
 import shutil
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent  # sandboxes/vision_gui/harness
@@ -69,15 +70,19 @@ _VENDORS = ["Snapmaker", "BBL"]
 
 
 def default_resources_dir() -> Path:
-    """Repo resources/ first (development), exe-side resources/ fallback
-    (packaged builds)."""
+    """Repo resources/ first (development), then packaged-layout resources/
+    (<runner>/resources), then exe-side resources/ (installed builds)."""
     if REPO_RESOURCES.exists():
         return REPO_RESOURCES
-    exe = Path(r"C:\coil\Projects\SnapmakerOrca_dev\build\src\Release\snapmaker-orca.exe")
-    alt = exe.parent / "resources"
-    if alt.exists():
-        return alt
-    raise FileNotFoundError("no resources dir (repo or exe-side) found")
+    runner_dir = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
+                  else SANDBOX)
+    data_dir = runner_dir / "_internal" if (runner_dir / "_internal").exists() else runner_dir
+    for alt in (data_dir / "resources",
+                runner_dir / "resources",
+                Path(r"C:\coil\Projects\SnapmakerOrca_dev\build\src\Release\resources")):
+        if alt.exists():
+            return alt
+    raise FileNotFoundError("no resources dir (repo/packaged/exe-side) found")
 
 
 def load_conf(path: Path) -> dict:

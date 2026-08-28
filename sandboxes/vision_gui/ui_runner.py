@@ -202,9 +202,13 @@ class Runner(ctk.CTk):
         if self.proc and self.proc.poll() is None:
             self._log("(a run is already active)\n", "err")
             return
-        cmd = [sys.executable, str(script), *args]
+        if getattr(sys, "frozen", False):
+            # packaged: re-invoke this exe with the 'run' subcommand
+            cmd = [sys.executable, "run", str(script), *args]
+        else:
+            cmd = [sys.executable, str(script), *args]
         env = {k: v for k, v in os.environ.items() if k.upper() != "ORCA_GUI_TEST_MODE"}
-        self._log(f"$ {script.name} {' '.join(args)}\n", "sys")
+        self._log(f"$ {' '.join(cmd[1:])}\n", "sys")
         self.status.configure(text=f"running {label}…", text_color="#888888")
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      text=True, encoding="utf-8", errors="replace",
@@ -270,4 +274,23 @@ class Runner(ctk.CTk):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "run":
+        # Packaged subprocess entry: '<exe> run <script.py> [args...]'.
+        # In the frozen build sys.executable is this exe (not python), so the
+        # UI cannot spawn driver scripts directly — it re-invokes itself and
+        # we dispatch here. Driver scripts are shipped as data next to the
+        # exe (see build_ui.bat) and imported from there.
+        script = Path(sys.argv[2])
+        # PyInstaller 6.x onedir ships add-data files under _internal/
+        exe_dir = Path(sys.executable).resolve().parent
+        scripts_dir = exe_dir / "_internal" if (exe_dir / "_internal").exists() else exe_dir
+        sys.path.insert(0, str(scripts_dir))
+        sys.argv = [str(script)] + sys.argv[3:]
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(script.stem, script)
+        assert spec and spec.loader
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        raise SystemExit(mod.main())
     Runner().mainloop()
