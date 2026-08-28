@@ -19,6 +19,7 @@ harness/            驱动核心（纯 ctypes，零第三方依赖即可跑 m0�
   profile.py        沙盒 datadir 种子（**数据源 = 仓库/exe resources，非用户 %APPDATA%**）
   launcher.py       黑盒启动（显式剥除 ORCA_GUI_TEST_MODE！）
 m0_boot_check.py    里程碑0：启动→定位→截图→关闭 冒烟
+ui_runner.py        薄 UI 封装（CustomTkinter）：选模型→跑 m1/m2/批量→流式日志
 resource/image/     模板图（提交入库，测试资产）
 artifacts/          运行产物（gitignored）
 ```
@@ -31,6 +32,7 @@ python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
 .venv/Scripts/python m1_minimal_loop.py          # M1：tab 切换闭环（纯自研层）
 .venv/Scripts/python m1b_maa.py                  # M1b：MaaFw pipeline + 注入对比
 .venv/Scripts/python m2_slice_chain.py           # M2：切片业务链（默认 fresh profile）
+.venv/Scripts/python ui_runner.py                # 薄 UI 封装（CustomTkinter）
 .venv/Scripts/python inspect_window.py           # 子控件枚举 + 截图（开发辅助）
 ```
 
