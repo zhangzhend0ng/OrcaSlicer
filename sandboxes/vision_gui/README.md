@@ -16,7 +16,7 @@ harness/            驱动核心（纯 ctypes，零第三方依赖即可跑 m0�
   winutil.py        眼睛+手：EnumWindows/PID 定位、PrintWindow(FULLCONTENT) 截图、
                     WindowFromPoint+SendMessage 点击（远控免疫）、WM_CHAR 键入
   env_check.py      环境预检（GameViewer 等远控层、DPI）— 移植自 wx_gui 的 C++ 门禁
-  profile.py        沙盒 datadir 种子（JSON conf + MD5 行 + 系统预设拷贝）
+  profile.py        沙盒 datadir 种子（**数据源 = 仓库/exe resources，非用户 %APPDATA%**）
   launcher.py       黑盒启动（显式剥除 ORCA_GUI_TEST_MODE！）
 m0_boot_check.py    里程碑0：启动→定位→截图→关闭 冒烟
 resource/image/     模板图（提交入库，测试资产）
@@ -183,6 +183,23 @@ Standard 嵌入预设）端到端 GREEN。
 
 结论：**消息注入 + PrintWindow 截图**是本机（远控层常驻）唯一全绿通道，
 MaaFramework 控制器配置也按此选择。
+
+## 沙盒种子数据源（2026-08-28 起）
+
+seed 的一切都来自**仓库 `resources/`**（exe 旁 `resources/` 兜底），**不再拷贝用户
+`%APPDATA%\Snapmaker_Orca`**——沙盒因此可复现、可交发（不泄漏用户状态）：
+
+| datadir 项 | 来源 | 说明 |
+|---|---|---|
+| `system/` | `resources/profiles/{Snapmaker,BBL}` + vendor json | 打包安装形态（vendor/{machine,filament,process}），与 app 的 Orca Updater 安装结果一致；白名单 2 个 vendor（58 个全拷 = 80MB 太慢） |
+| `printers/` | `resources/printers/` | BL-P001（Bambu Lab）等；缺失会触发 "staging validation failed (printers)" 且第三方项目预设丢失 |
+| `Snapmaker_Orca.conf` | 手写最小模板 | 仅挡 wizard 所需键（privacy/firstguide）+ 沙盒确定性键（language/splash/page/backup）；无 recent/geometry/登录/设备标识 |
+
+附带发现：**BBL（Bambu Lab）预设 app 会从 exe 旁 resources 直接加载**（seed 不拷也
+可用，实测 lithophane 加载出 P1S 的床型/耗材/工艺）；但 BBL vendor 的 Prepare 面板
+布局与 Snapmaker 不同（Printer 区非 390x26 combo），预设切换节点需按 vendor 适配。
+沙盒卫生（待办 #4）随本改动大部分完成——seed 不再接触用户数据；剩余项：app 运行期
+WCP 云端订阅回调（datadir/web 与 %LOCALAPPDATA% Sentry/WebView2 数据，见坑 #11）。
 
 ## DPI
 

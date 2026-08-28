@@ -8,7 +8,7 @@
 #
 #   wizard     : needs conf to exist AND printers to be non-default AND
 #                privacy flag non-empty (GUI_App::config_wizard_startup).
-#                -> we copy installed system presets + write a conf with
+#                -> we install repo presets + write a clean conf with
 #                   privacy_policy_isagree=true and firstguide.finish=true.
 #   splash     : app.show_splash_screen = false
 #   language   : app.language = "en_US" (template byte-stability; NOT the OS
@@ -16,7 +16,24 @@
 #   start page : app.default_page = "1" (3D editor; "0" is the WebView2 Home)
 #   restore    : app.backup_switch = false + no last_backup_path (Plater would
 #                otherwise pop the modal "restore previous project?" dialog)
-#   geometry   : drop window_mainframe/main_frame_pos keys -> default size
+#   geometry   : no window_mainframe key -> default size (a saved position on
+#                the GameViewer virtual display would put every sandbox
+#                window on a throttled, non-interactive screen)
+#
+# DATA SOURCES (2026-08-28): everything comes from the REPO RESOURCES (with
+# the exe-side resources/ as fallback) — never from the user's %APPDATA%:
+#   system/   <- resources/profiles/{Snapmaker,BBL} (+ vendor json). This is
+#                the packed-install form the app's own Orca Updater stages
+#                into datadir/system; the user's installed system/ is merely
+#                a copy of it. Only the vendors the sandbox exercises are
+#                copied (58 vendors = 80MB would bloat every fresh seed).
+#   printers/ <- resources/printers/ (vendor machines: BL-P001 Bambu Lab,
+#                N1/N2S, ...). Without them every third-party project loses
+#                its printer preset (silent replacement) and startup logs
+#                "staging validation failed (printers)".
+#   conf      <- a minimal hand-written template. Copying the user's conf
+#                leaks personal state (recent files, window geometry, login/
+#                device identity) and makes the sandbox non-reproducible.
 #
 # Config format (this fork, USE_JSON_CONFIG): a single JSON object followed by
 # "\n# MD5 checksum <32 hex>\n". The MD5 is only an informational check on
@@ -24,33 +41,43 @@
 
 import hashlib
 import json
-import os
 import shutil
 from pathlib import Path
 
-# Keys dropped from the source conf: recent files leak paths and can trigger
-# UI affordances; window geometry forces a deterministic default layout.
-# NOTE window_mainframe is THE restore key (GUI_App::window_pos_restore
-# reads app_config "window_mainframe") — a saved position on the GameViewer
-# virtual display would put every sandbox window on a throttled, non-interactive
-# screen where DWM starves wx timers and FREEZES slicing.
-_DROP_APP_KEYS = [
-    "window_mainframe", "main_frame_pos", "main_frame_size", "last_backup_path",
-    "object_settings_maximized", "object_settings_pos", "object_settings_size",
-]
-_DROP_SECTIONS = ["recent", "recent_projects"]
+HERE = Path(__file__).resolve().parent  # sandboxes/vision_gui/harness
+SANDBOX = HERE.parent  # sandboxes/vision_gui
+REPO_RESOURCES = SANDBOX.parent.parent / "resources"
+
+# Minimal conf: everything the startup gate needs and nothing personal.
+# Keys are typed like the real conf (bool vs string) so the app's typed
+# getters (get vs get_bool) keep working.
+MINIMAL_CONF = {
+    "app": {
+        "language": "en_US",
+        "show_splash_screen": False,
+        "single_instance": False,
+        "default_page": "1",             # "1" = 3D editor (Prepare)
+        "privacy_policy_isagree": True,
+        "backup_switch": False,          # kill the restore-project modal
+    },
+    "firstguide": {"finish": True},      # exactly as the wizard persists it
+}
+
+# Vendors installed into datadir/system (whitelist keeps fresh seeds fast;
+# the app only needs ANY non-default printer to skip the wizard).
+_VENDORS = ["Snapmaker", "BBL"]
 
 
-def default_source_conf() -> Path:
-    return Path(os.environ["APPDATA"]) / "Snapmaker_Orca" / "Snapmaker_Orca.conf"
-
-
-def default_source_presets() -> Path:
-    return Path(os.environ["APPDATA"]) / "Snapmaker_Orca" / "system"
-
-
-def default_vendor_printers() -> Path:
-    return Path(os.environ["APPDATA"]) / "Snapmaker_Orca" / "printers"
+def default_resources_dir() -> Path:
+    """Repo resources/ first (development), exe-side resources/ fallback
+    (packaged builds)."""
+    if REPO_RESOURCES.exists():
+        return REPO_RESOURCES
+    exe = Path(r"C:\coil\Projects\SnapmakerOrca_dev\build\src\Release\snapmaker-orca.exe")
+    alt = exe.parent / "resources"
+    if alt.exists():
+        return alt
+    raise FileNotFoundError("no resources dir (repo or exe-side) found")
 
 
 def load_conf(path: Path) -> dict:
@@ -65,74 +92,58 @@ def write_conf(path: Path, conf: dict) -> None:
     path.write_text(body + "\n# MD5 checksum " + digest + "\n", encoding="utf-8")
 
 
-def overrides_for(conf: dict) -> dict:
-    """Apply sandbox defaults, keeping each key's existing JSON type (bool vs
-    string) so the app's typed getters (get vs get_bool) keep working."""
-    app = conf.setdefault("app", {})
-    ov = {
-        "language": "en_US",            # string in real conf
-        "show_splash_screen": False,    # bool in real conf
-        "single_instance": False,       # bool in real conf
-        "default_page": "1",            # string "1" = 3D editor (Prepare)
-        "privacy_policy_isagree": True,  # bool in real conf
-        "backup_switch": False,         # bool: kill the restore-project modal
-    }
-    for k, v in ov.items():
-        app[k] = v
-    # Wizard finish flag: bool True, exactly as the guide dialog persists it.
-    conf.setdefault("firstguide", {})["finish"] = True
-    return ov
-
-
 def seed_profile(dest: Path,
                  source_conf: Path | None = None,
                  source_presets: Path | None = None,
                  source_printers: Path | None = None,
                  fresh: bool = False) -> Path:
-    """Create/refresh `dest` as a runnable sandbox datadir; returns it."""
+    """Create/refresh `dest` as a runnable sandbox datadir; returns it.
+
+    All sources default to the repo/exe resources; explicit overrides are
+    accepted for CI setups that vendor their own assets.
+    """
     dest = Path(dest)
-    source_conf = Path(source_conf) if source_conf else default_source_conf()
-    source_presets = Path(source_presets) if source_presets else default_source_presets()
+    resources = default_resources_dir()
+    source_presets = Path(source_presets) if source_presets else resources / "profiles"
+    source_printers = Path(source_printers) if source_printers else resources / "printers"
 
     if fresh and dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True, exist_ok=True)
 
     # 1) system presets: makes printers.only_default_printers() false so the
-    #    startup wizard does not run. Copied from the user's installed set
-    #    (matches the exe the user runs; ~3MB). For CI-grade determinism point
-    #    --presets-from at the exe's own resources/profiles instead.
+    #    startup wizard does not run. Whitelisted vendors in packed-install
+    #    form (vendor dir + vendor.json), the same layout the app's Orca
+    #    Updater stages into datadir/system.
     dst_system = dest / "system"
     if not dst_system.exists():
-        if not source_presets.exists():
-            raise FileNotFoundError(f"preset source not found: {source_presets}")
-        shutil.copytree(source_presets, dst_system)
+        for vendor in _VENDORS:
+            vdir = source_presets / vendor
+            if not vdir.exists():
+                print(f"[profile] WARN vendor dir missing: {vdir}")
+                continue
+            shutil.copytree(vdir, dst_system / vendor)
+            vjson = source_presets / f"{vendor}.json"
+            if vjson.exists():
+                shutil.copy2(vjson, dst_system / f"{vendor}.json")
 
-    # 2) vendor printer presets (BL-P001 = Bambu Lab, N1/N2S, ...): the app's
-    #    Orca Updater stages these into <datadir>/printers at startup; without
-    #    them every non-Snapmaker project loses its printer preset (silent
-    #    replacement) AND the startup logs "staging validation failed
-    #    (printers)". Copy the user's set so third-party projects behave the
-    #    same as on the real machine.
+    # 2) vendor printer presets: the app's Orca Updater stages these into
+    #    <datadir>/printers at startup; without them third-party projects
+    #    lose their printer preset and startup logs "staging validation
+    #    failed (printers)".
     dst_printers = dest / "printers"
     if not dst_printers.exists():
-        src_printers = Path(source_printers) if source_printers else default_vendor_printers()
-        if src_printers.exists():
-            shutil.copytree(src_printers, dst_printers)
+        if not source_printers.exists():
+            print(f"[profile] WARN printers source missing: {source_printers}")
+        else:
+            shutil.copytree(source_printers, dst_printers)
 
-    # 3) app conf: start from the user's real config (keeps ssl/update/
-    #    preset-selection state realistic), then sandbox-override.
-    if not source_conf.exists():
-        raise FileNotFoundError(f"source conf not found: {source_conf}")
-    conf = load_conf(source_conf)
-    for sec in _DROP_SECTIONS:
-        conf.pop(sec, None)
-    for k in _DROP_APP_KEYS:
-        conf.get("app", {}).pop(k, None)
-    applied = overrides_for(conf)
+    # 3) app conf: minimal hand-written template — reproducible and free of
+    #    user state (recent files, window geometry, device identity).
+    conf = json.loads(json.dumps(MINIMAL_CONF))
     write_conf(dest / "Snapmaker_Orca.conf", conf)
-    print(f"[profile] seeded {dest}")
-    print(f"[profile] overrides: {json.dumps(applied)}")
+    print(f"[profile] seeded {dest} (resources: {resources})")
+    print(f"[profile] conf: {json.dumps(conf)}")
     return dest
 
 
