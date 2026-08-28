@@ -8,6 +8,7 @@
 # Usage: .venv/Scripts/python ui_runner.py
 
 import ctypes
+import json
 import os
 import queue
 import subprocess
@@ -25,11 +26,17 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from harness import winutil  # noqa: E402
+from harness.launcher import default_exe  # noqa: E402
 
 SCRIPTS = {
     "m1": HERE / "m1_minimal_loop.py",
     "m2": HERE / "m2_slice_chain.py",
 }
+
+# UI state survives restarts (exe path, model list). %LOCALAPPDATA% so it
+# stays writable when this runs from a onefile PyInstaller bundle.
+STATE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "vision_gui"
+STATE_FILE = STATE_DIR / "ui_state.json"
 
 # Convenience defaults (replaceable via the file picker).
 COMMON_MODELS = [
@@ -99,6 +106,15 @@ class Runner(ctk.CTk):
         ctk.CTkButton(col, text="Browse…", width=110, command=self._browse).pack(pady=2)
         ctk.CTkButton(col, text="Common", width=110, command=self._common).pack(pady=2)
 
+        # ---- app-under-test exe row ----
+        exe_row = ctk.CTkFrame(self)
+        exe_row.pack(fill="x", padx=10, pady=4)
+        ctk.CTkLabel(exe_row, text="App exe:").pack(side="left", padx=(6, 4))
+        self.exe_path = ctk.CTkEntry(exe_row, width=760, font=("Consolas", 12))
+        self.exe_path.pack(side="left", padx=4)
+        self.exe_path.insert(0, str(default_exe()))
+        ctk.CTkButton(exe_row, text="Browse…", width=110, command=self._browse_exe).pack(side="left", padx=4)
+
         # ---- run buttons ----
         btns = ctk.CTkFrame(self)
         btns.pack(fill="x", padx=10, pady=4)
@@ -131,6 +147,7 @@ class Runner(ctk.CTk):
 
         self.after(100, self._poll)
         threading.Thread(target=self._shot_loop, daemon=True).start()
+        self._load_state()
 
     # ---- helpers ---------------------------------------------------------
 
@@ -143,10 +160,48 @@ class Runner(ctk.CTk):
         if files:
             self.models.delete("1.0", "end")
             self.models.insert("1.0", "\n".join(files))
+        self._save_state()
 
     def _common(self):
         self.models.delete("1.0", "end")
         self.models.insert("1.0", "\n".join(COMMON_MODELS))
+        self._save_state()
+
+    def _browse_exe(self):
+        path = filedialog.askopenfilename(
+            title="Pick the app-under-test exe", filetypes=[("Executable", "*.exe"), ("All", "*.*")])
+        if path:
+            self.exe_path.delete(0, "end")
+            self.exe_path.insert(0, path)
+            self._save_state()
+
+    def _exe_arg(self) -> list[str]:
+        """--exe <path> for the driver script (omitted when empty -> driver
+        default). This is what makes 'swap the app under test' work without
+        touching code: point it at a different build/version of the app."""
+        exe = self.exe_path.get().strip()
+        return ["--exe", exe] if exe else []
+
+    def _load_state(self):
+        try:
+            state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            if state.get("exe"):
+                self.exe_path.delete(0, "end")
+                self.exe_path.insert(0, state["exe"])
+            if state.get("models"):
+                self.models.delete("1.0", "end")
+                self.models.insert("1.0", "\n".join(state["models"]))
+        except (OSError, ValueError):
+            pass  # first run or corrupt state — keep defaults
+
+    def _save_state(self):
+        try:
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            state = {"exe": self.exe_path.get().strip(), "models": self._models()}
+            STATE_FILE.write_text(json.dumps(state, indent=1, ensure_ascii=False),
+                                  encoding="utf-8")
+        except OSError:
+            pass  # state is a convenience, never fatal
 
     def _log(self, text: str, tag: str = "log"):
         self.log.insert("end", text, tag)
@@ -234,20 +289,22 @@ class Runner(ctk.CTk):
             self.queue.put(("__NEXT__", None))
 
     def _run_m(self, key: str):
-        self._run(SCRIPTS[key], [], key)
+        self._run(SCRIPTS[key], self._exe_arg(), key)
 
     def _run_m2(self):
         models = self._models()
         if not models:
             self._log("(no model given)\n", "err")
             return
-        self._run(SCRIPTS["m2"], ["--model", models[0]], "m2")
+        self._save_state()
+        self._run(SCRIPTS["m2"], [*self._exe_arg(), "--model", models[0]], "m2")
 
     def _run_batch(self):
         models = self._models()
         if not models:
             self._log("(no model given)\n", "err")
             return
+        self._save_state()
         self.batch_pending = list(models)
         self._log(f"(batch of {len(models)} model(s))\n", "sys")
         self._next_batch()
@@ -257,7 +314,7 @@ class Runner(ctk.CTk):
             self._log("(batch finished)\n", "sys")
             return
         m = self.batch_pending.pop(0)
-        self._run(SCRIPTS["m2"], ["--model", m], f"m2 {Path(m).name}")
+        self._run(SCRIPTS["m2"], [*self._exe_arg(), "--model", m], f"m2 {Path(m).name}")
 
     def _stop(self):
         if not (self.proc and self.proc.poll() is None):

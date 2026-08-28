@@ -21,6 +21,7 @@ harness/            驱动核心（纯 ctypes，零第三方依赖即可跑 m0�
 m0_boot_check.py    里程碑0：启动→定位→截图→关闭 冒烟
 ui_runner.py        薄 UI 封装（CustomTkinter）：选模型→跑 m1/m2/批量→流式日志
                     + live view 截图面板（按进程名找 app → PrintWindow 轮询显示）
+                    + App exe 可替换（输入框透传 --exe，状态存 %LOCALAPPDATA%\vision_gui）
 resource/image/     模板图（提交入库，测试资产）
 artifacts/          运行产物（gitignored）
 ```
