@@ -99,22 +99,27 @@ Standard 嵌入预设）端到端 GREEN。
 | 立方体.3mf | Snapmaker U1 (0.4) | ✅ GREEN | |
 | 四料混色.3mf | Snapmaker U1 (0.4) | ✅ GREEN | 修复 WebView2 后 5/5 稳定（修复前 2/5 flaky） |
 | Prusa.stl（m2 默认） | — | ✅ GREEN | 色度检测走"切片成功兜底"升级 |
-| 混色.gcode.3mf | Snapmaker U1 (0.4) | ⏸ 已知限制 | 含 gcode，按钮渲染 0.666 拒点，需 gcode 态按钮变体模板 |
-| lithophane.3mf | Bambu P1S | ⏸ 预期 | 预设缺失 → Slice 按钮 WS_DISABLED → 点击无效（坑 #10） |
-| Pikachu X1C | Bambu X1 Carbon | ⏸ 预期 | 同上；模型未渲染（加载失败回滚） |
+| 混色.gcode.3mf | Snapmaker U1 (0.4) | ⏸ 已知限制 | 含 gcode → `only_gcode_mode` 源码门禁用 Slice 按钮（渲染 0.666）；正确测试路径是跳过切片直接验 Preview |
+| lithophane.3mf | Bambu P1S | ⏸ 预期 | **混色耗材兼容门**：Color Mixing 引用缺失耗材 → Slice 禁用（切打印机无效，见坑 #10）；补 printers/ seed 后预设可加载但混色门仍挡 |
+| Pikachu X1C | Bambu X1 Carbon | ⏸ 预期 | 同上 |
 | A1mini+R3dPETG罗隐 | Bambu A1 mini | ⏸ 预期 | 同上 |
 
 三类脆弱点与处理：
 1. **WebView2 透明层吞点击**（间歇 flaky ~40%）→ winutil 穿透修复（坑 #9）
-2. **非 U1 预设 → Slice 按钮 disabled**：预设缺失时按钮 WS_DISABLED，WindowFromPoint
-   跳过禁用窗口返回主窗口 → 点击无效；这是 app 预期行为（用户工作流：先切 U1），
-   m2 的"预设切换"节点是下一步
-3. **含 gcode 的 3mf**：按钮渲染不同（0.666）→ 需 gcode 态按钮模板
+2. **非 U1 预设 → Slice 按钮 disabled**：gcode 项目（only_gcode_mode）与混色耗材不兼容
+   （has_incompatible_mixed_filament_in_use）两条源码门都禁用按钮；打印机预设缺失时
+   app 自动替换为默认（combo 显示 U1），所以"切打印机"不是解法——切耗材槽才是；
+   已补 `printers/` seed（见下）消除预设缺失路径
+3. **含 gcode 的 3mf**：按钮禁用（源码门）→ 正确测试 = 跳过切片直接验 Preview
 
-附带发现：2.3.6 分支预设布局是 `system/Snapmaker/{machine,filament,process}`（非标准
-`printers/filament`）；本机无 Bambu 预设 → Bambu 项目天然走"预设缺失"路径；app 启动的
-`[Orca Updater] staging validation failed (printers)` 即由此而来（bbl 预设子目录缺失，
-待办 #5）。
+附带发现与修复：
+- 2.3.6 预设布局：`system/Snapmaker/{machine,filament,process}` + 独立的
+  `printers/`（vendor 预设，BL-P001 等）；**seed 原先只拷 system** → Bambu 项目预设
+  缺失 + 启动报 `[Orca Updater] staging validation failed (printers)`（待办 #5）。
+  已修：seed 一并拷贝 `printers/`（2026-08-28）→ staging 错误消失
+- 预设切换节点探索结论（未实现）：Printer combo 可黑盒切换（screen(625,279)，
+  GetWindowText 可读、popup 行自绘需试错点击）；但 Bambu 混色项目被混色兼容门挡住，
+  需切换耗材槽（UI 深度操作）——成本高，留作后续
 
 ### 已知坑（踩过并已规避）
 
@@ -144,6 +149,16 @@ Standard 嵌入预设）端到端 GREEN。
 10. **非 U1 预设的模型 → Slice 按钮 WS_DISABLED**：预设缺失（本机无 Bambu 预设）时
     Slice 按钮 disabled，且 **WindowFromPoint 会跳过禁用窗口**返回主窗口 → 点击无效是
     app 预期行为（真实工作流：先切 Snapmaker U1 再切片）；m2 的"预设切换"节点待实现
+    ——但注意源码门链（MainFrame.cpp get_enable_slice_status）：gcode 项目
+    （only_gcode_mode）与**混色耗材不兼容**（has_incompatible_mixed_filament_in_use，
+    项目级 Color Mixing 引用缺失耗材）都禁用按钮——**切打印机到 U1 无效**（缺失时 app
+    已自动替换），正确路径是切**耗材槽**到兼容预设
+11. **强杀 app 会损坏 Sentry 共享 crashpad DB → 后续启动全崩**：`session.close()` 超时
+    后强杀（或外部 timeout 杀进程）会让 Sentry 的 crashpad 数据库
+    （`%LOCALAPPDATA%\Snapmaker_Orca\`，**跨 datadir 共享**）处于半写状态，之后所有
+    启动在 sentry_start_session 段抛未捕获 C++ 异常（0xE06D7363，静默崩溃）。恢复：
+    用任意 datadir 正常启动一次（Sentry 重建 DB）或改名/删除该目录。**教训：永远用
+    `session.close()` 优雅退出，不要在诊断脚本里用 timeout/kill 杀 app**
 
 ## 关键设计事实（源码核对过，改动 app 时需复查）
 

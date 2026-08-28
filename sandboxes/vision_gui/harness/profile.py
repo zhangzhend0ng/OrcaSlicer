@@ -49,6 +49,10 @@ def default_source_presets() -> Path:
     return Path(os.environ["APPDATA"]) / "Snapmaker_Orca" / "system"
 
 
+def default_vendor_printers() -> Path:
+    return Path(os.environ["APPDATA"]) / "Snapmaker_Orca" / "printers"
+
+
 def load_conf(path: Path) -> dict:
     raw = path.read_text(encoding="utf-8")
     left = raw[: raw.rfind("}") + 1]  # strip the trailing checksum comment
@@ -83,6 +87,7 @@ def overrides_for(conf: dict) -> dict:
 def seed_profile(dest: Path,
                  source_conf: Path | None = None,
                  source_presets: Path | None = None,
+                 source_printers: Path | None = None,
                  fresh: bool = False) -> Path:
     """Create/refresh `dest` as a runnable sandbox datadir; returns it."""
     dest = Path(dest)
@@ -103,7 +108,19 @@ def seed_profile(dest: Path,
             raise FileNotFoundError(f"preset source not found: {source_presets}")
         shutil.copytree(source_presets, dst_system)
 
-    # 2) app conf: start from the user's real config (keeps ssl/update/
+    # 2) vendor printer presets (BL-P001 = Bambu Lab, N1/N2S, ...): the app's
+    #    Orca Updater stages these into <datadir>/printers at startup; without
+    #    them every non-Snapmaker project loses its printer preset (silent
+    #    replacement) AND the startup logs "staging validation failed
+    #    (printers)". Copy the user's set so third-party projects behave the
+    #    same as on the real machine.
+    dst_printers = dest / "printers"
+    if not dst_printers.exists():
+        src_printers = Path(source_printers) if source_printers else default_vendor_printers()
+        if src_printers.exists():
+            shutil.copytree(src_printers, dst_printers)
+
+    # 3) app conf: start from the user's real config (keeps ssl/update/
     #    preset-selection state realistic), then sandbox-override.
     if not source_conf.exists():
         raise FileNotFoundError(f"source conf not found: {source_conf}")
