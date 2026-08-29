@@ -11,6 +11,7 @@
 
 import ctypes
 import ctypes.wintypes as wt
+import threading
 import time
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -401,25 +402,116 @@ def real_click_screen(x: int, y: int) -> int:
 
 
 WS_EX_TOOLWINDOW = 0x00000080
+WS_EX_NOACTIVATE = 0x08000000
+HWND_BOTTOM = 1                  # SetWindowPos insert-after
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOACTIVATE = 0x0010
+GWL_EXSTYLE = -20
 
 
-def background_tool_window(hwnd: int) -> bool:
-    """Make the window a background TOOL window: no taskbar button and no
-    foreground grabbing, while rendering/hit-testing stay untouched.
+def demote_window(hwnd: int) -> bool:
+    """One PASSIVE demotion pass on `hwnd`: bottom of the z-order, and — the
+    load-bearing bit — WS_EX_NOACTIVATE, which forbids the window from ever
+    taking the foreground again (Show/Raise/click included). Touches ONLY the
+    ex-style and the z-order: no move, no size, no focus, no foreground grab,
+    so it can be repeated freely (the boot watchdog calls it every tick).
+    Rendering and hit-testing are untouched, so capture and message injection
+    keep working (regression-verified, see diag_early_stealth.py).
 
-    The sandbox UI shell owns the taskbar entry; the app under test should
-    not pop to the top over whatever the user is doing. Two lightweight
-    changes (no window-tree surgery, fully reversible on close):
-      - GWL_EXSTYLE |= WS_EX_TOOLWINDOW  -> no taskbar button
-      - SetWindowPos(HWND_BOTTOM, NOACTIVATE) -> bottom of the z-order
-    Safe to call only AFTER the hands-off boot window (early window
-    interference kills the CLI model auto-load, README pitfall #3).
+    The taskbar button is deliberately KEPT (2026-08-30, user request): with
+    WS_EX_TOOLWINDOW the app was completely invisible — an orphaned/stuck
+    run gave the user no indicator at all. The icon is a running indicator;
+    NOACTIVATE still keeps a taskbar click from popping the window to the
+    top. History: the FIRST version set only WS_EX_TOOLWINDOW plus a one-shot
+    HWND_BOTTOM, so any later Show/Raise/dialog re-popped the app over the
+    user's desktop — the very thing the stealth design exists to prevent.
     """
-    ex = user32.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
-    user32.SetWindowLongW(hwnd, -20, ex | WS_EX_TOOLWINDOW)
-    user32.SetWindowPos(hwnd, 1, 0, 0, 0, 0,  # HWND_BOTTOM = 1
-                        0x0001 | 0x0002 | 0x0010)  # NOMOVE | NOSIZE | NOACTIVATE
-    return bool(user32.GetWindowLongW(hwnd, -20) & WS_EX_TOOLWINDOW)
+    ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE)
+    user32.SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+    style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    return bool(style & WS_EX_NOACTIVATE)
+
+
+# Backwards-compat alias (m3x case scripts may call the old name directly).
+background_tool_window = demote_window
+
+
+def _window_pid(hwnd: int) -> int:
+    pid = wt.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    return pid.value
+
+
+def force_set_foreground(hwnd: int) -> bool:
+    """SetForegroundWindow that works under the foreground lock, and works on
+    a window we do NOT own: attach our thread to the current foreground
+    thread first (same trick move_to_primary_and_foreground uses). Used to
+    RESTORE focus to the window the user was actually using when the app
+    under test grabs the foreground at boot.
+    """
+    fg = user32.GetForegroundWindow()
+    our_tid = kernel32.GetCurrentThreadId()
+    fg_tid = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+    attached = user32.AttachThreadInput(our_tid, fg_tid, True) if fg_tid else False
+    user32.SetForegroundWindow(hwnd)
+    user32.SetFocus(hwnd)
+    if attached:
+        user32.AttachThreadInput(our_tid, fg_tid, False)
+    return user32.GetForegroundWindow() == hwnd
+
+
+def demote_watchdog(pid: int, duration_s: float, interval_s: float = 0.2,
+                    fg_restore_to: int | None = None) -> threading.Thread:
+    """Keep every visible top-level window of `pid` demoted for `duration_s`.
+
+    WHY: the launcher's SW_SHOWNOACTIVATE is a no-op for wx — wxMSW Show()
+    calls ShowWindow(SW_SHOW), which activates + raises regardless of the
+    STARTUPINFO wShowWindow (Windows honors that only for SW_SHOWDEFAULT).
+    The main frame therefore popped to the TOP of the user's desktop at boot
+    and, under the drivers' hands-off rule, sat there for ~12s until the
+    late background_tool_window() call ran.
+
+    Two mechanisms, because demotion alone is racy:
+      1. demote_window() every tick (ex-style + HWND_BOTTOM, NOMOVE|NOSIZE|
+         NOACTIVATE) — prevents any LATER activation, self-heals Raises.
+      2. fg_restore_to: the watchdog cannot PREVENT the first activation
+         (Show races our first tick — verified: two runs of the same code
+         gave 0 vs 139 foreground steals) and z-order demotion does not
+         strip an already-held foreground. So when the app owns the
+         foreground, we hand it back to `fg_restore_to` (the window that
+         was foreground before launch — i.e. whatever the user was using).
+         This is focus RESTORATION, the inverse of the experimentally
+         forbidden foreground-grabbing (README pitfall #3).
+
+    Returns the started daemon thread.
+    """
+    stop_at = time.monotonic() + duration_s
+    restore_count = 0
+
+    def _run() -> None:
+        nonlocal restore_count
+        while time.monotonic() < stop_at:
+            try:
+                for hwnd, wpid in enum_windows():
+                    if wpid == pid:
+                        demote_window(hwnd)
+                if fg_restore_to is not None:
+                    fg = user32.GetForegroundWindow()
+                    if fg and fg != fg_restore_to and _window_pid(fg) == pid:
+                        restore_count += 1
+                        if force_set_foreground(fg_restore_to):
+                            print(f"[winutil] demote_watchdog: foreground restored "
+                                  f"to pre-launch window (#{restore_count})")
+            except Exception as e:  # never let the watchdog kill a run
+                print(f"[winutil] demote_watchdog: {e}")
+            time.sleep(interval_s)
+
+    t = threading.Thread(target=_run, daemon=True, name="demote-watchdog")
+    t.start()
+    return t
 
 
 def move_to_primary_and_foreground(hwnd: int) -> bool:

@@ -168,7 +168,7 @@ def main() -> int:
         # Late, non-interfering presentation: no taskbar button and bottom
         # of the z-order (the UI shell owns the taskbar). Rendering and
         # hit-testing are untouched, so capture/injection still work.
-        winutil.background_tool_window(session.hwnd)
+        winutil.demote_window(session.hwnd)
         img_boot = capture_bgr(session)
         cv2.imwrite(str(HERE / "artifacts" / "m2_boot.png"), img_boot)
         from m1_minimal_loop import match as tpl_match

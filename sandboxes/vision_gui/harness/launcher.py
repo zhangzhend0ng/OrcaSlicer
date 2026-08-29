@@ -75,8 +75,14 @@ class AppSession:
 def launch(exe: Path | str | None = None,
            datadir: Path | str | None = None,
            model: Path | str | None = None,
-           wait_window_s: float = 90.0) -> AppSession:
-    """Launch the app; wait for its main window; return the session."""
+           wait_window_s: float = 90.0,
+           boot_demote_s: float = 12.0) -> AppSession:
+    """Launch the app; wait for its main window; return the session.
+
+    `boot_demote_s` runs a passive z-order/style demotion watchdog for that
+    many seconds after window discovery (0 disables; the m1/m2/m3 drivers'
+    late demote_window() call still re-asserts afterwards).
+    """
     exe = Path(exe) if exe else default_exe()
     if not exe.exists():
         raise FileNotFoundError(f"app exe not found: {exe} (pass --exe)")
@@ -94,13 +100,19 @@ def launch(exe: Path | str | None = None,
     print(f"[launcher] {args[0]} --datadir {args[2]}" + (f" {args[3]}" if model else ""))
 
     winutil.make_dpi_aware()
-    # SW_SHOWNOACTIVATE: show the window WITHOUT activating/raising it, so
-    # the app never steals focus from whatever the user is doing. wx may or
-    # may not honor it; the late background_tool_window() call in the
-    # drivers is the authoritative enforcement.
+    # Remember what the USER was using before we launch: the watchdog hands
+    # the foreground back to this window whenever the app grabs it (see the
+    # demote_watchdog comment — z-order demotion alone cannot strip an
+    # already-held foreground, and the first Show() activation is a race).
+    prev_fg = winutil.user32.GetForegroundWindow()
+    # NOTE: SW_SHOWNOACTIVATE does NOT actually work for wx — wxMSW Show()
+    # calls ShowWindow(SW_SHOW), which activates + raises regardless of the
+    # STARTUPINFO wShowWindow (Windows only honors that for SW_SHOWDEFAULT).
+    # Left in place because it is free and covers any non-wx helper window;
+    # the authoritative no-pop mechanism is the demote_watchdog() below.
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    si.wShowWindow = 4  # SW_SHOWNOACTIVATE
+    si.wShowWindow = 4  # SW_SHOWNOACTIVATE (ineffective for wx, kept anyway)
     popen = subprocess.Popen(args, env=env, cwd=str(exe.parent), startupinfo=si)
     try:
         hwnd = winutil.find_main_window(popen.pid, timeout_s=wait_window_s)
@@ -108,11 +120,23 @@ def launch(exe: Path | str | None = None,
         # Never leak a launched app when window discovery fails.
         popen.kill()
         raise
-    # NOTE: do NOT touch window position/foreground here. Early interference
-    # (before post_init's first-idle input_files load) BREAKS the CLI model
-    # auto-load — proven experimentally: hands-off boots load the model,
-    # foreground-grabbing boots do not. Late, conditional repositioning is
-    # the caller's job (see m2_slice_chain after boot settles).
+    # Without early demotion the main frame pops to the TOP of the user's
+    # desktop at boot (see the SW_SHOWNOACTIVATE note) and — under the
+    # drivers' hands-off rule — sits there ~12s until demote_window()
+    # runs. The watchdog closes that hole PASSIVELY: ex-style + HWND_BOTTOM
+    # demotion every tick, plus foreground RESTORATION to prev_fg when the
+    # app holds it (never foreground-GRABBING or window moves — README
+    # pitfall #3). diag_early_stealth.py verifies the CLI model auto-load
+    # survives it. Set boot_demote_s=0 for control runs.
+    if boot_demote_s > 0:
+        winutil.demote_watchdog(pid=popen.pid, duration_s=boot_demote_s,
+                                fg_restore_to=prev_fg)
+    # NOTE: still do NOT touch window position/foreground here. Early
+    # interference (before post_init's first-idle input_files load) BREAKS
+    # the CLI model auto-load — proven experimentally: hands-off boots load
+    # the model, foreground-grabbing boots do not. Late, conditional
+    # repositioning is the caller's job (see m2_slice_chain after boot
+    # settles).
     dpi = winutil.get_dpi_for_window(hwnd)
     print(f"[launcher] pid={popen.pid} hwnd=0x{hwnd:x} rect={winutil.window_rect(hwnd)} dpi={dpi}")
     return AppSession(popen, hwnd)

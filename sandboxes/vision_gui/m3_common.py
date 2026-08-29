@@ -36,7 +36,7 @@ def boot_session(args, model=None, fresh=True):
     profile.seed_profile(datadir, fresh=fresh)
     session = launcher.launch(exe=args.exe, datadir=datadir, model=model)
     time.sleep(12.0)  # hands-off: early interference kills CLI auto-load
-    winutil.background_tool_window(session.hwnd)
+    winutil.demote_window(session.hwnd)
     return session
 
 

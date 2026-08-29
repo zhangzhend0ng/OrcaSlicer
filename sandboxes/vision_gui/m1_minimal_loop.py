@@ -149,7 +149,7 @@ def main() -> int:
             print("[m1] FAIL: app never reached the Prepare page"); return 2
         # Late, non-interfering presentation: no taskbar button, bottom of
         # the z-order (rendering/hit-testing untouched).
-        winutil.background_tool_window(session.hwnd)
+        winutil.demote_window(session.hwnd)
         time.sleep(1.0)  # let the settings panel finish laying out
 
         # ---------- click Preview (custom-drawn tab), with retry ----------

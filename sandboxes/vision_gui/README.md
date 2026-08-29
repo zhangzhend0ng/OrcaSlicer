@@ -163,12 +163,25 @@ Standard 嵌入预设）端到端 GREEN。
     启动在 sentry_start_session 段抛未捕获 C++ 异常（0xE06D7363，静默崩溃）。恢复：
     改名/删除该目录后正常启动一次（Sentry 重建 DB）。**教训：永远用
     `session.close()` 优雅退出，不要在诊断脚本里用 timeout/kill 杀 app**
-12. **窗口隐身化（2026-08-28）**：m1/m2 在 hands-off 结束后调用
-    `background_tool_window()`——`WS_EX_TOOLWINDOW`（无任务栏按钮）+ `HWND_BOTTOM`
-    （z-order 底部），让被测 app 不打扰用户桌面（任务栏只留 UI 壳）；launcher 启动用
-    `SW_SHOWNOACTIVATE`。渲染/命中测试不受影响（截图/注入全兼容，已回归验证）。
-    这是"嵌入到 UI 壳"的零侵入替代——SetParent 嵌入会破坏 wx 窗口树语义并违反
-    hands-off 教条，**不要做**
+12. **窗口隐身化（2026-08-28，2026-08-30 部分回退）**：m1/m2 在 hands-off 结束后调用
+    `demote_window()`（原 `background_tool_window()`）——`HWND_BOTTOM`（z-order 底部）
+    + `WS_EX_NOACTIVATE`（禁止后续激活），让被测 app 不打扰用户桌面。**任务栏图标保留**
+    （2026-08-30 用户要求回退 TOOLWINDOW：图标全隐后跑没跑、卡没卡完全不可知，图标是
+    运行指示器；NOACTIVATE 仍保证点任务栏图标不会把窗口弹到顶层）。渲染/命中测试不受
+    影响（截图/注入全兼容，已回归验证）。这是"嵌入到 UI 壳"的零侵入替代——SetParent
+    嵌入会破坏 wx 窗口树语义并违反 hands-off 教条，**不要做**
+13. **启动即弹到最顶层（2026-08-30 修复，两阶段）**：`SW_SHOWNOACTIVATE` 对 wx **无效**——
+    wxMSW `Show()` 调 `ShowWindow(SW_SHOW)`，无视 STARTUPINFO wShowWindow（那只对
+    `SW_SHOWDEFAULT` 生效），所以主窗口启动即**带焦点弹到用户桌面最顶层**，且因
+    hands-off 要裸奔 ~12s 才被 `background_tool_window()` 压底。修复（不违反坑 #3）：
+    ① `demote_window()` 补 `WS_EX_NOACTIVATE` + launch() 启动 `demote_watchdog(12s)`；
+    ② **前台竞态补丁**：z 序降级和 NOACTIVATE 都不能剥夺已到手的 foreground，且
+    watchdog 首拍与 app 首帧 Show 是赛跑（同代码两次实测 0 次 vs 139 次前台占用）——
+    因此 watchdog 记住启动前的前台窗口，检测到 app 占前台就 `force_set_foreground()`
+    **物归原主**（focus 恢复，是坑 #3"前台抢占"的逆操作）。实测模式恒定：app 只抢
+    1 次 → 恢复 1 次 → NOACTIVATE 顶住后续，auto-load 不受影响。回归探针
+    `diag_early_stealth.py`（判定按前台占用时长，<1s 的瞬态算 PASS）连跑 3 轮全绿。
+    版本检查更新窗无配置开关可关（check_new_version_sf 直发 HTTP），由 watchdog 压底兜底。
 
 ## 关键设计事实（源码核对过，改动 app 时需复查）
 

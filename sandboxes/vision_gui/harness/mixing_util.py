@@ -147,15 +147,25 @@ def combo_text(hwnd: int) -> str:
 
 def switch_match_mode(session, dlg: int, target: str) -> bool:
     """Switch the Auto/Manual combo to `target` (popup row 2 = Manual)."""
-    combo = child_by_text(dlg, "Auto")
-    if not combo:
-        combo = child_by_text(dlg, "Manual")
+    return switch_combo(session, dlg, ("Auto", "Manual"), target)
+
+
+def switch_combo(session, dlg: int, current_labels: tuple, target: str,
+                 row_guess: int = 1) -> bool:
+    """Switch a readonly combo (identified by one of `current_labels`)
+    to `target` by opening its popup (NO root — the dialog is a separate
+    top-level) and clicking rows from `row_guess` onward until the combo
+    text confirms. Popup rows: 28px pitch, first row at popup_top+14."""
+    combo = None
+    for t, c, r, h in children(dlg):
+        if t in current_labels:
+            combo = (r, h)
+            break
     if not combo:
         return False
-    rect, ch = combo[2], combo[3]
+    rect, ch = combo
     if target in combo_text(ch):
         return True
-    # open the popup WITHOUT root (the dialog is a separate top-level)
     _msg_click((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2)
     deadline = time.monotonic() + 4.0
     pr = None
@@ -169,10 +179,16 @@ def switch_match_mode(session, dlg: int, target: str) -> bool:
         time.sleep(0.2)
     if not pr:
         return False
-    # popup rows: 28px pitch, first row at popup_top+14; Manual = row 2
-    _msg_click((pr[0] + pr[2]) // 2, pr[1] + 42)
-    time.sleep(1.0)
-    return target in combo_text(ch)
+    px = (pr[0] + pr[2]) // 2
+    for row in range(max(0, row_guess), 12):
+        _msg_click(px, pr[1] + 14 + row * 28)
+        time.sleep(0.8)
+        if target in combo_text(ch):
+            return True
+        # reopen the popup for the next row
+        _msg_click((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2)
+        time.sleep(1.0)
+    return False
 
 
 # --- matching -----------------------------------------------------------------
