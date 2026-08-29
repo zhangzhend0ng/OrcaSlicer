@@ -29,39 +29,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from harness import topbar_util, winutil  # noqa: E402
+from harness import topbar_util  # noqa: E402
 from m1_minimal_loop import capture_bgr  # noqa: E402
 from m2_slice_chain import (click_slice_start, has_colored_content,  # noqa: E402
                             wait_model_loaded)
 from m3_common import MIXED_3MF, add_common_args, boot_session, verdict  # noqa: E402
 
 EMPTY_BED_FLOOR = 0.004  # measured ~0.15%; 0.4% sits with margin below model
-
-
-def open_edit_submenu(session):
-    """Dropdown menu -> hover the Edit row -> the Edit submenu opens.
-    Returns (srect, n_items, del_idx) or (None, None, None)."""
-    menu = topbar_util.open_dropdown_menu(session)
-    if not menu:
-        return None, None, None
-    rect, hwnd, hmenu = menu
-    items = topbar_util.menu_items(hmenu)
-    edit_idx = topbar_util.find_item(hmenu, "Edit")
-    if edit_idx is None:
-        topbar_util.close_menu_windows(session.pid)
-        return None, None, None
-    topbar_util.hover_row(rect, len(items), edit_idx)
-    sub = topbar_util.wait_submenu(session.pid, {hwnd}, timeout_s=5.0)
-    if not sub:
-        topbar_util.close_menu_windows(session.pid)
-        return None, None, None
-    srect, _shwnd, shmenu = sub
-    sub_items = topbar_util.menu_items(shmenu)
-    del_idx = topbar_util.find_item(shmenu, "Delete All")
-    if del_idx is None:
-        topbar_util.close_menu_windows(session.pid)
-        return None, None, None
-    return srect, len(sub_items), del_idx
 
 
 def main() -> int:
@@ -77,36 +51,12 @@ def main() -> int:
         results["model arrived"] = "PASS" if ok_model else "FAIL"
 
         # --- dropdown menu -> Edit submenu -> real-click 'Delete All' ---
-        srect, n_items, del_idx = open_edit_submenu(session)
-        print(f"[m3b] edit submenu: rect={srect} items={n_items} "
-              f"del_idx={del_idx}")
-        deleted = False
-        if srect:
-            cands = topbar_util.submenu_row_candidates(srect, n_items, del_idx)
-            left, top, right, _b = srect
-            cx = (left + right) // 2
-            for k, y in enumerate(cands):
-                print(f"[m3b] real-click Delete All candidate y={y} "
-                      f"({k + 1}/{len(cands)})")
-                winutil.real_click_screen(cx, y)
-                time.sleep(2.5)
-                frac_after = has_colored_content(capture_bgr(session))
-                menus = topbar_util._enum_menu_windows(session.pid)
-                print(f"[m3b]   after click: menus={len(menus)} "
-                      f"colored={frac_after:.3%}")
-                if frac_after < EMPTY_BED_FLOOR:
-                    deleted = True
-                    break
-                if menus:
-                    topbar_util.close_menu_windows(session.pid)
-                    time.sleep(1.0)
-                srect, n_items, del_idx = open_edit_submenu(session)
-                if not srect:
-                    break
-                left, top, right, _b = srect
-                cx = (left + right) // 2
-        topbar_util.close_menu_windows(session.pid)
-        print(f"[m3b] delete-all via menu: {deleted}")
+        deleted = topbar_util.real_click_submenu_row(
+            session, "Edit", "Delete All",
+            success_fn=lambda: has_colored_content(
+                capture_bgr(session)) < EMPTY_BED_FLOOR,
+            label="delete-all")
+        print(f"[m3b] delete-all via Edit menu: {deleted}")
         results["delete-all via Edit menu"] = "PASS" if deleted else "FAIL"
 
         # --- the model must be gone: chromatic fraction back to empty bed ---

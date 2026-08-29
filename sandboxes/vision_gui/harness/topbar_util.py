@@ -157,6 +157,79 @@ def submenu_row_candidates(rect: tuple, n_items: int, index: int,
            [base - k * step for k in (1, 2, 3)]
 
 
+def real_click_submenu_row(session, submenu_name: str, row_substr: str,
+                           success_fn, label: str = "", max_attempts: int = 8,
+                           step: int = 6) -> bool:
+    """Open the dropdown menu, hover `submenu_name` to open its submenu,
+    then REAL-click the row whose label contains `row_substr` (case-
+    insensitive), probing y candidates until `success_fn()` returns True.
+
+    `success_fn` is the caller's observable (e.g. the model disappearing /
+    appearing) — the only reliable signal that the right row was hit, since
+    native menu rows hit-test in the modal loop and the measured row
+    geometry drifts ~12px from the naive formula. Reopens the menus between
+    attempts. Returns True when the observable fired."""
+    from . import winutil
+    for attempt in range(max_attempts):
+        menu = open_dropdown_menu(session)
+        if not menu:
+            print(f"[topbar] {label}: dropdown menu did not open "
+                  f"(attempt {attempt + 1})")
+            continue
+        rect, hwnd, hmenu = menu
+        items = menu_items(hmenu)
+        sub_idx = find_item(hmenu, submenu_name)
+        if sub_idx is None:
+            close_menu_windows(session.pid)
+            continue
+        hover_row(rect, len(items), sub_idx)
+        sub = wait_submenu(session.pid, {hwnd}, timeout_s=5.0)
+        if not sub:
+            close_menu_windows(session.pid)
+            continue
+        srect, _shwnd, shmenu = sub
+        sub_items = menu_items(shmenu)
+        row_idx = find_item(shmenu, row_substr)
+        if row_idx is None:
+            close_menu_windows(session.pid)
+            print(f"[topbar] {label}: row '{row_substr}' not found")
+            return False
+        left, top, right, _b = srect
+        cx = (left + right) // 2
+        for y in submenu_row_candidates(srect, len(sub_items), row_idx, step):
+            winutil.real_click_screen(cx, y)
+            # poll the observable: the click closes the menu (modal loop
+            # exits) and the app repaints — give it a few seconds
+            deadline = time.monotonic() + 6.0
+            while time.monotonic() < deadline:
+                if success_fn():
+                    close_menu_windows(session.pid)
+                    return True
+                time.sleep(0.5)
+            menus = _enum_menu_windows(session.pid)
+            if menus:
+                close_menu_windows(session.pid)
+                time.sleep(1.0)
+            # reopen for the next candidate
+            menu = open_dropdown_menu(session)
+            if not menu:
+                break
+            rect, hwnd, hmenu = menu
+            items = menu_items(hmenu)
+            sub_idx = find_item(hmenu, submenu_name)
+            hover_row(rect, len(items), sub_idx)
+            sub = wait_submenu(session.pid, {hwnd}, timeout_s=5.0)
+            if not sub:
+                break
+            srect, _shwnd, shmenu = sub
+            sub_items = menu_items(shmenu)
+            row_idx = find_item(shmenu, row_substr)
+            left, top, right, _b = srect
+            cx = (left + right) // 2
+        close_menu_windows(session.pid)
+    return False
+
+
 # ---------------------------------------------------------------------------
 # menu structure
 # ---------------------------------------------------------------------------

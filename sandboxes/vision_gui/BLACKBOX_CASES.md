@@ -54,12 +54,14 @@
 | 参数改→重切→gcode diff | business P0-1 | **WM_SETTEXT + WM_KILLFOCUS 驱动真实提交链**（Field.cpp 的 wxEVT_KILL_FOCUS→propagate_value）：Edit 文本改 + 按钮回 idle + 重切 + 导出 + `; layer_height` 0.4→0.2 + 字节 diff | m3d_param_reslice.py | ✅ |
 | 删除/清空场景 | business P1-7 + P2-8 | dropdown 菜单→Edit 子菜单→真实点击 Delete All 行：viewport 色度回落空床（<0.4%）+ 空场 Slice 拒绝 | m3b_delete_scene.py | ✅ |
 | 导出 3mf→重载 | business P0-4 | File 菜单→Save Project as→保存对话框→文件落盘：zip 有效 + 3D/3dmodel.model 存在 + `printer_settings_id` 保留 "Snapmaker U1 (0.8 nozzle)" + 二次启动模型到达（≥1%） | m3g_export_3mf.py | ✅ |
+| undo/redo 恢复场景 | business P1-6（菜单半）+ P1-7/P2-8 | Edit 菜单 Delete All 清场 → Undo 行真实点击→模型复现（≥1% 双轮）→ Redo 行→再度清场（<0.4%） | m3h_undo_redo.py | ✅ |
+| View 菜单视角切换 | —（白盒无此用例；源码入口 add_common_view_menu_items，MainFrame.cpp:2470） | View 子菜单 Top/Front 行真实点击：两次切换各使 viewport 显著变化（diff>10，实测 45/116）——视角矩阵外部不可读，不做具体角度断言 | m3i_view_menu.py | ✅ |
 
 ### 受限 / 待办（B 层）
 
 | 用例 | 白盒引用 | 状态与原因 |
 |---|---|---|
-| 对象变换/undo-redo | P1-5/6 | 🟡 gizmo 拖拽深度交互，断言弱——B 层 |
+| 对象变换（gizmo） | P1-5 | 🟡 gizmo 拖拽深度交互，断言弱——B 层 |
 | 画布选中+Delete 键 | P1-7 变体 | 🟡 GLCanvas3D::on_char 的 WXK_DELETE 需先有选中（画布点击命中测试深），当前由菜单 Delete All 覆盖断言面 |
 
 ### C 层（黑盒不可测，存量白盒兜底）
