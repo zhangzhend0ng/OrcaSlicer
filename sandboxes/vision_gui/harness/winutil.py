@@ -354,6 +354,52 @@ def close_window(hwnd: int) -> None:
     user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
 
 
+# --- real input (SendInput) -------------------------------------------------
+# NOTE: the README env matrix used to record SendInput as swallowed by the
+# remote-control layer, but it delivers 2/2 on this machine (2026-08-29).
+# It is needed ONLY where the app's modal loops ignore message-level input:
+# native popup-menu rows (#32768) hit-test in their modal loop, which
+# message clicks cannot drive (see topbar_util). The WCP WebView2 transparent
+# host swallows real clicks over the APP window, so SendInput is used ONLY
+# on topmost menu windows, never on the app frame itself.
+
+MOUSEEVENTF_ABSOLUTE = 0x8000
+MOUSEEVENTF_MOVE = 0x0001
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+
+
+class _INPUT(ctypes.Structure):
+    class _INPUTMOUSE(ctypes.Structure):
+        _fields_ = [("dx", wt.LONG), ("dy", wt.LONG), ("mouseData", wt.DWORD),
+                    ("dwFlags", wt.DWORD), ("time", wt.DWORD),
+                    ("dwExtraInfo", ctypes.POINTER(wt.ULONG))]
+    _fields_ = [("type", wt.DWORD), ("value", _INPUTMOUSE)]
+
+
+def real_click_screen(x: int, y: int) -> int:
+    """A REAL left click at screen (x, y) via SendInput (moves the cursor).
+
+    Unlike msg_click_screen this goes through the OS input queue, so modal
+    loops (native menus, dialogs) see it as genuine user input. Returns the
+    number of events delivered."""
+    sw = user32.GetSystemMetrics(0)   # SM_CXSCREEN
+    sh = user32.GetSystemMetrics(1)   # SM_CYSCREEN
+    absx = int(x * 65535 / sw)
+    absy = int(y * 65535 / sh)
+    events = []
+    for flags in (MOUSEEVENTF_MOVE | MOUSEEVENTF_LEFTDOWN,
+                  MOUSEEVENTF_LEFTUP):
+        ev = _INPUT()
+        ev.type = 0  # INPUT_MOUSE
+        ev.value.dx = absx
+        ev.value.dy = absy
+        ev.value.dwFlags = flags | MOUSEEVENTF_ABSOLUTE
+        events.append(ev)
+    arr = (_INPUT * 2)(*events)
+    return user32.SendInput(2, arr, ctypes.sizeof(_INPUT))
+
+
 WS_EX_TOOLWINDOW = 0x00000080
 
 

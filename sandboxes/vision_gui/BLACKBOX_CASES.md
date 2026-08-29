@@ -51,15 +51,16 @@
 | 损坏 3mf 优雅失败 | business P3-12 | 错误对话框出现 + app 存活 + 好项目二次加载模型到达 | m3c_corrupt_3mf.py | ✅ |
 | 多板项目 Slice all | business P0-3 | Slice all 模式选中 + done 态（模型到达由切片成功兜底） | m3f_multi_plate.py | ✅ |
 | 预设切换→gcode header | business P0-2 | combo 切 0.40↔0.24 @U1 + 重切 + 导出 + `; layer_height` 跟随 | m3e_preset_switch.py | ✅ |
-| 参数改→重切→gcode diff | business P0-1 | **断言面由 P0-2 覆盖**（预设切换同为"参数变化→gcode 变化"） | — | 🟡 字段编辑焦点受限 |
+| 参数改→重切→gcode diff | business P0-1 | **WM_SETTEXT + WM_KILLFOCUS 驱动真实提交链**（Field.cpp 的 wxEVT_KILL_FOCUS→propagate_value）：Edit 文本改 + 按钮回 idle + 重切 + 导出 + `; layer_height` 0.4→0.2 + 字节 diff | m3d_param_reslice.py | ✅ |
+| 删除/清空场景 | business P1-7 + P2-8 | dropdown 菜单→Edit 子菜单→真实点击 Delete All 行：viewport 色度回落空床（<0.4%）+ 空场 Slice 拒绝 | m3b_delete_scene.py | ✅ |
+| 导出 3mf→重载 | business P0-4 | File 菜单→Save Project as→保存对话框→文件落盘：zip 有效 + 3D/3dmodel.model 存在 + `printer_settings_id` 保留 "Snapmaker U1 (0.8 nozzle)" + 二次启动模型到达（≥1%） | m3g_export_3mf.py | ✅ |
 
 ### 受限 / 待办（B 层）
 
 | 用例 | 白盒引用 | 状态与原因 |
 |---|---|---|
-| 删除/清空场景 | P1-7 + P2-8 | 🟡 Ctrl+D 键盘加速键不被 SendMessage 路由（wx accelerator 走消息循环）；顶栏菜单入口为自绘 logo（无 HWND）；画布选中+Delete 依赖 GL 画布焦点——B 层待办 |
-| 导出 3mf→重载 | P0-4 | 🔵 导出 3mf 的 UI 入口未定位（文件菜单为自绘 logo）——待办 |
 | 对象变换/undo-redo | P1-5/6 | 🟡 gizmo 拖拽深度交互，断言弱——B 层 |
+| 画布选中+Delete 键 | P1-7 变体 | 🟡 GLCanvas3D::on_char 的 WXK_DELETE 需先有选中（画布点击命中测试深），当前由菜单 Delete All 覆盖断言面 |
 
 ### C 层（黑盒不可测，存量白盒兜底）
 
@@ -81,6 +82,14 @@ instance 矩阵精确值、slice_result_valid 标志、preset 脏状态、切片
 | Delete all = Ctrl+D，topbar 顶层菜单下 | wx_gui_business_tests.cpp:588 | **SendMessage 键盘不触发 wx accelerator**（走消息循环）——B 层待办 |
 | fixture：mixed_filament_test.3mf（U1 0.8 + 0.40 Standard 嵌入）、snapmates_nonmixed.3mf（7 板，非混色）、Prusa.stl（单对象） | wx_gui_business_tests.cpp:20 | U1 限定直接可用；**Prusa.stl 无嵌入预设 → fallback 不可切片（Slice disabled）→ 弃用作 fixture** |
 | 每用例 fresh datadir + fresh launch → 无 preset 脏状态泄漏（白盒的坑黑盒天然免疫） | README 坑 #1 | 默认 fresh |
+| 顶栏 File/下拉工具 = wxAuiToolBar 内自绘项（**单 HWND 无子控件**）；`BBLTopbar::OnMouseLeftDown` 用 `FindToolByCurrentPosition()`（**真实光标位置**）决定拖窗还是 Skip 给工具 → 消息点击前必须 `SetCursorPos` 到工具上 | BBLTopbar.cpp:213/663 | topbar_util.click_topbar_tool：SetCursorPos + msg_click_screen，按 x 偏移探测（File~10-40、下拉~70-100 @96dpi）；菜单在 DOWN handler 内 PopupMenu（SendMessage 超时 3s 属预期） |
+| 顶栏菜单 = 原生 TrackPopupMenu（#32768）；**其状态机在菜单模态循环里**：SendMessage/PostMessage 的键与点击一律不生效 | 实测（键：无高亮；点击：菜单不关） | 顶层项用 `WM_COMMAND(item_id)` 直发 frame（wx 经 wxCurrentPopupMenu→MSWCommand→FindItem→SendEvent 分发，m3g 验证）；**子菜单行用真实输入 SendInput 点击**（模态循环只认真实输入，m3b 验证） |
+| File 菜单子菜单项（Import 3MF）经 WM_COMMAND 可分发；**dropdown 菜单（Edit/View/Help）的子菜单项 WM_COMMAND 不分发**（实测 Preferences 顶层可、Delete All 子层不可，原因未明，不深究） | 实测对比 | 规避：dropdown 子菜单一律真实点击；File 菜单顶层项用 WM_COMMAND（m3g） |
+| 菜单行几何：行高 ~20px、**首行起点比 top+2 低 ~12px**（naive 公式偏上 12px）；行点击后菜单关闭=命中可选项 | 实测（m3b 探针 y=300 命中 Delete All） | topbar_util.submenu_row_candidates：以 base 为心 ±6px 步进探针，结合"菜单关闭+模型消失"判定 |
+| SendInput 真实输入本机**可用**（2/2 投递，README 环境矩阵已过时）——但 WebView2 透明宿主（Chrome_RenderWidgetHostHWND 全屏）**吞掉 app 窗口区域的真实点击**；模态菜单在 z-top 不受影响 | 实测 2026-08-29 | 真实点击只用于菜单行（顶层窗口）；app 区交互仍走消息注入（deepest_child_at 穿透） |
+| 字段提交链：Orca 设置字段（Field.cpp TextCtrl）只在 **Enter（wxEVT_TEXT_ENTER）或失焦（wxEVT_KILL_FOCUS）** 时 propagate_value；WM_SETTEXT 只改文本不提交 | Field.cpp:782/814 | **WM_SETTEXT + SendMessage(WM_KILLFOCUS)** 驱动真实提交链（m3d GREEN）——字段级参数编辑黑盒可行 |
+| GLCanvas3D::on_char 自带 Ctrl+D→EVT_GLTOOLBAR_DELETE_ALL、WXK_DELETE→DELETE（画布级绑定，不走 wx accelerator）；但需画布持有**真实焦点**且修饰键来自线程 GetKeyState（外部不可设） | GLCanvas3D.cpp:3344/3368 | 画布路径仅备选；删除断言面由菜单路径覆盖 |
+| **app 加载 3mf 会改写源文件**：`Metadata/model_settings.config` 的 `identify_id` 被重写（90→78 实测）——fixture 用后可能变脏 | 实测 2026-08-29（m3g 运行后 fixture 35543→35544B） | 提交前 `git status` 检查 tests/data/test_3mf/，脏 fixture 恢复 HEAD（app 副作用，非用户改动） |
 
 ## 导出原语（Tier 0）
 

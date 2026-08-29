@@ -187,7 +187,7 @@ Standard 嵌入预设）端到端 GREEN。
 | 环境 | 截图 | 消息注入(SendMessage) | OS级注入(SendInput) |
 |---|---|---|---|
 | 干净交互会话 | ✅ | ✅ | ✅ |
-| GameViewer/ToDesk 等远控层运行中 | ✅ | ✅（LL hook 看不见 sent 消息） | ❌ 被吞（劫持已定案） |
+| GameViewer/ToDesk 等远控层运行中 | ✅ | ✅（LL hook 看不见 sent 消息） | ⚠️ 实测可用但受限（2026-08-29：SendInput 2/2 投递，不再被吞；但 WebView2 透明宿主吞掉 app 窗口区的真实点击——真实输入只用于 z-top 的模态菜单行，见 BLACKBOX_CASES.md） |
 | zh-CN 拼音 IME | ✅ | ✅（WM_CHAR 直携字面字符） | ⚠️ 需 US layout 绕过 |
 | 非交互桌面（CreateDesktop） | — | — | ❌ wx 启动挂起，已放弃 |
 

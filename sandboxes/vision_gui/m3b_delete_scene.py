@@ -2,17 +2,25 @@
 # m3b_delete_scene.py — P1-7 + P2-8: delete all / clear the scene.
 #
 # White-box refs: wx_gui_business_tests.cpp:546 (delete object and clear
-# scene update model count) and :574 (topbar edit menu delete-all).
-# Source facts: 'Delete all' is Ctrl+D, bound under the topbar's top menu
-# (wx_gui_business_tests.cpp:588 find_menu_item_by_accel '\tCtrl+D').
+# scene update model count) and :574 (topbar edit menu delete-all dispatched
+# through the frame handler chain; 'Delete all' = Ctrl+D).
+# Source facts: 'Delete all' lives in the Edit submenu of the topbar's
+# dropdown menu (MainFrame.cpp:2690/2778, handler
+# Plater::delete_all_objects_from_model, gate can_delete_all). The dropdown
+# tool is a self-drawn wxAuiToolBar tool (no per-tool HWND) and the menu is
+# a NATIVE popup (#32768): its rows hit-test in the menu's own modal loop,
+# which ignores message-level clicks — selection needs REAL input
+# (SendInput; the topmost menu sits above the WebView2 host, so real clicks
+# there are not swallowed — measured 2026-08-29).
 #
-# Black-box path: load a model -> verify arrival -> send Ctrl+D to the main
-# window -> assert the viewport chromatic fraction falls back to the empty
-# bed floor (~0.15%, README pitfall #8) — the model disappearing is the
-# externally observable state flip.
-#
-# Fallback if keyboard accelerators don't route: click the topbar Edit menu
-# and its 'Delete all' row (popup-row click without root piercing).
+# Black-box path: load a model -> verify arrival -> open the topbar dropdown
+# menu (SetCursorPos + message click) -> hover the Edit row to open the
+# submenu -> real-click the 'Delete All' row (probed y — the row geometry
+# measured ~12px lower than the naive formula) -> assert the viewport
+# chromatic fraction falls back to the empty-bed floor (~0.15%, README
+# pitfall #8) and that a Slice click on the emptied scene starts nothing
+# (the empty-scene rejection of m3a as a second external signal that the
+# scene really is empty).
 
 import sys
 import time
@@ -21,14 +29,39 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from harness import winutil  # noqa: E402
+from harness import topbar_util, winutil  # noqa: E402
 from m1_minimal_loop import capture_bgr  # noqa: E402
-from m2_slice_chain import has_colored_content  # noqa: E402
-from m3_common import (MIXED_3MF, add_common_args, boot_session,  # noqa: E402
-                       verdict)
-from m2_slice_chain import wait_model_loaded  # noqa: E402
+from m2_slice_chain import (click_slice_start, has_colored_content,  # noqa: E402
+                            wait_model_loaded)
+from m3_common import MIXED_3MF, add_common_args, boot_session, verdict  # noqa: E402
 
 EMPTY_BED_FLOOR = 0.004  # measured ~0.15%; 0.4% sits with margin below model
+
+
+def open_edit_submenu(session):
+    """Dropdown menu -> hover the Edit row -> the Edit submenu opens.
+    Returns (srect, n_items, del_idx) or (None, None, None)."""
+    menu = topbar_util.open_dropdown_menu(session)
+    if not menu:
+        return None, None, None
+    rect, hwnd, hmenu = menu
+    items = topbar_util.menu_items(hmenu)
+    edit_idx = topbar_util.find_item(hmenu, "Edit")
+    if edit_idx is None:
+        topbar_util.close_menu_windows(session.pid)
+        return None, None, None
+    topbar_util.hover_row(rect, len(items), edit_idx)
+    sub = topbar_util.wait_submenu(session.pid, {hwnd}, timeout_s=5.0)
+    if not sub:
+        topbar_util.close_menu_windows(session.pid)
+        return None, None, None
+    srect, _shwnd, shmenu = sub
+    sub_items = topbar_util.menu_items(shmenu)
+    del_idx = topbar_util.find_item(shmenu, "Delete All")
+    if del_idx is None:
+        topbar_util.close_menu_windows(session.pid)
+        return None, None, None
+    return srect, len(sub_items), del_idx
 
 
 def main() -> int:
@@ -42,50 +75,54 @@ def main() -> int:
         ok_model, frac = wait_model_loaded(session, timeout_s=30)
         print(f"[m3b] model arrived: {ok_model} (colored {frac:.2%})")
         results["model arrived"] = "PASS" if ok_model else "FAIL"
-        time.sleep(1.0)
 
-        # --- try Ctrl+D keyboard accelerator on the main window ---
-        winutil.msg_key(session.hwnd, ord("D"), winutil.VK_CONTROL)
-        time.sleep(2.0)
-        frac_after = has_colored_content(capture_bgr(session))
-        print(f"[m3b] after Ctrl+D colored fraction: {frac_after:.3%}")
-        ctrl_d_worked = frac_after < EMPTY_BED_FLOOR
-
-        if not ctrl_d_worked:
-            # Fallback: topbar Edit menu -> Delete all row.
-            # Locate the topbar menu buttons by text (File/Edit/...).
-            from harness import export_util
-            btns = export_util.topbar_buttons(session.hwnd)
-            print("[m3b] Ctrl+D had no effect; trying topbar Edit menu")
-            # topbar menus live left of the button cluster; enumerate the
-            # whole topbar for a text button 'Edit'
-            edit_btn = None
-            for text, rect, ch in export_util._children_texts(session.hwnd):
-                if 100 <= rect[1] <= 140 and text.strip() in ("Edit", "编辑"):
-                    edit_btn = (rect, ch)
+        # --- dropdown menu -> Edit submenu -> real-click 'Delete All' ---
+        srect, n_items, del_idx = open_edit_submenu(session)
+        print(f"[m3b] edit submenu: rect={srect} items={n_items} "
+              f"del_idx={del_idx}")
+        deleted = False
+        if srect:
+            cands = topbar_util.submenu_row_candidates(srect, n_items, del_idx)
+            left, top, right, _b = srect
+            cx = (left + right) // 2
+            for k, y in enumerate(cands):
+                print(f"[m3b] real-click Delete All candidate y={y} "
+                      f"({k + 1}/{len(cands)})")
+                winutil.real_click_screen(cx, y)
+                time.sleep(2.5)
+                frac_after = has_colored_content(capture_bgr(session))
+                menus = topbar_util._enum_menu_windows(session.pid)
+                print(f"[m3b]   after click: menus={len(menus)} "
+                      f"colored={frac_after:.3%}")
+                if frac_after < EMPTY_BED_FLOOR:
+                    deleted = True
                     break
-            if edit_btn:
-                rect, _ = edit_btn
-                winutil.msg_click_screen((rect[0] + rect[2]) // 2,
-                                         (rect[1] + rect[3]) // 2, session.hwnd)
-                time.sleep(1.0)
-                # the menu popup is a top-level panel; find a row 'Delete all'
-                popup = export_util.wait_popup(session.pid, timeout_s=5.0)
-                if popup:
-                    rows = export_util._children_texts(popup[3])
-                    print("[m3b] menu rows:", [(t, r) for t, r, h in rows])
-                    del_row = [r for r in rows if "Delete all" in r[0]]
-                    if del_row:
-                        rc = del_row[0][1]
-                        winutil.msg_click_screen((rc[0] + rc[2]) // 2,
-                                                 (rc[1] + rc[3]) // 2)
-                        time.sleep(2.0)
-                        frac_after = has_colored_content(capture_bgr(session))
-                        ctrl_d_worked = frac_after < EMPTY_BED_FLOOR
-        print(f"[m3b] final colored fraction: {frac_after:.3%} "
+                if menus:
+                    topbar_util.close_menu_windows(session.pid)
+                    time.sleep(1.0)
+                srect, n_items, del_idx = open_edit_submenu(session)
+                if not srect:
+                    break
+                left, top, right, _b = srect
+                cx = (left + right) // 2
+        topbar_util.close_menu_windows(session.pid)
+        print(f"[m3b] delete-all via menu: {deleted}")
+        results["delete-all via Edit menu"] = "PASS" if deleted else "FAIL"
+
+        # --- the model must be gone: chromatic fraction back to empty bed ---
+        frac_after = has_colored_content(capture_bgr(session))
+        print(f"[m3b] colored fraction after delete-all: {frac_after:.3%} "
               f"(floor {EMPTY_BED_FLOOR:.3%})")
-        results["clear scene empties viewport"] = (
-            "PASS" if ctrl_d_worked else "FAIL")
+        emptied = frac_after < EMPTY_BED_FLOOR
+        results["viewport empty after delete"] = (
+            "PASS" if emptied else "FAIL")
+
+        # --- second signal: an emptied scene rejects slicing ---
+        if emptied:
+            started = click_slice_start(session)
+            print(f"[m3b] slice click on empty scene started a job: {started}")
+            results["empty scene rejects slice"] = (
+                "PASS" if not started else "FAIL")
         return verdict(results)
     finally:
         session.close()

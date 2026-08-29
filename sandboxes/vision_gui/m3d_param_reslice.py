@@ -8,8 +8,14 @@
 # The assertion is the same shape: exported gcode A != exported gcode B and
 # the "; layer_height" header actually moved.
 #
-# Black-box path: slice -> export A -> click the Layer height Edit ->
-# overwrite with a different value -> reslice -> export B -> compare.
+# Commit chain (Field.cpp TextCtrl): the field propagates its value on
+# Enter (wxEVT_TEXT_ENTER) or focus loss (wxEVT_KILL_FOCUS) — a plain
+# WM_SETTEXT only changes the native text. Sending WM_KILLFOCUS afterwards
+# drives the real commit: config update -> preset dirty -> button back to
+# idle -> manual reslice -> different gcode. No focus transfer needed.
+#
+# Black-box path: slice -> export A -> WM_SETTEXT a different layer height
+# -> WM_KILLFOCUS (commit) -> reslice -> export B -> compare.
 # "Export becomes available" is the deterministic completion signal
 # (can_export_gcode) — no completion templates needed here.
 
@@ -21,7 +27,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from harness import export_util, winutil  # noqa: E402
+from harness import export_util  # noqa: E402
 from m2_slice_chain import click_slice_start, wait_slicing_done  # noqa: E402
 from m3_common import (MIXED_3MF, RESOURCE, add_common_args,  # noqa: E402
                        boot_session, export_and_check, slice_and_wait, verdict)
@@ -92,14 +98,16 @@ def main() -> int:
             return verdict(results)
         # pick a different value: 0.2 <-> 0.3
         new_lh = "0.3" if (lh_a and float(lh_a) < 0.25) else "0.2"
-        # WM_SETTEXT sets the value directly — Ctrl+A + WM_CHAR depends on
-        # the Edit holding Windows focus, which SendMessage clicks do not
-        # transfer after a modal export dialog; WM_SETTEXT fires EN_CHANGE
-        # and commits through the same wx path.
+        # WM_SETTEXT writes the value directly (no focus needed), and the
+        # field commits on Enter / KILL_FOCUS (Field.cpp TextCtrl binds
+        # propagate_value to wxEVT_TEXT_ENTER and wxEVT_KILL_FOCUS) — a
+        # synthesized WM_KILLFOCUS drives the same commit chain, which is
+        # what makes the config actually change (m3d's earlier Enter key
+        # never dispatched: wxEVT_TEXT_ENTER needs the WM_CHAR path).
         import ctypes
         user32 = ctypes.WinDLL("user32")
         user32.SendMessageW(edit, 0x000C, 0, new_lh)  # WM_SETTEXT
-        winutil.press_enter(edit)  # commit
+        user32.SendMessageW(edit, 0x0008, 0, 0)  # WM_KILLFOCUS -> commit
         time.sleep(2.0)
         # read back the Edit content to prove the value actually landed
         n = user32.SendMessageW(edit, 0x000E, 0, 0)
