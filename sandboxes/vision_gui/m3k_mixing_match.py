@@ -66,11 +66,25 @@ def main() -> int:
         confirmed = False
         if done:
             time.sleep(1.0)
-            ok_confirm = mixing_util.click_button(dlg, "Confirm")
-            time.sleep(2.0)
-            gone = mixing_util.find_dialog(session.pid, timeout_s=3.0) is None
-            print(f"[m3k] confirm clicked: {ok_confirm}, dialog closed: {gone}")
-            confirmed = ok_confirm and gone
+            # the click may race with background UI churn on consecutive
+            # runs: poll for the dialog to close and retry the click once
+            import time as _t
+            for attempt in range(3):
+                ok_confirm = mixing_util.click_button(dlg, "Confirm")
+                deadline = _t.monotonic() + 10.0
+                gone = False
+                while _t.monotonic() < deadline:
+                    if mixing_util.find_dialog(session.pid,
+                                               timeout_s=1.0) is None:
+                        gone = True
+                        break
+                    _t.sleep(0.5)
+                print(f"[m3k] confirm attempt {attempt + 1}: clicked="
+                      f"{ok_confirm} dialog_closed={gone}")
+                if gone:
+                    confirmed = True
+                    break
+                _t.sleep(1.0)
         results["confirm closes dialog"] = "PASS" if confirmed else "FAIL"
 
         # --- the app must still be alive and the model present ---

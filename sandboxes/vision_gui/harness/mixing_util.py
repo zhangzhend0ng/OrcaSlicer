@@ -248,3 +248,62 @@ def wait_match_done(session, dlg: int, timeout_s: float = 60.0) -> bool:
                 return True
         time.sleep(0.5)
     return False
+
+
+# --- swatch hover (Delta-E tooltip) ------------------------------------------
+
+def swatch_rows(dlg: int):
+    """The mapping-list swatch rows created AFTER a match: small panels in
+    the dialog's lower band (measured rects ~93x36 at y 797-885)."""
+    rows = []
+    for t, c, r, h in children(dlg):
+        if c == "wxWindowNR" and 780 < r[1] < 900 \
+                and r[3] - r[1] in (32, 36) and r[2] - r[0] in (83, 93):
+            rows.append(r)
+    return rows
+
+
+def wait_tooltip(pid: int, timeout_s: float = 5.0):
+    """A visible tooltip window (tooltips_class32) with real height."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        for cls, txt, rect, hwnd in toplevel(pid):
+            if cls == "tooltips_class32" and rect[3] - rect[1] > 10:
+                return rect, hwnd
+        time.sleep(0.2)
+    return None
+
+
+def _real_move(x: int, y: int) -> int:
+    """A REAL mouse move via SendInput (absolute screen coords)."""
+    sw = winutil.user32.GetSystemMetrics(0)
+    sh = winutil.user32.GetSystemMetrics(1)
+    ev = winutil._INPUT()
+    ev.type = 0  # INPUT_MOUSE
+    ev.value.dx = int(x * 65535 / sw)
+    ev.value.dy = int(y * 65535 / sh)
+    ev.value.dwFlags = (winutil.MOUSEEVENTF_MOVE |
+                        winutil.MOUSEEVENTF_ABSOLUTE)
+    return winutil.user32.SendInput(1, ctypes.byref(ev),
+                                    ctypes.sizeof(winutil._INPUT))
+
+
+def hover_swatch_row(session, dlg: int, row_rect: tuple, x_frac: float = 0.2,
+                     dwell_s: float = 6.0):
+    """Park the REAL cursor on a swatch row (the wx system tooltip tracks
+    real mouse input only — SetCursorPos / WM_MOUSEMOVE injection do NOT
+    arm it, measured). Consecutive-run experience: the cursor can be stolen
+    by other processes (remote layers), so the position is held and nudged
+    with repeated real moves until the tooltip appears. Returns the tooltip
+    window (rect, hwnd) or None."""
+    x = int(row_rect[0] + (row_rect[2] - row_rect[0]) * x_frac)
+    y = (row_rect[1] + row_rect[3]) // 2
+    deadline = time.monotonic() + dwell_s
+    while time.monotonic() < deadline:
+        winutil.user32.SetCursorPos(x, y)
+        _real_move(x, y)
+        tt = wait_tooltip(session.pid, timeout_s=1.0)
+        if tt:
+            return tt
+        time.sleep(0.4)
+    return None
