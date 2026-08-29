@@ -38,6 +38,9 @@
 // desktop session with no remote-display layer intercepting input):
 //   cmake --build build --target wx_gui_tests
 //   build/tests/wx_gui/wx_gui_tests "[gui]"
+// ORCA_GUI_TEST_MODE is defaulted to 1 by ensure_wx_initialized() when unset —
+// launching the exe without exporting it no longer boots the app in production
+// mode (which used to pop the main window over the user's desktop).
 
 #include <catch_main.hpp>
 
@@ -413,6 +416,32 @@ bool ensure_wx_initialized()
     static bool s_ok    = false;
     if (s_tried) return s_ok;
     s_tried = true;
+
+#if defined(ORCA_FULL_GUI_APP)
+    // Full-app tests REQUIRE ORCA_GUI_TEST_MODE (gui_test_mode() in GUI_App.cpp
+    // reads it lazily, so set it BEFORE anything boots). Without it,
+    // on_init_inner takes the PRODUCTION boot path: mainframe->Show(true) pops
+    // the real app window to the top of the user's desktop and keeps it there,
+    // plus splash screen, file-association registry writes, network
+    // PresetUpdater and the Raised update dialog. That fired whenever the exe
+    // was launched without the variable set (the documented run command never
+    // exported it). Default it to "1" unless the caller chose a mode explicitly
+    // (e.g. ORCA_GUI_TEST_MODE=network for the [devices] tests stays intact).
+    {
+        const char* mode = std::getenv("ORCA_GUI_TEST_MODE");
+        if (mode == nullptr || *mode == '\0') {
+        #ifdef _WIN32
+            _putenv("ORCA_GUI_TEST_MODE=1");
+        #else
+            setenv("ORCA_GUI_TEST_MODE", "1", /*overwrite=*/0);
+        #endif
+            std::fprintf(stderr,
+                         "[ensure] ORCA_GUI_TEST_MODE not set; defaulting to 1 "
+                         "so the app boots hidden (production boot would pop the "
+                         "main window over your desktop)\n");
+        }
+    }
+#endif
 
     static int   argc = 1;
     static char  arg0[] = "wx_gui_tests";
