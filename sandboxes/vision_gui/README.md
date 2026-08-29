@@ -251,3 +251,43 @@ MaaFw 仅 m1b 定案实验需要）。打包布局：
 
 驱动进程 per-monitor-v2 感知，坐标/像素均为物理像素。模板与 DPI 绑定：
 换显示缩放需重新采集模板（env_check 会告警）。
+
+## 人机统一入口：MCP server（2026-08-30，M1）
+
+`mcp_server.py` 把 driver 层暴露为 MCP stdio 工具，AI agent（ZCode 等）与
+CustomTkinter 薄 UI 是同一 harness 层的两个平等客户端。协议零依赖
+（手写 JSON-RPC，不用 mcp 包）；harness 的 print() 在启动时全部改道 stderr，
+协议通道只有原始 stdout 一个写者。
+
+**服务端不变量**（把 README 的坑编码成强制，而非提示词）：
+- 无 kill 工具——`app_close` 只走 `AppSession.close()`（优雅 WM_CLOSE，坑 #11）
+- `click` 拒绝 app 窗口外的坐标（合成点击落进用户窗口 = 事故）；无裸 SendInput 工具
+  （SendInput 仅存留于用例脚本的菜单路径内部）
+- `app_launch` 恒为隔离 datadir + 隐身 watchdog 启动
+- 会话锁 `%LOCALAPPDATA%\vision_gui\mcp_session.lock`：同一时刻一个司机
+  （UI runner 尚未接入该锁，为已知缺口）
+
+**工具（M1+M2+M3，15 个）**：
+- 交互原语：`app_launch / app_close / app_status / window / shot / click /
+  type_text / key / ocr`（shot 返回 MCP image content + 落盘 artifacts/mcp/shots/）
+- 用例执行（M2）：`list_cases`（扫 m\d*/diag_* 脚本+docstring 摘要）、
+  `run_case(script,args,timeout_s)`（持锁跑整条用例；超时只杀驱动不杀 app，
+  随后按 WM_CLOSE 清扫沙盒孤儿 app；解析 m3 verdict 块/退出码两种判定约定）、
+  `get_artifacts(subdir,limit)` / `get_artifact(path)`（图返 MCP image、文返文本，
+  路径逃逸一律拒绝）
+- 用例起草（M3）：`case_scaffold(name,goal)`（生成 drafts/ 草稿，带人工 review
+  checklist 头注释）、`crop_template(shot,x,y,w,h,name)`（裁模板图，draft_ 前缀
+  标记未 review）
+
+**验证**：`mcp_smoke.py` 全链路（initialize → tools/list → launch → shot →
+click → 窗口外点击拒绝 → close）一次通过；ZCode 注册于
+`~/.zcode/cli/config.json` → `mcp.servers.vision-gui`（备份
+config.json.bak-visiongui）。
+
+**M3 流程（AI 起草 → 人类拍板）**：agent 用 case_scaffold 生成 drafts/ 草稿 +
+crop_template 裁模板（draft_ 前缀）→ 人类按草稿头部的 checklist 跑通并 review
+→ `git mv drafts/mXx_*.py mXx_*.py` 入正册 + 去 draft_ 前缀 + 写 BLACKBOX_CASES.md
+→ 提交。草稿未 review 前不得进正册、不得进 batch。
+
+**冒烟**：`mcp_smoke.py` 覆盖 15 工具全链路 + 4 条护栏（窗口外点击、交互期
+run_case、artifacts 路径逃逸、scaffold/crop 清理），全部 GREEN。

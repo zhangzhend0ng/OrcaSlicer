@@ -25,7 +25,7 @@ from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from harness import winutil  # noqa: E402
+from harness import session_lock, winutil  # noqa: E402
 from harness.launcher import default_exe  # noqa: E402
 
 SCRIPTS = {
@@ -125,6 +125,10 @@ class Runner(ctk.CTk):
                       command=self._stop).pack(side="left", padx=4)
         self.status = ctk.CTkLabel(btns, text="idle", text_color="#888888")
         self.status.pack(side="right", padx=8)
+        # unified-entry driver lock indicator: shows who owns the app session
+        # (this UI / an AI agent via the MCP server / free)
+        self.lock_lbl = ctk.CTkLabel(btns, text="driver lock: free", text_color="#666666")
+        self.lock_lbl.pack(side="right", padx=4)
 
         # ---- log + live-view panes ----
         mid = ctk.CTkFrame(self)
@@ -228,6 +232,13 @@ class Runner(ctk.CTk):
                     self._log(text, tag)
         except queue.Empty:
             pass
+        holder = session_lock.holder()
+        if holder is None:
+            self.lock_lbl.configure(text="driver lock: free", text_color="#666666")
+        elif holder == os.getpid():
+            self.lock_lbl.configure(text="driver lock: this UI", text_color="#3ddc84")
+        else:
+            self.lock_lbl.configure(text=f"AI driving (pid {holder})", text_color="#ffb300")
         self.after(100, self._poll)
 
     def _shot_loop(self):
@@ -257,6 +268,10 @@ class Runner(ctk.CTk):
         if self.proc and self.proc.poll() is None:
             self._log("(a run is already active)\n", "err")
             return
+        ok, why = session_lock.acquire()
+        if not ok:
+            self._log(f"(driver lock unavailable: {why} — the AI agent is driving?)\n", "err")
+            return
         if getattr(sys, "frozen", False):
             # packaged: re-invoke this exe with the 'run' subcommand
             cmd = [sys.executable, "run", str(script), *args]
@@ -281,6 +296,7 @@ class Runner(ctk.CTk):
                 tag = "log"
             self.queue.put((line, tag))
         rc = self.proc.wait()
+        session_lock.release()  # unified-entry: free the driver slot
         verdict = "GREEN" if rc == 0 else f"RED (exit {rc})"
         color = "#3ddc84" if rc == 0 else "#ff6b6b"
         self.queue.put((f"\n===== {label}: {verdict} =====\n", "ok" if rc == 0 else "err"))
