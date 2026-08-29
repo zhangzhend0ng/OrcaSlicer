@@ -314,6 +314,42 @@ def msg_text(hwnd: int, text: str) -> None:
         _send_msg(hwnd, WM_CHAR, ord(ch), 0)
 
 
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+VK_CONTROL = 0x11
+VK_RETURN = 0x0D
+
+
+def msg_key(hwnd: int, vk: int, modifiers: int = 0) -> None:
+    """Send a key press (WM_KEYDOWN + WM_KEYUP) to `hwnd`.
+
+    Used for Enter in modal dialogs and Ctrl+A select-all in Edit controls.
+    `modifiers` (e.g. VK_CONTROL) is held down for the press and released
+    after. Message-level injection — immune to remote-control hooks, no
+    focus required.
+    """
+    # A zero lParam is ignored by some native controls (Edit's Ctrl+A,
+    # dialog default-button Enter): pack the scan code + repeat count.
+    scan = user32.MapVirtualKeyW(vk, 0)  # MAPVK_VK_TO_VSC
+    lp = 1 | (scan << 16)
+    if modifiers:
+        _send_msg(hwnd, WM_KEYDOWN, modifiers, 1 | (user32.MapVirtualKeyW(modifiers, 0) << 16))
+    _send_msg(hwnd, WM_KEYDOWN, vk, lp)
+    _send_msg(hwnd, WM_KEYUP, vk, lp | (1 << 30) | (1 << 31))
+    if modifiers:
+        _send_msg(hwnd, WM_KEYUP, modifiers, 1 | (user32.MapVirtualKeyW(modifiers, 0) << 16) | (1 << 30) | (1 << 31))
+
+
+def select_all(hwnd: int) -> None:
+    """Ctrl+A inside an Edit control (prepares it for overwrite typing)."""
+    msg_key(hwnd, ord("A"), VK_CONTROL)
+
+
+def press_enter(hwnd: int) -> None:
+    """Press Enter on `hwnd` (activates a modal dialog's default button)."""
+    msg_key(hwnd, VK_RETURN)
+
+
 def close_window(hwnd: int) -> None:
     user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
 

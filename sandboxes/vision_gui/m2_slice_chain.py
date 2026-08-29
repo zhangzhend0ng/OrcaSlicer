@@ -91,8 +91,15 @@ def wait_slicing_done(session, timeout_s=1500):
     template is NOT a valid completion signal: the done state scores only
     ~0.67 against it (the checkmark shifts the normalized correlation), which
     masqueraded as 'still slicing' in earlier runs while slicing had in fact
-    COMPLETED."""
+    COMPLETED.
+
+    Anti-false-positive: the done template also scores ~0.90 against the
+    PRINT button area on an EMPTY scene (the 180x42 template spans both
+    buttons), so completion additionally requires the idle template to have
+    LEFT its 1.0 match (idle < 0.9) — a real completion shows done ~1.0 +
+    idle ~0.67, an empty scene shows done ~0.90 + idle ~1.0."""
     tpl = cv2.imread(str(RESOURCE / "slice_button_done.png"))
+    tpl_idle = cv2.imread(str(RESOURCE / "slice_plate_button.png"))
     deadline = time.monotonic() + timeout_s
     n_polls = 0
     last = 0.0
@@ -103,8 +110,10 @@ def wait_slicing_done(session, timeout_s=1500):
         n_polls += 1
         res = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
         _, score, _, _ = cv2.minMaxLoc(res)
+        res_idle = cv2.matchTemplate(img, tpl_idle, cv2.TM_CCOEFF_NORMED)
+        _, score_idle, _, _ = cv2.minMaxLoc(res_idle)
         last = float(score)
-        if score >= 0.85:
+        if score >= 0.85 and score_idle < 0.9:
             return True, last
         time.sleep(0.5)
     return False, last
@@ -137,7 +146,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe", default=None)
     ap.add_argument("--datadir", default=HERE / "artifacts" / "profile", type=Path)
-    ap.add_argument("--model", default=HERE.parent.parent / "tests" / "data" / "test_3mf" / "Prusa.stl", type=Path)
+    ap.add_argument("--model", default=HERE.parent.parent / "tests" / "data" / "test_3mf" / "mixed_filament_test.3mf", type=Path,
+                    help="U1-embedded fixture: Prusa.stl (no embedded preset) falls back to a seed preset "
+                         "that leaves Slice disabled — see BLACKBOX_CASES.md '关键源码事实'")
     ap.add_argument("--reuse", action="store_true",
                     help="reuse the datadir (default: FRESH — a used datadir "
                          "carries saved state that blocks CLI auto-load)")
