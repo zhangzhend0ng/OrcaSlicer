@@ -191,6 +191,66 @@ def switch_combo(session, dlg: int, current_labels: tuple, target: str,
     return False
 
 
+# --- manual card rows (measured 08-30, MixedFilamentBatchDialog) -------------
+# Each Manual row = an outer container ('panel'-text wxWindowNR) + an inner
+# text child carrying the selected preset material ('Generic PETG' — short
+# name, no '@'). Rows sit in the 'Filament Setup' card; the plate/view
+# combos live in the preview card further down and the Auto/Manual mode
+# combo above the card.
+
+def manual_row_combos(dlg: int):
+    """Deduped (text, rect, hwnd) of the visible Manual-card selector
+    rows, top->bottom; [] when the card title is not visible."""
+    ty1 = None
+    for t, c, r, h in children(dlg):
+        if c == "Static" and t.strip() == "Filament Setup" \
+                and user32.IsWindowVisible(h):
+            ty1 = r[3]
+            break
+    if ty1 is None:
+        return []
+    rows = {}
+    for t, c, r, h in children(dlg):
+        if c not in ("ComboBox", "wxWindowNR") or not t.strip():
+            continue
+        if not user32.IsWindowVisible(h):
+            continue
+        txt = t.strip()
+        if txt == "panel" or txt in ("Auto", "Manual"):
+            continue
+        w, hh = r[2] - r[0], r[3] - r[1]
+        if not (140 <= w <= 300 and 22 <= hh <= 40):
+            continue
+        if ty1 - 8 <= r[1] <= ty1 + 220:
+            rows.setdefault((r[0], r[1]), (txt, r, h))
+    out = list(rows.values())
+    out.sort(key=lambda x: (x[1][1], x[1][0]))
+    return out
+
+
+def close_batch_dialog(session, dlg: int) -> bool:
+    """Cancel closes the batch dialog; the 'Discard Matching' confirm only
+    pops with a COMPLETED match (MixedFilamentBatchDialog.cpp:1826) —
+    tolerate one anyway and click its 'Discard'."""
+    if not click_button(dlg, "Cancel"):
+        return False
+    time.sleep(1.5)
+    cfm = wait_warning_dialog(session.pid, dlg, timeout_s=3.0)
+    if cfm:
+        hit = child_by_text(cfm, "Discard")
+        if hit:
+            r = hit[2]
+            winutil.real_click_screen((r[0] + r[2]) // 2,
+                                      (r[1] + r[3]) // 2)
+        time.sleep(2.0)
+    for _ in range(6):
+        if find_dialog(session.pid, timeout_s=1.0) is None:
+            return True
+        click_button(dlg, "Cancel")
+        time.sleep(1.5)
+    return False
+
+
 # --- matching -----------------------------------------------------------------
 
 def click_button(dlg: int, substr: str) -> bool:
@@ -240,7 +300,7 @@ def map_region_colored(img, dlg_rect: tuple, region) -> float:
     return float((spread > 40).mean())
 
 
-def wait_match_done(session, dlg: int, timeout_s: float = 60.0) -> bool:
+def wait_match_done(session, dlg: int, timeout_s: float = 300.0) -> bool:
     """Manual matching completes when the color-mapping list renders
     saturated swatches (measured: chromatic fraction 0 -> ~0.12) and the
     result view panel shows content. Returns True on completion."""

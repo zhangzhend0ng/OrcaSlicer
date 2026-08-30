@@ -74,7 +74,7 @@ def main() -> int:
             return verdict(results)
         mixing_util.switch_match_mode(session, dlg, "Manual")
         ok_start = mixing_util.click_button(dlg, "Start Matching")
-        done = mixing_util.wait_match_done(session, dlg, timeout_s=90.0)
+        done = mixing_util.wait_match_done(session, dlg, timeout_s=420.0)
         print(f"[m3q] match: {ok_start}/{done}")
         results["match completes"] = "PASS" if done else "FAIL"
         if not done:

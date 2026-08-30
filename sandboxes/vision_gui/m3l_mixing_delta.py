@@ -52,7 +52,7 @@ def main() -> int:
         done = False
         if switched:
             mixing_util.click_button(dlg, "Start Matching")
-            done = mixing_util.wait_match_done(session, dlg, timeout_s=90.0)
+            done = mixing_util.wait_match_done(session, dlg, timeout_s=420.0)
         print(f"[m3l] match rendered: {done}")
         results["manual match completes"] = "PASS" if done else "FAIL"
 

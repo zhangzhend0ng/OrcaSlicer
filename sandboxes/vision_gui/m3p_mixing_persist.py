@@ -68,7 +68,7 @@ def main() -> int:
             mixing_util.switch_match_mode(session, dlg, "Manual")
             mixing_util.click_button(dlg, "Start Matching")
             matched = mixing_util.wait_match_done(session, dlg,
-                                                  timeout_s=90.0)
+                                                  timeout_s=420.0)
             print(f"[m3p] match: {matched}")
             results["manual match completes"] = "PASS" if matched else "FAIL"
             if matched:

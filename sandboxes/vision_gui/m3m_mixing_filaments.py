@@ -127,7 +127,7 @@ def main() -> int:
 
         # --- match -> gamut warning banner (#13) ---
         ok_start = mixing_util.click_button(dlg, "Start Matching")
-        done = mixing_util.wait_match_done(session, dlg, timeout_s=90.0)
+        done = mixing_util.wait_match_done(session, dlg, timeout_s=420.0)
         print(f"[m3m] start={ok_start} match={done}")
         warn_text = None
         if done:

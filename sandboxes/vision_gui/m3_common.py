@@ -30,12 +30,52 @@ MULTI_PLATE_3MF = FIXTURES / "snapmates_nonmixed.3mf"  # 7 plates
 PRUSA_STL = FIXTURES / "Prusa.stl"
 
 
+def viewport_rendered(session, min_frac=0.5) -> bool:
+    """True once the 3D viewport paints non-background pixels. An
+    uninitialized canvas is PURE white (255/255/255, measured); a rendered
+    one shows the bed gradient / model."""
+    img = capture_bgr(session)
+    h, w = img.shape[:2]
+    sub = img[h // 8: h * 7 // 8, w * 3 // 8: w * 15 // 16].astype(int)
+    nonwhite = float((sub.min(axis=2) < 245).mean())
+    return nonwhite > min_frac
+
+
+def force_canvas_paint(session):
+    """Real clicks across the Preview/Prepare tab band. The GL canvas only
+    initializes on REAL paint/mouse events; when the boot window is fully
+    occluded (a fullscreen console window above it), no WM_PAINT arrives
+    and the canvas stays white forever (measured 08-30, GLCanvas3D render
+    gate / GUI_App init path). The frame is a fixed 1200x800 rect, so the
+    tab offsets are stable."""
+    rect = winutil.window_rect(session.hwnd)
+    for dx, dy in ((240, 48), (120, 48)):
+        x, y = rect[0] + dx, rect[1] + dy
+        winutil.user32.SetCursorPos(x, y)
+        time.sleep(0.2)
+        winutil.real_click_screen(x, y)
+        time.sleep(1.2)
+
+
+def ensure_gl_ready(session, tries: int = 4) -> bool:
+    """Force-paint the GL canvas until the viewport stops being blank."""
+    ok = viewport_rendered(session)
+    for _ in range(tries):
+        if ok:
+            break
+        force_canvas_paint(session)
+        ok = viewport_rendered(session)
+    print(f"[m3] gl canvas ready: {ok}")
+    return ok
+
+
 def boot_session(args, model=None, fresh=True):
     """Seed a fresh datadir, launch with optional model, hands-off boot."""
     datadir = Path(args.datadir)
     profile.seed_profile(datadir, fresh=fresh)
     session = launcher.launch(exe=args.exe, datadir=datadir, model=model)
     time.sleep(12.0)  # hands-off: early interference kills CLI auto-load
+    ensure_gl_ready(session)
     winutil.demote_window(session.hwnd)
     return session
 

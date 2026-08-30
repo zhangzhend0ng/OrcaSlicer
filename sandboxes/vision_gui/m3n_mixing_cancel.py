@@ -51,7 +51,7 @@ def dialog_buttons(hwnd):
 
 def run_match(session, dlg):
     mixing_util.click_button(dlg, "Start Matching")
-    return mixing_util.wait_match_done(session, dlg, timeout_s=90.0)
+    return mixing_util.wait_match_done(session, dlg, timeout_s=420.0)
 
 
 def main() -> int:

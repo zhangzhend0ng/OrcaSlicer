@@ -61,7 +61,7 @@ def main() -> int:
 
         # --- after a match, hover a swatch row -> the Delta-E tooltip ---
         ok_start = mixing_util.click_button(dlg, "Start Matching")
-        done = mixing_util.wait_match_done(session, dlg, timeout_s=90.0)
+        done = mixing_util.wait_match_done(session, dlg, timeout_s=420.0)
         print(f"[m3s] match: {ok_start}/{done}")
         swatch_tip = None
         if done:

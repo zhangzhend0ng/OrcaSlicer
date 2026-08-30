@@ -84,6 +84,24 @@
 | 持久化 | #48 | 匹配→Confirm→Save Project as→重载：模型到达（色度 5.9%>2.1% 基线）→Color Mixing 面板混色内容保留（0.071）→弹窗可重开 | m3p_mixing_persist.py | ✅ |
 | hover 提示冒烟（降级） | #8（#2/#9/#23 同族） | 增删按钮 hover→tooltip 出现+OCR 非空；swatch hover→'Color Difference' tooltip | m3s_mixing_hover.py | ✅ |
 
+| 混色匹配入口门禁（耗材数） | T2#31-35 | 无方案 fixture：删除耗材至 1（trash 探测）→面板隐藏+1 耗材提示原文+弹窗不开；加回 3→弹窗开+Manual 行=3；加到 6→钳制 4（无冲突弹窗，stale）；有方案 fixture：直接开（#34/#35） | m4a_mixing_gates.py | ✅ |
+| 批量弹窗 Auto/Manual 卡 | T2#2/#3/#4 | Manual 默认 4 行；Auto 卡 4 槽同标签+无选择 combo；行选择→匹配→Confirm→侧栏耗材 5→3（cleanup_unused_filaments） | m4b_batch_manual.py | ✅ |
+| 侧栏混色面板 | 表1#45/#48/#42/#38 | 物理行材料名+种子条目+Options 按钮；菜单 Delete 清空→空态+添加可用；新增方案+物理耗材后条目完整；重开默认干净+1 耗材时面板隐藏 | m4c_mixing_panel.py | ✅ |
+| 耗材删除/合并 | 表1#47/#46 | trash 静默删除（方案存活）；引用中删除→Warning 二次确认（原文 Static 直读）→取消保留/确认级联；剩 1 面板+trash 隐藏；Options 菜单 Edit/Merge with/Delete→混色合并到物理后条目消失 | m4d_mixing_filops.py | ✅ |
+| 颜色上限（64） | 表1#41（表写 32，现 64） | 64 色 fixture：混色添加+耗材添加均禁用；删 1 个→恢复；上限以下 PLA 对可登记 | m4f_mixing_cap64.py | ✅ |
+| 同色耗材混色+5 色预警 | 表1#9/#16 + T2#7/#9 | 全 PLA 同色 fixture：同色对无阻断可登记（F3 50%+F4 50%）；'12345'→Excessive 橙幅不阻止；批量匹配渲染映射列表（ΔE 细节留人工） | m4j_mixing_samecolor.py | ✅ |
+| 细分层高 | 表1#36/#37 + T2#40/#41 | Advanced 开关→Multimaterial 页 'Subdivide Mix Layer'；0.4mm 勾选无警告；0.1mm 勾选→'Configuration Conflict'（原文）；切片完成（子层数值留人工） | m4g_mixing_sublayer.py | ✅ |
+| 0.4 喷嘴模板/兼容 | T2#37/#38/#39/#44 | 0.4 变体 fixture：'0.10mm Color Mixing @Snapmaker U1 (0.4 nozzle)' 存在可选+Auto 无门禁匹配完成+tooltip OCR；0.8：无 0.10 模板+Auto Start 门禁原文（批量弹窗无模板下拉，断言 Process 预设；切换无确认弹窗已核实） | m4h_mixing_templates.py | ✅ |
+| 混色切片+导出 | 表1#50（部分） | 比例+渐变两方案→切片完成→gcode 导出 1.36MB 含 5 种换刀标记；上传打印留人工 | m4i_mixing_slice.py | ✅ |
+| 涂色工具调色板 | 表1#39（部分） | 选中模型→横排 gizmo 栏 'Color painting' tooltip→激活→ImGui 'Filaments' 调色板 6 色块（5 物理+1 混色）；逐块涂色留人工 | m4e_mixing_paint.py | ✅ |
+| 比例模式 UI/边界 | 表1#1-#4 | Add Mix 默认 Ratio/2 行 50/50/推荐卡；跨类默认对红幅原文+OK 禁用；行增删按钮 3 行翻转增↔删；行 combo 排除已选；滑块 10-90 钳制+90% 高比例橙幅出现/中点消失 | m3t_mixing_add_ratio.py | ✅ |
+| 比例登记/编辑/取消 | 表1#5-#8/#43 | 推荐徽章→50/50+预览重绘；OK 登记 'F2 50%+F3 50%'；单击条目 Edit Mix 保模式保参数；75/25 更新标签；取消无残留 | m3u_mixing_ratio_flow.py | ✅ |
+| 循环输入校验 | 表1#10-#15 | 默认 '12'；徽章追加；合法格式过；空→'12'；单色 advisory；512 截断；'623'/'2a3'/','123' 红幅+OK 禁用（语法 [nn]，表写 '/' 为 stale） | m3v_mixing_cycle_input.py | ✅ |
+| 循环流程/模式切换 | 表1#18-#20/#44 | '23' 登记（摘要 F2 50%+F3 50%）；'232'→67/33 更新；取消保留；Match↔Cycle 保图案；切 Ratio 重登记为比例型 | m3w_mixing_cycle_flow.py | ✅ |
+| 匹配模式（弹窗内） | 表1#21-#29 | Match 卡默认（blend hex+15%+2:1:1）；GGGGGG/5 位→红幅+OK 禁；FF5733→6s 内重算（50/25/25→61/39）；Min Mix 滑块 15→3；取色器色格点击→hex 更新；OK 登记；重开 Match 保模式 | m3x_mixing_match.py | ✅ |
+| 渐变模式 | 表1#31-#35 | 恒 2 行+Mix Effect+交换钮；换耗材预览重绘；默认 F3->F2 登记；交换→F2->F3；重开保 Gradient；推荐+取消无新增 | m3y_mixing_gradient.py | ✅ |
+| 兼容性矩阵 | 表1#51-#60 | 11 耗材 fixture 10 对断言：同类放行（PLA/PETG）、PLA+PETG/ABS/TPU/BVOH 阻断+OK 禁；PETG+TPU/PA+PC/ABS+ASA/PVA+BVOH 现矩阵放行（表格 4 处 stale，FEISHU_MAPPING 已注） | m3z_mixing_compat.py | ✅ |
+
 **OCR 技术事实（2026-08-29 实测）**：本机 Windows OCR 只有 zh-CN 语言包（英文 UI 文本噪声大，`try_create_from_language(en-US)` 返回 None）；**Tesseract 5.4（eng）对文案零误差**（警告弹窗全文、tooltip `'Color Difference: Good (AE=0.0)'` 逐字可读）——落地 `harness/ocr_util.py`（pytesseract + PrintWindow + 3x 放大）。**wx 系统 tooltip 只跟踪真实鼠标输入**（SetCursorPos / WM_MOUSEMOVE 注入不触发，须 SendInput `MOUSEEVENTF_MOVE`）；映射列表色块行是匹配后新增的 93x36 panel（y 797-885）。
 
 **其余 48 条归类**（可测性分层，后续按需扩展）：
