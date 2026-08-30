@@ -74,6 +74,9 @@ def boot_session(args, model=None, fresh=True):
     datadir = Path(args.datadir)
     profile.seed_profile(datadir, fresh=fresh)
     session = launcher.launch(exe=args.exe, datadir=datadir, model=model)
+    # archive screenshots for later manual spot-check (all cases, zero edits)
+    from harness import shot_archive
+    shot_archive.start_archiver(session, Path(sys.argv[0]).stem)
     time.sleep(12.0)  # hands-off: early interference kills CLI auto-load
     ensure_gl_ready(session)
     winutil.demote_window(session.hwnd)
