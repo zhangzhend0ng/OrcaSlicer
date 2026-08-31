@@ -39,8 +39,22 @@ from . import winutil
 user32 = ctypes.WinDLL("user32")
 WNDENUMPROC = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
 
-_TOPBAR_Y0, _TOPBAR_Y1 = 140, 170
-_MAIN_X0 = 1150  # topbar right area: buttons live right of the tabs
+# Topbar row filter, WINDOW-RELATIVE (recalibrated 08-31 for the maximized
+# window): the SideButton cluster sits at client y ~25-70 and hugs the RIGHT
+# edge of the topbar. Absolute screen bands (the old y 140-170 / x > 1150)
+# were calibrated against one windowed position and broke the moment the
+# window maximizes (buttons land at screen y ~50-90, x ~1800).
+_TOPBAR_CLIENT_Y0, _TOPBAR_CLIENT_Y1 = 18, 100
+_MAIN_RIGHT_SPAN = 600  # buttons live within the rightmost N client px
+
+
+def _client_frame(hwnd: int) -> tuple[int, int, int]:
+    """(client-origin screen x, client-origin screen y, client width)."""
+    rc = wt.RECT()
+    user32.GetClientRect(hwnd, ctypes.byref(rc))
+    w = rc.right - rc.left
+    ox, oy = winutil.client_to_screen(hwnd, 0, 0)
+    return ox, oy, w
 
 
 def _children_texts(parent: int) -> list[tuple[str, tuple[int, int, int, int], int]]:
@@ -62,10 +76,14 @@ def _children_texts(parent: int) -> list[tuple[str, tuple[int, int, int, int], i
 def topbar_buttons(hwnd: int) -> list[tuple[str, tuple[int, int, int, int], int]]:
     """SideButton cluster in the topbar right area: named main buttons
     ('Slice plate' / 'Print' / 'Export G-code file') and empty-text dropdown
-    buttons. Returned sorted left-to-right."""
+    buttons. Returned sorted left-to-right. Band is window-relative, so it
+    holds at any window position AND maximized."""
+    ox, oy, w_client = _client_frame(hwnd)
+    y0, y1 = oy + _TOPBAR_CLIENT_Y0, oy + _TOPBAR_CLIENT_Y1
+    x_min = ox + max(0, w_client - _MAIN_RIGHT_SPAN)
     out = []
     for text, rect, ch in _children_texts(hwnd):
-        if _TOPBAR_Y0 <= rect[1] <= _TOPBAR_Y1 and rect[0] > _MAIN_X0:
+        if y0 <= rect[1] <= y1 and rect[0] > x_min:
             out.append((text, rect, ch))
     out.sort(key=lambda b: b[1][0])
     return out

@@ -65,7 +65,10 @@ from m3_common import (MIXED_3MF, add_common_args, boot_session,  # noqa: E402
 user32 = ctypes.WinDLL("user32")
 LOG = "[m4g]"
 SB_W = 424
-VIEW_Y0, VIEW_Y1 = 700, 800  # sidebar options viewport band (client y)
+VIEW_Y0, VIEW_Y1 = 700, 800  # fallback options band; the real band is read
+                             # from the viewport panel (view_band) — it
+                             # stretches with the window (73px windowed,
+                             # 313px maximized)
 
 
 def client(session, x, y):
@@ -97,8 +100,23 @@ def real_click(rect):
     time.sleep(0.8)
 
 
-def ocr_band(session, y0=VIEW_Y0, y1=VIEW_Y1):
+def view_band(session):
+    """Visible options viewport band (client y0, y1), read from the panel's
+    own rect so it tracks the window height. Recalibrated 08-31: with the
+    fixed 700..800 band the maximized run wheeled the LAST group ('Color
+    Mixing') fully into view (title resting at ty1~970 at max scroll) and
+    still rejected it — the title could never enter [702,776]."""
+    vp = options_viewport(session)
+    if not vp:
+        return VIEW_Y0, VIEW_Y1
+    x0, y0, x1, y1 = to_local(session, vp[0])
+    return y0, y1
+
+
+def ocr_band(session, y0=None, y1=None):
     """OCR words of the sidebar options band, client coords."""
+    if y0 is None or y1 is None:
+        y0, y1 = view_band(session)
     img = capture_bgr(session)
     words = mdu.ocr_words_img(img[y0:y1, 0:SB_W], scale=3)
     return [(w, x, y + y0, w_w, w_h) for w, x, y, w_w, w_h in words]
@@ -160,6 +178,13 @@ def tab_button(session, name):
 
 
 TAB_STRATEGY = [0]  # remembered across calls: 0 real, 1 message, 2 down/up
+RESET_WHEEL_NOTCHES = 40  # tab switch: force the options viewport back to
+                          # top. Recalibrated 08-31: the scroll offset is
+                          # SHARED across pages, so arriving from a
+                          # max-scrolled Multimaterial page left Quality
+                          # mid-content and 15 notches (~400-600px) could
+                          # not recover the top (measured: Layer height
+                          # unreachable on the 0.4-restore visit).
 
 
 def _click_tab_item(session, rect, strategy):
@@ -218,7 +243,7 @@ def click_tab(session, name, expect_word, timeout_s=75.0):
             print(f"{LOG} click_tab({name}): tab item NOT FOUND")
         vp = options_viewport(session)
         if vp:
-            wheel_viewport(session, vp, 15, delta=120)
+            wheel_viewport(session, vp, RESET_WHEEL_NOTCHES, delta=120)
         joined = " ".join(w.lower() for w, *_ in ocr_band(session))
         print(f"{LOG} click_tab({name}) poll{n_poll} strat{strategy}: "
               f"{joined[:70]!r}")
@@ -238,7 +263,11 @@ def click_tab(session, name, expect_word, timeout_s=75.0):
 
 def options_viewport(session):
     """The Multimaterial/Quality page viewport: a wide 'panel' wxWindowNR
-    filling the band under the tab row (measured local (8,719) 420x73)."""
+    filling the band under the tab row. Size-adaptive (recalibrated 08-31
+    on the maximized window): the panel TOP is anchored at local y ~719-725,
+    but its HEIGHT stretches with the window (73px at the 800-tall window,
+    313px maximized) — the old 50..120 height cap matched only the windowed
+    era and made every wheel a silent no-op (measured via diag_m4g_max)."""
     best = None
     for t, c, r, h, lx, ly in kids(session):
         if c != "wxWindowNR" or t.strip() != "panel":
@@ -246,7 +275,7 @@ def options_viewport(session):
         if not user32.IsWindowVisible(h):
             continue
         w, hh = r[2] - r[0], r[3] - r[1]
-        if 380 <= w <= 440 and 50 <= hh <= 120 and 703 <= ly <= 733:
+        if 380 <= w <= 440 and hh >= 50 and 700 <= ly <= 740:
             if best is None or hh > best[0][3] - best[0][1]:
                 best = (r, h)
     return best
@@ -389,11 +418,12 @@ def float_edits_in_view(session):
     """Visible Edit children inside the options viewport band with a float
     value, topmost first (the Quality page's 'Layer height' is the first
     option row; the label is painted, so disambiguation is positional)."""
+    y0, y1 = view_band(session)
     out = []
     for t, c, r, h, lx, ly in kids(session):
         if c != "Edit" or not user32.IsWindowVisible(h):
             continue
-        if not (VIEW_Y0 <= ly <= VIEW_Y1 and 220 <= lx <= 340):
+        if not (y0 <= ly <= y1 and 220 <= lx <= 340):
             continue
         w, hh = r[2] - r[0], r[3] - r[1]
         if not (50 <= w <= 140 and 12 <= hh <= 26):
@@ -410,12 +440,20 @@ def float_edits_in_view(session):
 
 def wait_layer_height_edit(session, timeout_s=180.0):
     """Topmost float Edit on the (Quality) page = the 'Layer height' option
-    (first option row; the label is painted by OG_CustomCtrl)."""
+    (first option row; the label is painted by OG_CustomCtrl). If nothing
+    is found, periodically force the viewport back to top — the scroll
+    offset persists across tab switches (RESET_WHEEL_NOTCHES note)."""
     deadline = time.monotonic() + timeout_s
+    n = 0
     while time.monotonic() < deadline:
         eds = float_edits_in_view(session)
         if eds:
             return eds[0]
+        n += 1
+        if n % 3 == 0:
+            vp = options_viewport(session)
+            if vp:
+                wheel_viewport(session, vp, RESET_WHEEL_NOTCHES, delta=120)
         time.sleep(1.0)
     return None
 
@@ -493,11 +531,12 @@ def neutralize_focus(session):
 
 def scroll_group_into_view(session, substr, timeout_s=420.0):
     """Wheel the options viewport until the group title `substr` sits high
-    enough in the visible band that its FIRST OPTION ROW is also fully
-    visible (title bottom within [VIEW_Y0+2, VIEW_Y1-24]). 1-notch steps
-    with position read from the title's own rect (a multi-notch wheel can
-    jump whole groups between OCRs). Self-heals a wheel stuck on the Edit
-    focus via neutralize_focus(). Returns (rect, hwnd) or None."""
+    enough in the VISIBLE band that its FIRST OPTION ROW is also fully
+    visible (title bottom within [band_top+2, band_bottom-24], band from
+    view_band()). 1-notch steps with position read from the title's own
+    rect (a multi-notch wheel can jump whole groups between OCRs).
+    Self-heals a wheel stuck on the Edit focus via neutralize_focus().
+    Returns (rect, hwnd) or None."""
     deadline = time.monotonic() + timeout_s
     f = frect(session)
     last_y = None
@@ -510,10 +549,11 @@ def scroll_group_into_view(session, substr, timeout_s=420.0):
             continue
         if hit:
             ty1 = hit[0][3] - f[1]
-            if VIEW_Y0 + 2 <= ty1 <= VIEW_Y1 - 24:
+            y0, y1 = view_band(session)
+            if y0 + 2 <= ty1 <= y1 - 24:
                 return hit
             wheel_viewport(session, vp, 1,
-                           delta=-120 if ty1 > VIEW_Y1 - 24 else 120)
+                           delta=-120 if ty1 > y1 - 24 else 120)
             if last_y == ty1:
                 stuck += 1
                 if stuck >= 3:
@@ -580,7 +620,11 @@ def toggle_subdivide(session, want_checked, tries=4):
             after = checked_state(session, rect)
             print(f"{LOG} subdivide click(att{attempt}): before={before:.2f} "
                   f"after={after:.2f}")
-            now_on = after > 0.25
+            # Checked reads ~0.21 teal fraction on this build/layout, an
+            # unchecked box ~0.00-0.06 (measured 08-31 on the maximized
+            # window; the windowed-era 0.25 threshold misclassified every
+            # checked state and made the toggle rounds flail).
+            now_on = after > 0.13
             if now_on == want_checked and abs(after - before) > 0.05:
                 return now_on, rect
             if now_on == want_checked:
@@ -589,8 +633,8 @@ def toggle_subdivide(session, want_checked, tries=4):
     word, cands = find_subdivide_row(session)
     if word and cands:
         st = checked_state(session, cands[0][0])
-        if (st > 0.25) == want_checked:
-            return st > 0.25, cands[0][0]
+        if (st > 0.13) == want_checked:
+            return st > 0.13, cands[0][0]
     return None, None
 
 

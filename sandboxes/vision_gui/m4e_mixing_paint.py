@@ -48,15 +48,22 @@ sys.path.insert(0, str(HERE))
 from harness import mix_dialog_util as mdu  # noqa: E402
 from harness import mixing_util, winutil  # noqa: E402
 from m1_minimal_loop import capture_bgr  # noqa: E402
-from m2_slice_chain import (VP_X0, wait_model_loaded)  # noqa: E402
+from m2_slice_chain import (VP_X0, VP_Y0, wait_model_loaded)  # noqa: E402
 from m3_common import MIXED_3MF, add_common_args, boot_session, verdict  # noqa: E402
 
 user32 = ctypes.WinDLL("user32")
 LOG = "[m4e]"
+# Recalibrated 08-31 on the MAXIMIZED window (1920x1032 client): all three
+# fixed 1200x800-era bands were stale. The gizmo toolbar row is top-anchored
+# (BAR_Y holds), but it is centered over the 3D view and once the window is
+# wider than 1200 it REACHES PAST x=1160 — the Color Painting slot sits in
+# the never-scanned right half. The palette band and the model-centroid band
+# are viewport-relative now (m2_slice_chain._vp calibration).
 BAR_Y = 88           # gizmo toolbar row (client y)
-BAR_X0, BAR_X1 = 480, 1160
 PITCH = 35
-PAL_X0, PAL_Y0, PAL_X1, PAL_Y1 = 700, 55, 1185, 470  # palette search band
+SCAN_X0 = VP_X0 + 60            # hover-scan from the viewport left edge...
+PAL_Y0, PAL_Y1 = 55, 470        # palette band y (top-anchored chrome)...
+PAL_LEFT_OFF = 250              # ...x from viewport-left+offset to window edge
 
 
 def client(session, x, y):
@@ -89,9 +96,13 @@ def hover_tooltip_text(session, cx, cy, dwell_s=1.4):
 def find_model_centroid(session):
     """The model is the only chromatic blob in the upper canvas (bed grid
     and plate are gray). Returns the local centroid of the largest chromatic
-    component, or None."""
+    component, or None. Band = the whole 3D viewport, size-adaptive: the
+    fixed 100:520 x 440:1180 band clipped the model on the maximized window
+    and the biased centroid clicked empty bed (model never selected)."""
     img = viewport_img(session)
-    band = img[100:520, 440:1180].astype(int)
+    h, w = img.shape[:2]
+    x0, y0, x1, y1 = VP_X0 + 10, VP_Y0 + 30, w - 10, h - 60
+    band = img[y0:y1, x0:x1].astype(int)
     spread = band.max(axis=2) - band.min(axis=2)
     mask = (spread > 45).astype(np.uint8) * 255
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
@@ -104,19 +115,36 @@ def find_model_centroid(session):
     if best is None or best_area < 400:
         return None
     cx, cy = centroids[best]
-    return int(cx) + 440, int(cy) + 100
+    return int(cx) + x0, int(cy) + y0
 
 
-def rotate_tooltip(session):
-    """Toolbar tooltip at the Rotate slot: with no selection it reads
-    'Rotate: Please select at least one object'; with a selection just
-    'Rotate...'."""
-    return hover_tooltip_text(session, 760, BAR_Y)
+def find_slot(session, pred):
+    """First gizmo-toolbar slot whose in-canvas tooltip satisfies `pred`
+    (on the lowercased text). Band spans the viewport top strip (see the
+    recalibration note above); returns (client_x, tooltip) or (None, '')."""
+    img = viewport_img(session)
+    x0, x1 = SCAN_X0, img.shape[1] - 60
+    n = (x1 - x0) // PITCH + 1
+    for i in range(min(n, 40)):
+        cx = x0 + i * PITCH
+        text = hover_tooltip_text(session, cx, BAR_Y)
+        if text:
+            print(f"{LOG} tooltip @x{cx}: {text!r}")
+            if pred(text.lower()):
+                return cx, text
+    return None, ""
 
 
 def select_model(session):
-    """Click the model's chromatic centroid until the Rotate tooltip stops
-    demanding a selection. Returns True once selected."""
+    """Click the model's chromatic centroid until the ROTATE slot's tooltip
+    stops demanding a selection. The Rotate slot is located by tooltip scan
+    (size-adaptive): the fixed x=760 hover was the windowed-era position and
+    silently read a neighboring tooltip after the maximize, so the 'selected'
+    observable flipped on garbage text."""
+    rot_x, _ = find_slot(session, lambda t: "rotate" in t)
+    if rot_x is None:
+        print(f"{LOG} rotate slot not found by tooltip scan")
+        return False
     for _ in range(4):
         pos = find_model_centroid(session)
         print(f"{LOG} model centroid: {pos}")
@@ -128,7 +156,7 @@ def select_model(session):
         time.sleep(0.2)
         winutil.real_click_screen(sx, sy)
         time.sleep(1.2)
-        tip = rotate_tooltip(session)
+        tip = hover_tooltip_text(session, rot_x, BAR_Y)
         print(f"{LOG} rotate tooltip after click: {tip!r}")
         if tip and "select" not in tip.lower():
             return True
@@ -137,9 +165,13 @@ def select_model(session):
 
 def palette_state(session):
     """(heading_found, tile_count) of the palette band: OCR 'Filaments'
-    heading + chromatic connected blobs of tile size."""
+    heading + chromatic connected blobs of tile size. Band = the viewport's
+    top strip right of x=VP_X0+PAL_LEFT_OFF to the window edge: the ImGui
+    gizmo panel renders inside the 3D canvas, which widens with the window
+    (the fixed 700..1185 band searched empty space once maximized)."""
     img = viewport_img(session)
-    band = img[PAL_Y0:PAL_Y1, PAL_X0:PAL_X1]
+    w = img.shape[1]
+    band = img[PAL_Y0:PAL_Y1, VP_X0 + PAL_LEFT_OFF:w - 12]
     words = mdu.ocr_words_img(band, scale=3)
     text = " ".join(w for w, *_ in words)
     heading = "filament" in text.lower()
@@ -189,25 +221,20 @@ def main() -> int:
             return verdict(results)
 
         # --- hover-scan the gizmo toolbar for 'Color Painting' ---
-        n_pos = (BAR_X1 - BAR_X0) // PITCH + 1
-        target = None
-        tip_text = ""
-        for i in range(min(n_pos, 20)):
-            cx = BAR_X0 + i * PITCH
-            text = hover_tooltip_text(session, cx, BAR_Y)
-            if text:
-                print(f"{LOG} tooltip @x{cx}: {text!r}")
-            low = text.lower()
-            if "paint" in low and "color" in low:
-                target = cx
-                tip_text = text
-                break
+        target, tip_text = find_slot(
+            session, lambda t: "paint" in t and "color" in t)
         if target is None:
-            # fall back to the registration order (10th gizmo)
-            target = BAR_X0 + 9 * PITCH
-            print(f"{LOG} tooltip scan missed; using order-based x={target}")
+            # looser retry before falling back to nothing
+            target, tip_text = find_slot(session, lambda t: "paint" in t)
+        if target is None:
+            print(f"{LOG} color-painting slot NOT found by tooltip scan")
         results["Color Painting toolbar tooltip found"] = (
             "PASS" if "paint" in tip_text.lower() else "FAIL")
+        if target is None:
+            results["Color Painting gizmo activates"] = "FAIL"
+            results["palette renders >=5 filament tiles"] = "FAIL"
+            results["app alive"] = "PASS" if session.alive() else "FAIL"
+            return verdict(results)
 
         # --- activate the gizmo (poll: the selector build can take a
         #     moment and the palette renders after it) ---
