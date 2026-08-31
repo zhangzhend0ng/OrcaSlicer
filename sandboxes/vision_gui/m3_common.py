@@ -79,6 +79,12 @@ def boot_session(args, model=None, fresh=True):
     _arch = shot_archive.start_archiver(session, Path(sys.argv[0]).stem)
     shot_archive.hook_stdout_tee(_arch)   # labeled capture per step/verdict print
     time.sleep(12.0)  # hands-off: early interference kills CLI auto-load
+    try:  # maximize for the full-screen recording; viewport checks are
+          # size-relative since the VP-region recalibration (m2_slice_chain)
+        winutil.user32.ShowWindow(session.hwnd, 3)  # SW_MAXIMIZE
+        time.sleep(1.0)
+    except Exception:
+        pass
     ensure_gl_ready(session)
     winutil.demote_window(session.hwnd)
     return session

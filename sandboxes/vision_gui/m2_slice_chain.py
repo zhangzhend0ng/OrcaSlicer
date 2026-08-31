@@ -27,12 +27,17 @@ from m1_minimal_loop import (MATCH_THRESHOLD, capture_bgr,  # noqa: E402
 RESOURCE = HERE / "resource" / "image"
 
 # 3D viewport region (client px): right of the settings panel, below topbar.
-VP_X0, VP_Y0, VP_X1, VP_Y1 = 430, 70, 1155, 1030
+VP_X0, VP_Y0 = 430, 70   # left sidebar is fixed-width; viewport starts right of it
+def _vp(img):
+    """Viewport crop calibrated for any window size: fixed left/top origin
+    (sidebar/tab chrome don't scale), right/bottom edges follow the window."""
+    h, w = img.shape[:2]
+    return img[VP_Y0:max(VP_Y0 + 1, h - 8), VP_X0:max(VP_X0 + 1, w - 8)]
 
 # Fraction of viewport pixels that must be clearly chromatic for the model
 # to count as loaded: empty bed measures ~0.15%, a loaded (multicolor) model
 # ~2.1% — 1% sits with >5x margin on both sides (measured 2026-08-28).
-MODEL_COLORED_THRESHOLD = 0.010
+MODEL_COLORED_THRESHOLD = 0.006  # maximized window enlarges the denominator
 
 # Absolute floor for the toolpath assertion: the pre-slice model baseline
 # is 0.7-2.1% depending on the model (default Prusa.stl 0.69%, multicolor
@@ -43,7 +48,7 @@ TOOLPATH_COLORED_FLOOR = 0.010
 
 
 def viewport_stats(img):
-    vp = img[VP_Y0:VP_Y1, VP_X0:VP_X1].astype(int)
+    vp = _vp(img).astype(int)
     return vp.std(), vp.mean()
 
 
@@ -53,7 +58,7 @@ def has_colored_content(img) -> float:
     The empty bed/grid and UI chrome are near-gray (low channel spread);
     extruded toolpath is rendered in saturated filament colors.
     """
-    vp = img[VP_Y0:VP_Y1, VP_X0:VP_X1].astype(int)
+    vp = _vp(img).astype(int)
     spread = vp.max(axis=2) - vp.min(axis=2)
     return float((spread > 40).mean())
 
