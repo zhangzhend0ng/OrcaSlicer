@@ -76,7 +76,8 @@ def boot_session(args, model=None, fresh=True):
     session = launcher.launch(exe=args.exe, datadir=datadir, model=model)
     # archive screenshots for later manual spot-check (all cases, zero edits)
     from harness import shot_archive
-    shot_archive.start_archiver(session, Path(sys.argv[0]).stem)
+    _arch = shot_archive.start_archiver(session, Path(sys.argv[0]).stem)
+    shot_archive.hook_stdout_tee(_arch)   # labeled capture per step/verdict print
     time.sleep(12.0)  # hands-off: early interference kills CLI auto-load
     ensure_gl_ready(session)
     winutil.demote_window(session.hwnd)

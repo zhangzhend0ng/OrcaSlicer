@@ -62,4 +62,64 @@ def start_archiver(session, name: str, interval: float = 3.0, out_root=None):
         _save(session.hwnd, root / "final.png")
 
     threading.Thread(target=run, daemon=True, name=f"shots-{name}").start()
+
+    # labeled capture: called from the stdout tee on every step print, so each
+    # assertion/step log line gets its own screenshot named after the line —
+    # this is what makes per-Feishu-record evidence lookup exact.
+    state = {"n": 0, "last": 0.0}
+
+    def capture_labeled(label: str):
+        now = time.monotonic()
+        if now - state["last"] < 1.0:   # rate limit: live prints can burst
+            return
+        state["last"] = now
+        state["n"] += 1
+        slug = "".join(ch if ch.isalnum() else "-" for ch in label.strip())[:60].strip("-")
+        _save(session.hwnd, root / f"L{state['n']:03d}_{slug}_main.png")
+        for h, tag in visible_big_dialogs():
+            _save(h, root / f"L{state['n']:03d}_{slug}_{tag}.png")
+
+    stop.capture_labeled = capture_labeled   # attach for the stdout hook
     return stop
+
+
+def hook_stdout_tee(archive):
+    """Tee case stdout: every printed line also triggers a labeled capture.
+    Idempotent; call once per process after start_archiver."""
+    import sys
+    if getattr(sys.stdout, "_shot_hooked", False):
+        return
+    orig = sys.stdout
+
+    class Tee:
+        _shot_hooked = True
+
+        def __init__(self, orig):
+            self._orig = orig
+
+        def write(self, s):
+            try:
+                self._orig.write(s)
+            except Exception:
+                pass
+            for line in s.splitlines():
+                line = line.strip()
+                # step/verdict lines only: harness prints are prefixed [mX] or start
+                # with an assertion name in the verdict block
+                if line and (line.startswith("[") or ":" in line or "PASS" in line or "FAIL" in line):
+                    try:
+                        archive.capture_labeled(line)
+                    except Exception:
+                        pass
+            return len(s)
+
+        def flush(self):
+            try:
+                self._orig.flush()
+            except Exception:
+                pass
+
+        def __getattr__(self, a):
+            return getattr(self._orig, a)
+
+    sys.stdout = Tee(orig)
