@@ -63,13 +63,24 @@ def start_archiver(session, name: str, interval: float = 3.0, out_root=None):
                 _save(session.hwnd, root / f"{seq:04d}_{ts}_main.png")
                 for h, tag in visible_big_dialogs():
                     _save(h, root / f"{seq:04d}_{ts}_{tag}.png")
-            try:  # every tick (~0.5s): feed the continuous MP4 recording
+            try:  # every tick (~0.5s): main window + current dialog, stacked
+                import numpy as _np
                 w, h, bgra = winutil.capture_window(session.hwnd)
-                frame = np.frombuffer(bgra, np.uint8).reshape(h, w, 4)[:, :, :3]
+                main = _np.frombuffer(bgra, _np.uint8).reshape(h, w, 4)[:, :, :3].copy()
+                VW = 960
+                main = cv2.resize(main, (VW, int(h * VW / w)))
+                dlg_slot_h = 480
+                dlg_area = _np.zeros((dlg_slot_h, VW, 3), _np.uint8)
+                for dh, _tag in visible_big_dialogs():
+                    dw, dh2, dbgra = winutil.capture_window(dh)
+                    dimg = _np.frombuffer(dbgra, _np.uint8).reshape(dh2, dw, 4)[:, :, :3]
+                    dimg = cv2.resize(dimg, (VW, min(dlg_slot_h, int(dh2 * VW / dw))))
+                    dlg_area[:dimg.shape[0], :VW] = dimg
+                    break
                 if vid is None:
-                    vid = cv2.VideoWriter(vpath, cv2.VideoWriter_fourcc(*"mp4v"), 2.0, (w, h))
-                if frame.shape[1] == w:
-                    vid.write(frame)
+                    vid = cv2.VideoWriter(vpath, cv2.VideoWriter_fourcc(*"mp4v"), 2.0,
+                                          (VW, main.shape[0] + dlg_slot_h))
+                vid.write(_np.vstack([main, dlg_area]))
             except Exception:
                 pass
             stop.wait(min(interval, 0.5))
