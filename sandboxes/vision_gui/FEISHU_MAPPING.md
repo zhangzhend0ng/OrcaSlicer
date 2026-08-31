@@ -101,7 +101,8 @@ the shipped source, the divergence is recorded here:
 | 57 | PETG+BVOH | COVERED | m3z | 阻断 ✓ |
 | 58 | 支撑耗材隔离 | PARTIAL | m3z | PLA+BVOH/PLA+PVA 阻断；BVOH+PVA 现允许（同类，见 stale 注） |
 | 59 | 跨大类补充 | COVERED | m3z | PETG+PC / PA+PC / ABS+TPU 按矩阵断言 |
-| 60 | 跨大类核心 | COVERED | m3z | PLA+ABS / PLA+PETG / PLA+PA / PLA+TPU / ABS+ASA 阻断 + OK 置灰 |## 表2 — 混色匹配弹窗（MixedFilamentBatchDialog）
+| 60 | 跨大类核心 | COVERED | m3z | PLA+ABS / PLA+PETG / PLA+PA / PLA+TPU / ABS+ASA 阻断 + OK 置灰 |
+## 表2 — 混色匹配弹窗（MixedFilamentBatchDialog）
 
 | # | 用例 | Status | Case | Assertions |
 |---|---|---|---|---|
