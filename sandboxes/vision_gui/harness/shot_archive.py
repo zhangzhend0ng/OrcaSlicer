@@ -31,6 +31,42 @@ def _save(hwnd: int, path: Path) -> bool:
         return False
 
 
+
+def _screen_bgr():
+    """Full virtual-screen GDI capture (BGR numpy array) or None."""
+    import numpy
+    u = winutil.user32; g = winutil.gdi32
+    SW, SH = 1920, 1080  # fixed VM video mode; GetSystemMetrics below as fallback
+    try:
+        SW = u.GetSystemMetrics(0) or SW
+        SH = u.GetSystemMetrics(1) or SH
+    except Exception:
+        pass
+    hdc = u.GetDC(None)
+    if not hdc:
+        return None
+    try:
+        mem = g.CreateCompatibleDC(hdc)
+        bmp = g.CreateCompatibleBitmap(hdc, SW, SH)
+        g.SelectObject(mem, bmp)
+        g.BitBlt(mem, 0, 0, SW, SH, hdc, 0, 0, 0x00CC0020)  # SRCCOPY
+        import ctypes
+        class BMI(ctypes.Structure):
+            _fields_ = [("biSize", ctypes.c_uint32), ("biWidth", ctypes.c_int32),
+                        ("biHeight", ctypes.c_int32), ("biPlanes", ctypes.c_uint16),
+                        ("biBitCount", ctypes.c_uint16), ("biCompression", ctypes.c_uint32),
+                        ("biSizeImage", ctypes.c_uint32), ("biXPelsPerMeter", ctypes.c_int32),
+                        ("biYPelsPerMeter", ctypes.c_int32), ("biClrUsed", ctypes.c_uint32),
+                        ("biClrImportant", ctypes.c_uint32)]
+        bmi = BMI(); bmi.biSize = ctypes.sizeof(BMI); bmi.biWidth = SW; bmi.biHeight = -SH
+        bmi.biPlanes = 1; bmi.biBitCount = 24; bmi.biCompression = 0
+        buf = ctypes.create_string_buffer(SW * SH * 3)
+        g.GetDIBits(mem, bmp, 0, SH, buf, ctypes.byref(bmi), 0)
+        return numpy.frombuffer(buf.raw, numpy.uint8).reshape(SH, SW, 3)
+    finally:
+        u.ReleaseDC(None, hdc)
+
+
 def start_archiver(session, name: str, interval: float = 3.0, out_root=None):
     """Archive screenshots for this session; returns the stop Event."""
     root = (Path(out_root) if out_root else HERE / "artifacts" / "shots" / name)
@@ -63,27 +99,17 @@ def start_archiver(session, name: str, interval: float = 3.0, out_root=None):
                 _save(session.hwnd, root / f"{seq:04d}_{ts}_main.png")
                 for h, tag in visible_big_dialogs():
                     _save(h, root / f"{seq:04d}_{ts}_{tag}.png")
-            try:  # every tick (~0.5s): main window + current dialog, stacked
-                import numpy as _np
-                w, h, bgra = winutil.capture_window(session.hwnd)
-                main = _np.frombuffer(bgra, _np.uint8).reshape(h, w, 4)[:, :, :3].copy()
-                VW = 960
-                main = cv2.resize(main, (VW, int(h * VW / w)))
-                dlg_slot_h = 480
-                dlg_area = _np.zeros((dlg_slot_h, VW, 3), _np.uint8)
-                for dh, _tag in visible_big_dialogs():
-                    dw, dh2, dbgra = winutil.capture_window(dh)
-                    dimg = _np.frombuffer(dbgra, _np.uint8).reshape(dh2, dw, 4)[:, :, :3]
-                    dimg = cv2.resize(dimg, (VW, min(dlg_slot_h, int(dh2 * VW / dw))))
-                    dlg_area[:dimg.shape[0], :VW] = dimg
-                    break
-                if vid is None:
-                    vid = cv2.VideoWriter(vpath, cv2.VideoWriter_fourcc(*"mp4v"), 2.0,
-                                          (VW, main.shape[0] + dlg_slot_h))
-                vid.write(_np.vstack([main, dlg_area]))
+            try:  # full-screen capture at ~5fps — app is maximized at boot, so
+                  # dialogs, menus and tooltips all appear naturally in frame.
+                frame = _screen_bgr()
+                if frame is not None:
+                    if vid is None:
+                        vid = cv2.VideoWriter(vpath, cv2.VideoWriter_fourcc(*"mp4v"), 5.0,
+                                              (frame.shape[1], frame.shape[0]))
+                    vid.write(frame)
             except Exception:
                 pass
-            stop.wait(min(interval, 0.5))
+            stop.wait(min(interval, 0.2))
         if vid is not None:
             vid.release()
         _save(session.hwnd, root / "final.png")
