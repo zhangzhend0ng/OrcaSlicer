@@ -88,7 +88,12 @@ def start_archiver(session, name: str, interval: float = 3.0, out_root=None):
             vid.release()
         _save(session.hwnd, root / "final.png")
 
-    threading.Thread(target=run, daemon=True, name=f"shots-{name}").start()
+    t = threading.Thread(target=run, name=f"shots-{name}")  # non-daemon: the
+    # mp4 moov atom is written in release(); a daemon thread killed at process
+    # exit leaves an unplayable file (measured: 9/27 files lost their index).
+    t.start()
+    import atexit
+    atexit.register(lambda: (stop.set(), t.join(timeout=10)))
 
     # labeled capture: called from the stdout tee on every step print, so each
     # assertion/step log line gets its own screenshot named after the line —
