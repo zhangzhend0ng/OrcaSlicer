@@ -51,14 +51,30 @@ def start_archiver(session, name: str, interval: float = 3.0, out_root=None):
         return out
 
     def run():
+        import cv2
         seq = 0
+        vid = None
+        vpath = str(root / f"{name}_run.mp4")
         while not stop.is_set() and winutil.user32.IsWindow(session.hwnd):
             seq += 1
             ts = time.strftime("%H%M%S")
-            _save(session.hwnd, root / f"{seq:04d}_{ts}_main.png")
-            for h, tag in visible_big_dialogs():
-                _save(h, root / f"{seq:04d}_{ts}_{tag}.png")
-            stop.wait(interval)
+            frame = None
+            if seq % 6 == 1:  # ~every 3s at 0.5s cadence: keep the PNG archive
+                _save(session.hwnd, root / f"{seq:04d}_{ts}_main.png")
+                for h, tag in visible_big_dialogs():
+                    _save(h, root / f"{seq:04d}_{ts}_{tag}.png")
+            try:  # every tick (~0.5s): feed the continuous MP4 recording
+                w, h, bgra = winutil.capture_window(session.hwnd)
+                frame = np.frombuffer(bgra, np.uint8).reshape(h, w, 4)[:, :, :3]
+                if vid is None:
+                    vid = cv2.VideoWriter(vpath, cv2.VideoWriter_fourcc(*"mp4v"), 2.0, (w, h))
+                if frame.shape[1] == w:
+                    vid.write(frame)
+            except Exception:
+                pass
+            stop.wait(min(interval, 0.5))
+        if vid is not None:
+            vid.release()
         _save(session.hwnd, root / "final.png")
 
     threading.Thread(target=run, daemon=True, name=f"shots-{name}").start()
