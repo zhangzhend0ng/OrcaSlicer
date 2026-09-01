@@ -161,3 +161,54 @@
 3. 客机交互分辨率 = 1920×1080（`hv_go -Cases setres_1080` 看自报）
 4. 无残留 suite 任务实例（`(Get-ScheduledTask suite).State`）
 5. 长等待用后台任务（单条 bash ≤10min）；录像/大文件走 base64 relay
+
+
+## 16. 宿主↔客机通信通道规范（血泪协议）
+
+**通道选择**（每条都有实测翻车记录）：
+
+| 用途 | 通道 | 备注 |
+|---|---|---|
+| 宿主→客机文件 | `send_to_guest.ps1`（base64 经 relay） | 唯一可靠上行 |
+| 客机→宿主文件 | base64 字符串经 relay_out（`fetch_mp4.py`） | PS Direct 的 `byte[]` 返回值不可靠（0 字节实测） |
+| 客机内命令 | relay → `Invoke-Command -VMName`（PS Direct） | 非交互会话：GUI 判定必须走 hv_go 的 INTERACTIVE 计划任务 |
+| 大文件 | 逐文件 base64，~7MB/文件 ~20s/文件 | 209MB/27 文件实测 ~15 分钟 |
+
+**推送纪律**（每次推送后必须做，血泪教训）：
+
+1. 看排队回显：`queued (0 KB)` = 推送路径错误（bash 双引号里 `\$var`
+   变字面量等），`queued (N KB)` 才是出队成功。
+2. **推送后必须双端 MD5 比对**——relay 命令会被后续命令覆盖、bash 转义
+   会静默失败，"没推上"伪装成"修复无效"能烧掉几小时。用
+   `C:\coilm_setup\push_verify.py <local> <guest>`（推+校验一体，
+   MD5 不匹配退出码非 0）。
+3. relay 命令文件是单槽的：连续两次推送中间必须等 relay 消费（文件
+   被删除），否则后一次覆盖前一次——静默丢命令。
+
+**relay 应答解析竞态**（`fetch_mp4.py` v2 的规则）：relay_out.txt 里
+上一次的 `=== DONE` 还在，只等 DONE 会读到旧应答。必须等三件事同时
+成立：①首行 `=== RUN` 时间戳与发送前不同；②出现 `=== DONE`；③文件
+大小连续两次采样不变。
+
+**PS Direct 陷阱**：
+
+- `Screen.AllScreens` 的读数是 **PS Direct 自己会话的**，不代表交互
+  桌面（实测它报 1024×768 而交互桌面是 1366/1920）——分辨率只能在
+  交互会话内自报（如 `setres_1080.py` 走 hv_go）。
+- 复杂 PowerShell（多层引号/管道/Here-String）内联进 relay_cmd 必炸
+  （实测 `Select-String "a|b"`、Add-Type C#）——写成 `.ps1` 文件用
+  `& 文件名` 调用（见 `clean_guest.ps1` / `max_vmconnect.ps1` 模式）。
+- `Set-VMVideo` 单独设置不生效（枚举是 Maximum/Single/Default；且需
+  控制台 attached）——恢复分辨率用「重启 VM + 保持 vmconnect 最大化」。
+
+**双套件互踩**（§11 的补充细节）：hv_go 的 Unregister+Register **不会
+杀掉运行中的任务实例**——上一套件没跑完就启新一轮，两个驱动 +
+两个 app 争抢全局输入注入和同一个 datadir，失败模式完全不确定（实测
+m5b 三个不同断言在三轮里各挂各的）。启新套件前：`clean_guest.ps1` 杀
+孤儿 + 确认上一套件 SUMMARY 已出。
+
+**通信工具清单**（`C:\coilm_setup\`，未入仓库）：
+`push_verify.py`（推+校验一体）/ `fetch_mp4.py` + `fetch_all_mp4.py`
+（guest→host base64，v2 修了 DONE 竞态）/ `fetch_relay.sh`（单文件
+bash 版）/ `clean_guest.ps1`（杀孤儿）/ `max_vmconnect.ps1`（控制台
+最大化，分辨率恢复用）。
