@@ -43,6 +43,7 @@ import hashlib
 import json
 import shutil
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent  # sandboxes/vision_gui/harness
@@ -97,6 +98,15 @@ def write_conf(path: Path, conf: dict) -> None:
     path.write_text(body + "\n# MD5 checksum " + digest + "\n", encoding="utf-8")
 
 
+def _kill_lingering_app() -> None:
+    """A previous case's app can outlive its driver (graceful-close race)
+    and hold <datadir>\\log open, which makes the fresh seed's rmtree blow
+    up with PermissionError (measured 09-01). Kill it before seeding."""
+    import subprocess
+    subprocess.run(["taskkill", "/IM", "snapmaker-orca.exe", "/F"],
+                   capture_output=True)
+
+
 def seed_profile(dest: Path,
                  source_conf: Path | None = None,
                  source_presets: Path | None = None,
@@ -113,7 +123,15 @@ def seed_profile(dest: Path,
     source_printers = Path(source_printers) if source_printers else resources / "printers"
 
     if fresh and dest.exists():
-        shutil.rmtree(dest)
+        _kill_lingering_app()
+        for attempt in range(3):
+            try:
+                shutil.rmtree(dest)
+                break
+            except PermissionError:
+                if attempt == 2:
+                    raise
+                time.sleep(3.0)
     dest.mkdir(parents=True, exist_ok=True)
 
     # 1) system presets: makes printers.only_default_printers() false so the
