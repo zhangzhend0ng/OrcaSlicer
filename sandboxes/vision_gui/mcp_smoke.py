@@ -89,6 +89,16 @@ def main() -> int:
         text_of(call(proc, "app_status"))
         text_of(call(proc, "window"))
 
+        # 09-01 pitfall guards: resolution + setup-wizard relocation
+        assert {"screen_guard", "wizard_dismiss", "rclick", "add_primitive",
+                "set_process_param", "slice_and_export",
+                "gcode_assert"} <= set(tools), "new tools missing from tools/list"
+        guard = text_of(call(proc, "screen_guard", {"fix": True}))
+        assert guard["ok"], f"screen mode degraded and not fixed: {guard}"
+        wd = text_of(call(proc, "wizard_dismiss"))
+        print(f"[smoke] screen {guard['screen']} ok; wizard relocated: "
+              f"{wd.get('relocated')}")
+
         # shot: must carry a real image payload
         shot = call(proc, "shot", timeout_s=60)
         imgs = [c for c in shot["content"] if c.get("type") == "image"]

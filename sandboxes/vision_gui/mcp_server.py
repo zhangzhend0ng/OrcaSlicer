@@ -16,6 +16,19 @@
 #   - app_launch always uses an isolated seeded datadir and boots with the
 #     stealth watchdog (no pop-to-top over the user's desktop)
 #   - a session lock file allows exactly one driver (UI or AI) at a time
+#   - app_launch pins the guest/display resolution (>= 1920x1080) and
+#     relocates the first-run Setup Wizard off-screen: a Hyper-V console
+#     disconnect silently degrades the display mode (breaking every
+#     maximized-window calibration), and the wizard overlays the window
+#     centre swallowing real clicks — both measured 09-01
+#   - rclick() is message-level ONLY: real right-clicks are swallowed by
+#     remote-control layers, while message-level right-click opens native
+#     context menus (measured 09-01); there is deliberately NO real-click
+#     tool — real input stays inside case scripts (real_edit_set et al.)
+#   - set_process_param / add_primitive / slice_and_export / gcode_assert
+#     expose the m5 main-flow primitives (process_panel / add_shape /
+#     gcode_check) so an AI driver composes verified building blocks
+#     instead of re-deriving pixel coordinates per session
 #
 # Protocol: MCP stdio — newline-delimited JSON-RPC 2.0 on stdin/stdout.
 # Zero dependencies beyond the sandbox venv (no `mcp` package): the four
@@ -43,7 +56,7 @@ from harness import launcher, profile, session_lock, winutil  # noqa: E402
 from harness.ocr_util import ocr_hwnd  # noqa: E402
 
 SERVER_NAME = "vision-gui"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.3.0"
 HERE_ART = HERE / "artifacts" / "mcp"
 DRAFTS = HERE / "drafts"
 RESOURCE_IMAGES = HERE / "resource" / "image"
@@ -84,8 +97,11 @@ def tool_app_launch(exe: str | None = None, model: str | None = None,
         raise
     SESSION["app"] = session
     SESSION["last_target"] = session.hwnd
+    screen = screen_guard(fix=True)
+    wizard = wizard_dismiss()
     return {"pid": session.pid, "hwnd": hex(session.hwnd),
             "rect": session.rect(), "datadir": str(datadir),
+            "screen": screen, "wizard_relocated": wizard.get("relocated", 0),
             "note": "stealth watchdog active for 12s; model auto-load hands-off in progress"}
 
 
@@ -162,6 +178,167 @@ def tool_key(vk: int, modifiers: int = 0) -> dict:
 
 def tool_ocr() -> dict:
     return {"text": ocr_hwnd(_app().hwnd)}
+
+
+# --- 09-01 pitfalls as tools: display mode, wizard overlay, menus --------------
+
+def _screen_size() -> tuple[int, int]:
+    return (winutil.user32.GetSystemMetrics(0), winutil.user32.GetSystemMetrics(1))
+
+
+def screen_guard(fix: bool = True, min_w: int = 1920, min_h: int = 1080) -> dict:
+    """The Hyper-V console auto-degrades the guest display mode when it is
+    not attached (1920x1080 -> 1366x768 -> 1024x768, measured 09-01), which
+    invalidates every maximized-window calibration. Best-effort fix via
+    ChangeDisplaySettings (works from the interactive session)."""
+    w, h = _screen_size()
+    fixed = False
+    if (w, h) < (min_w, min_h) and fix:
+        # build DEVMODE via the harness-side ctypes (winutil re-exports ctypes)
+        import ctypes as _ct
+        class DEVMODE(_ct.Structure):
+            _fields_ = [("dmDeviceName", _ct.c_wchar * 32),
+                        ("dmSpecVersion", _ct.c_ushort),
+                        ("dmDriverVersion", _ct.c_ushort),
+                        ("dmSize", _ct.c_ushort),
+                        ("dmDriverExtra", _ct.c_ushort),
+                        ("dmFields", _ct.c_ulong),
+                        ("dmPosition", _ct.c_long * 2),
+                        ("dmDisplayOrientation", _ct.c_ulong),
+                        ("dmDisplayFixedOutput", _ct.c_ulong),
+                        ("dmColor", _ct.c_short),
+                        ("dmDuplex", _ct.c_short),
+                        ("dmYResolution", _ct.c_short),
+                        ("dmTTOption", _ct.c_short),
+                        ("dmCollate", _ct.c_short),
+                        ("dmFormName", _ct.c_wchar * 32),
+                        ("dmLogPixels", _ct.c_ushort),
+                        ("dmBitsPerPel", _ct.c_ulong),
+                        ("dmPelsWidth", _ct.c_ulong),
+                        ("dmPelsHeight", _ct.c_ulong),
+                        ("dmDisplayFlags", _ct.c_ulong),
+                        ("dmDisplayFrequency", _ct.c_ulong)]
+        dm = DEVMODE()
+        dm.dmSize = _ct.sizeof(DEVMODE)
+        dm.dmFields = 0x180000  # DM_PELSWIDTH | DM_PELSHEIGHT
+        dm.dmPelsWidth, dm.dmPelsHeight = min_w, min_h
+        CDS_UPDATEREGISTRY = 0x00000001
+        rc = winutil.user32.ChangeDisplaySettingsW(_ct.byref(dm), CDS_UPDATEREGISTRY)
+        w, h = _screen_size()
+        fixed = (rc == 0 and (w, h) >= (min_w, min_h))
+        if not fixed:
+            print(f"[mcp] resolution fix failed rc={rc} screen={w}x{h} "
+                  "(attach the Hyper-V console and retry)", file=sys.stderr)
+    return {"screen": [w, h], "ok": (w, h) >= (min_w, min_h), "fixed": fixed,
+            "min": [min_w, min_h]}
+
+
+def wizard_dismiss() -> dict:
+    """Relocate the first-run 'Setup Wizard' (#32770, HTML) far off-screen.
+    Deliberately NOT WM_CLOSE: closing the wizard cancels setup and can
+    EXIT the app (measured 09-01). Relocation is lossless."""
+    from harness import process_panel as pp
+    app = _app()
+    moved = pp.relocate_wizard(app, log="[mcp]")
+    return {"relocated": bool(moved)}
+
+
+def tool_rclick(x: int, y: int) -> dict:
+    """Message-level RIGHT click (native context menus). REAL right-clicks
+    are swallowed by remote-control layers (3/3 no-ops, measured 09-01);
+    message-level opens the menu. Walking menu ROWS needs real input —
+    use add_primitive / case scripts for that."""
+    app = _app()
+    _inside_window(x, y)
+    hit = winutil.window_from_screen_point(x, y)
+    lp = winutil._lparam_from_screen(hit, x, y)
+    winutil._send_msg(hit, 0x0204, 0x0002, lp)  # WM_RBUTTONDOWN
+    winutil._send_msg(hit, 0x0205, 0, lp)       # WM_RBUTTONUP
+    SESSION["last_target"] = hit
+    return {"rclicked": True, "target_hwnd": hex(hit),
+            "note": "message-level right click (remote-layer proof)"}
+
+
+def tool_add_primitive(shape: str = "Cube") -> dict:
+    """Add a standard primitive via the plate right-click context menu
+    (Add Primitive > shape) on the CURRENT app session. Wraps
+    harness/add_shape.py; verifies a model landed via the chromatic
+    fraction."""
+    from harness import add_shape
+    app = _app()
+    landed = add_shape.add_primitive(app, shape)
+    return {"shape": shape, "landed": landed}
+
+
+def tool_set_process_param(kind: str, label: str, value: str = "",
+                           group: str = "", target: str = "") -> dict:
+    """Set a Process-panel option by its painted label. kind:
+      float    — type `value` into the row Edit (e.g. label 'Layer height',
+                 value '0.3')
+      checkbox — check/uncheck (value 'true'/'false'), state read from the
+                 frame capture (teal fraction)
+      combo    — the row combo whose CURRENT painted value is `label`;
+                 selects the option prefixed `target` (e.g. label 'Tree
+                 (auto)', target 'Normal')"""
+    from harness import process_panel as pp
+    app = _app()
+    grp = group or None
+    if kind == "float":
+        ok, old, new = pp.set_option_float(app, label, value, grp)
+        return {"ok": ok, "old": old, "new": new}
+    if kind == "checkbox":
+        want = str(value).lower() in ("1", "true", "yes")
+        state, rect = pp.set_option_checkbox(app, label, want, grp)
+        return {"ok": state is not None and bool(state) == want,
+                "state": state}
+    if kind == "combo":
+        ok = pp.set_option_combo(app, label, target)
+        return {"ok": ok, "target": target}
+    raise ValueError(f"unknown kind {kind!r} (float|checkbox|combo)")
+
+
+def tool_slice_and_export(name: str, timeout_s: int = 900) -> dict:
+    """Slice the current plate (template-located 'Slice plate' button),
+    wait for the done badge, export gcode to artifacts/gcode/<name>.gcode.
+    Returns the gcode path + byte size (attach to the evidence table)."""
+    from m2_slice_chain import click_slice_start, wait_slicing_done
+    from harness import export_util
+    app = _app()
+    out = _art_root() / "gcode" / (name + ".gcode")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.exists():
+        out.unlink()
+    started = click_slice_start(app)
+    if not started:
+        return {"sliced": False, "reason": "slice button did not leave idle"}
+    done, _score = wait_slicing_done(app, timeout_s=timeout_s)
+    if not done:
+        return {"sliced": True, "done": False,
+                "reason": "slicing did not finish in time"}
+    ok = export_util.export_gcode(app, out, timeout_s=60.0)
+    return {"sliced": True, "done": True, "exported": ok,
+            "path": str(out), "bytes": out.stat().st_size if ok else 0}
+
+
+def tool_gcode_assert(path: str, expect: dict) -> dict:
+    """Assert '; key = value' config echoes in an exported gcode.
+    `expect` maps gcode key -> expected value prefix (e.g.
+    {'layer_height': '0.3', 'enable_support': '1'})."""
+    from harness import gcode_check
+    root = _art_root()
+    given = Path(path)
+    target = (given if given.is_absolute() else root / given).resolve()
+    if not target.exists():
+        raise FileNotFoundError(path)
+    data = target.read_bytes()
+    results = {}
+    for key, want in (expect or {}).items():
+        got = gcode_check.config_value(data, key)
+        passed = got is not None and got.lower().startswith(str(want).lower())
+        results[key] = {"got": got, "pass": passed}
+    npass = sum(1 for v in results.values() if v["pass"])
+    return {"path": str(target), "pass": npass == len(results),
+            "checks": results}
 
 
 # --- M2: case runner + artifact access ----------------------------------------
@@ -343,6 +520,66 @@ def tool_get_artifact(path: str) -> dict:
 
 # --- M3: AI drafts new cases, human reviews ------------------------------------
 
+_SCAFFOLD_PROCESS = '''#!/usr/bin/env python3
+# {name}.py — DRAFT (AI-generated, NOT reviewed — keep out of the suite until promoted)
+#
+# Goal: {goal}
+#
+# Process-MAIN-FLOW skeleton (m5 family): fixture context boot -> delete the
+# loaded model -> add a RIGHT-CLICK standard primitive -> drive the Process
+# panel -> slice -> export -> assert gcode config echoes.
+#
+# Human review checklist — promote only after every box ticks:
+#   [ ] ran once against the dev build:  python drafts/{name}.py --fresh
+#   [ ] verdict GREEN and the artifacts (screenshots / case log) look right
+#   [ ] black-box only: no app internals; interactions via process_panel
+#   [ ] gcode_assert keys use this build's echo spellings (e.g. enable_support
+#       echoes '1', not 'true' — measured 09-01)
+# Promote:  git mv drafts/{name}.py {name}.py
+
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+from harness import gcode_check  # noqa: E402
+from harness import process_panel as pp  # noqa: E402
+from m3_common import (add_common_args, export_and_check,  # noqa: E402
+                       slice_and_wait, verdict)
+from m5_common import boot_cube_session  # noqa: E402
+
+LOG = "{name}"
+
+
+def main() -> int:
+    ap = __import__("argparse").ArgumentParser(description=__doc__)
+    add_common_args(ap, default_model=None)
+    args = ap.parse_args()
+
+    results = {{}}
+    session, ok_cube = boot_cube_session(args)
+    try:
+        results["fixture deleted + standard model added"] = (
+            "PASS" if ok_cube else "FAIL")
+        # TODO: drive the parameters here, e.g.
+        #   pp.ensure_advanced(session, want=True)
+        #   pp.click_tab(session, "<Tab>", "<page-unique ocr word>")
+        #   ok, old, new = pp.set_option_float(session, "<label>", "<value>",
+        #                                      group_substr="<Group>")
+        # then slice + export + gcode_check.config_value asserts.
+        results["app alive"] = "PASS" if session.alive() else "FAIL"
+        return verdict(results)
+    finally:
+        session.close()
+        print(f"LOG app closed")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+
 _SCAFFOLD = '''#!/usr/bin/env python3
 # {name}.py — DRAFT (AI-generated, NOT reviewed — keep out of the suite until promoted)
 #
@@ -388,7 +625,7 @@ if __name__ == "__main__":
 '''
 
 
-def tool_case_scaffold(name: str, goal: str) -> dict:
+def tool_case_scaffold(name: str, goal: str, style: str = "classic") -> dict:
     import re
     if not re.fullmatch(r"m\d[a-z][a-z0-9]*(?:_[a-z0-9]+)*", name):
         raise ValueError("case name must look like m3t_mixing_foo (lowercase a-z0-9)")
@@ -396,8 +633,9 @@ def tool_case_scaffold(name: str, goal: str) -> dict:
     out = DRAFTS / f"{name}.py"
     if out.exists():
         raise FileExistsError(f"{out} already exists")
-    out.write_text(_SCAFFOLD.format(name=name, goal=goal.strip()), encoding="utf-8")
-    return {"draft": str(out),
+    tpl = _SCAFFOLD_PROCESS if style == "process" else _SCAFFOLD
+    out.write_text(tpl.format(name=name, goal=goal.strip()), encoding="utf-8")
+    return {"draft": str(out), "style": style,
             "next": ["human runs + reviews per the checklist in the file header",
                      f"promote with: git mv drafts/{name}.py {name}.py"]}
 
@@ -476,7 +714,11 @@ TOOLS = [
                       "standard skeleton (human review + promotion required).",
      {"type": "object", "properties": {
          "name": {"type": "string", "description": "e.g. m3t_mixing_foo"},
-         "goal": {"type": "string", "description": "what the case must verify"}},
+         "goal": {"type": "string", "description": "what the case must verify"},
+         "style": {"type": "string", "enum": ["classic", "process"],
+                    "description": "process = m5 main-flow skeleton "
+                                   "(fixture context + right-click standard model + "
+                                   "process_panel + gcode asserts)"}},
       "required": ["name", "goal"]}),
     ("crop_template", "M3: crop a region of an artifacts/ image into a draft vision "
                       "template (resource/image/draft_<name>.png).",
@@ -484,6 +726,49 @@ TOOLS = [
          "shot_path": {"type": "string"}, "x": {"type": "integer"}, "y": {"type": "integer"},
          "w": {"type": "integer"}, "h": {"type": "integer"}, "name": {"type": "string"}},
       "required": ["shot_path", "x", "y", "w", "h", "name"]}),
+    ("screen_guard", "09-01 pitfall: a detached Hyper-V console degrades the guest display "
+                     "(breaks maximized-window calibration). Reports the current mode; "
+                     "fix=True best-effort restores 1920x1080.",
+     {"type": "object", "properties": {
+         "fix": {"type": "boolean", "description": "attempt the mode change (default true)"},
+         "min_w": {"type": "integer"}, "min_h": {"type": "integer"}}}),
+    ("wizard_dismiss", "09-01 pitfall: the first-run Setup Wizard overlays the window centre "
+                       "and swallows real clicks. Relocates it off-screen (NEVER WM_CLOSE - "
+                       "closing cancels setup and can exit the app).",
+     {"type": "object", "properties": {}}),
+    ("rclick", "Message-level RIGHT click (context menus). Real right-clicks are swallowed "
+               "by remote-control layers; menu ROWS need real input - prefer add_primitive "
+               "or a case script for walking menus.",
+     {"type": "object", "properties": {
+         "x": {"type": "integer"}, "y": {"type": "integer"}},
+      "required": ["x", "y"]}),
+    ("add_primitive", "Add a standard model via the plate right-click menu "
+                      "(Add Primitive > shape; shape: Cube|Cylinder|Sphere|Cone|Disc|Text|SVG) "
+                      "and verify a model landed.",
+     {"type": "object", "properties": {
+         "shape": {"type": "string", "description": "default Cube"}},
+      "required": ["shape"]}),
+    ("set_process_param", "Set a Process-panel option by its painted label (m5 main flow). "
+                          "kind float|checkbox|combo; label = painted label (combo: current "
+                          "painted value); value/target per kind.",
+     {"type": "object", "properties": {
+         "kind": {"type": "string", "enum": ["float", "checkbox", "combo"]},
+         "label": {"type": "string"},
+         "value": {"type": "string"},
+         "group": {"type": "string", "description": "optional group-title substring"},
+         "target": {"type": "string", "description": "combo only: option prefix to select"}},
+      "required": ["kind", "label"]}),
+    ("slice_and_export", "Slice the current plate and export gcode to artifacts/gcode/<name>.gcode.",
+     {"type": "object", "properties": {
+         "name": {"type": "string"},
+         "timeout_s": {"type": "integer"}},
+      "required": ["name"]}),
+    ("gcode_assert", "Assert '; key = value' config echoes in an exported gcode "
+                     "(expect maps key -> expected value prefix).",
+     {"type": "object", "properties": {
+         "path": {"type": "string"},
+         "expect": {"type": "object", "additionalProperties": {"type": "string"}}},
+      "required": ["path", "expect"]}),
 ]
 
 HANDLERS = {
@@ -502,6 +787,13 @@ HANDLERS = {
     "get_artifact": tool_get_artifact,
     "case_scaffold": tool_case_scaffold,
     "crop_template": tool_crop_template,
+    "screen_guard": screen_guard,
+    "wizard_dismiss": wizard_dismiss,
+    "rclick": tool_rclick,
+    "add_primitive": tool_add_primitive,
+    "set_process_param": tool_set_process_param,
+    "slice_and_export": tool_slice_and_export,
+    "gcode_assert": tool_gcode_assert,
 }
 
 
