@@ -300,3 +300,14 @@ bash 版）/ `clean_guest.ps1`（杀孤儿）/ `max_vmconnect.ps1`（控制台
   position（'Aligned' 值 OCR 稳定）替代，Type+Seam 双 combo echo
   全绿。
 
+### 17.10 子菜单展开过的原生菜单，WM_CANCELMODE 关不掉
+- **现象**：m4d merge 步（回归 RED，solo 复跑也 RED，2/2 确定）：
+  读 submenu targets（hover 展开 'Merge with' 子菜单）后
+  `close_entry_menu`（WM_CANCELMODE）不生效——mp4 帧显示菜单一直开着，
+  后续 re-open 的真实点击全打在悬浮菜单上，`wait_menu_popup` 5s 超时
+  → "options menu did not open" ×3。
+- **修法**：菜单模态循环只认真实输入（m3b 先例）——真实 **ESC ×2**
+  （关子菜单 + 关主菜单）再 close_entry_menu 兜底；merge 重试环每次
+  尝试前也补一发 ESC。修复后 solo GREEN 且 35 例回归全绿。
+- **通用化**：任何"hover 展开过子菜单"的菜单，关闭一律先真实 ESC。
+
