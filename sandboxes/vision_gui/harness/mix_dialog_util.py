@@ -401,14 +401,19 @@ def popup_cancel(session):
 
 # --- OCR word map ---------------------------------------------------------------
 
-def ocr_words_img(img: np.ndarray, scale: int = 3):
-    """[(text, x, y, w, h)] in ORIGINAL image coords (conf>40)."""
+def ocr_words_img(img: np.ndarray, scale: int = 3, psm: int = 3):
+    """[(text, x, y, w, h)] in ORIGINAL image coords (conf>40).
+    psm: tesseract page-segmentation mode. The default 3 (auto) silently
+    DROPS rows next to '-----' divider art — the preset popup's section
+    headers made it lose the user-preset rows (measured 09-02); pass
+    psm=6 (uniform block) for list-like captures."""
     if scale != 1:
         big = cv2_resize(img, scale)
     else:
         big = img
     data = pytesseract.image_to_data(
-        big, config="-l eng", output_type=pytesseract.Output.DICT)
+        big, config=f"-l eng --psm {psm}",
+        output_type=pytesseract.Output.DICT)
     words = []
     for i, txt in enumerate(data["text"]):
         t = txt.strip()

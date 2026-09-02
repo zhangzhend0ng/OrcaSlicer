@@ -92,12 +92,14 @@ def view_band(session):
     return y0, y1
 
 
-def ocr_band(session, y0=None, y1=None):
-    """OCR words of the sidebar options band, client coords."""
+def ocr_band(session, y0=None, y1=None, psm=3):
+    """OCR words of the sidebar options band, client coords. psm 6 helps
+    when rows sit half-cut at the band edge (psm 3 drops them — measured
+    09-02 on the Ironing group)."""
     if y0 is None or y1 is None:
         y0, y1 = view_band(session)
     img = capture_bgr(session)
-    words = mdu.ocr_words_img(img[y0:y1, 0:SB_W], scale=3)
+    words = mdu.ocr_words_img(img[y0:y1, 0:SB_W], scale=3, psm=psm)
     return [(w, x, y + y0, w_w, w_h) for w, x, y, w_w, w_h in words]
 
 
@@ -749,7 +751,7 @@ def set_option_float(session, label_substr, text, group_substr=None):
 
 
 def find_option_row(session, label_substr, group_substr=None,
-                    timeout_s=420.0):
+                    timeout_s=420.0, psm=3):
     """Locate an OPTION ROW by its painted label: scroll `group_substr`'s
     group into view, then OCR the visible band for `label_substr`.
     Returns (word_rect_client, y_row_center) or (None, None). Labels are
@@ -761,7 +763,7 @@ def find_option_row(session, label_substr, group_substr=None,
         if not hit:
             return None, None
     for _ in range(6):
-        words = ocr_band(session)
+        words = ocr_band(session, psm=psm)
         print(f"[panel] find_option_row({label_substr!r}) band: "
               f"{' '.join(w for w, *_ in words)[:120]!r}")
         for w, x, y, ww, hh in words:
@@ -829,12 +831,12 @@ def set_option_combo(session, current_value, target):
     return cycle_combo_to(session, r, h, target)
 
 
-def find_option_combo(session, current_value):
+def find_option_combo(session, current_value, psm=3):
     """Locate an options-panel combo by its PAINTED value text (the value is
     painted by OG_CustomCtrl like the label; the control exposes no window
     text). OCR finds the word, WindowFromPoint resolves the real hwnd.
     Returns (rect, hwnd, text)."""
-    word, y_row = find_option_row(session, current_value)
+    word, y_row = find_option_row(session, current_value, psm=psm)
     if not word:
         return (None, None, None)
     f = frect(session)
@@ -982,6 +984,153 @@ def find_option_checkbox(session, label_substr, group_substr=None):
     if not word:
         return []
     return row_checkboxes(session, y_row, y_tol=14)
+
+
+def find_option_row_seq(session, seq, group_substr=None,
+                        timeout_s=420.0, psm=3):
+    """find_option_row for a consecutive OCR word SEQUENCE: single-word
+    matching is ambiguous when the value starts with a common token
+    ('No ironing' and 'Nozzle' both match 'no' — measured 09-02). Scrolls
+    `group_substr` into view first, then hunts +-1 notch around it.
+    Returns (rect_of_word_run_client, run_center_y) or (None, None)."""
+    if group_substr:
+        hit = scroll_group_into_view(session, group_substr, timeout_s)
+        print(f"[panel] scroll_group({group_substr!r}) -> "
+              f"{'hit' if hit else 'NOT FOUND'}")
+        if not hit:
+            return None, None
+    seq_l = [s.lower() for s in seq]
+    n = len(seq_l)
+    last_join = ""
+    for _round in range(10):  # 5 notches down, then 5 back up
+        words = ocr_band(session, psm=psm)
+        for i in range(len(words) - n + 1):
+            got = [w.lower() for w, *_ in words[i:i + n]]
+            if got == seq_l:
+                x0, y0 = words[i][1], words[i][2]
+                x1 = words[i + n - 1][1] + words[i + n - 1][3]
+                y1 = words[i + n - 1][2] + words[i + n - 1][4]
+                return (x0, y0, x1, y1), (y0 + y1) // 2
+        join = " ".join(w for w, *_ in words)
+        if join != last_join:
+            print(f"[panel] row_seq{seq!r} band: {join[:110]!r}")
+            last_join = join
+        vp = options_viewport(session)
+        if not vp:
+            return None, None
+        wheel_viewport(session, vp, 1, delta=-120 if _round < 5 else 120)
+        time.sleep(0.3)
+    return None, None
+
+
+def find_option_combo_seq(session, seq, group_substr=None, psm=3):
+    """find_option_combo keyed by a word SEQUENCE (see find_option_row_seq):
+    resolve the combo control under the matched value run via
+    WindowFromPoint. Returns (rect, hwnd, text)."""
+    word, y_row = find_option_row_seq(session, seq, group_substr, psm=psm)
+    if not word:
+        return (None, None, None)
+    f = frect(session)
+    sx, sy = f[0] + (word[0] + word[2]) // 2, f[1] + y_row
+    hwnd = winutil.window_from_screen_point(sx, sy)
+    if not hwnd or hwnd == session.hwnd:
+        return (None, None, None)
+    rc = winutil.window_rect(hwnd)
+    buf = ctypes.create_unicode_buffer(256)
+    user32.GetWindowTextW(hwnd, buf, 256)
+    return (rc, hwnd, buf.value)
+
+
+def set_combo_by_popup(session, locate, target_substr, log="[panel]",
+                       verify_seq=None, group_substr=None, psm=3):
+    """m5d's Support-Type mechanic, generalized: open the options-panel
+    combo whose painted value matches `locate` (a word substring, or a word
+    SEQUENCE tuple for ambiguous tokens), then click the popup row whose
+    text contains `target_substr` (OCR-located first, blind 28px-pitch row
+    fallback with re-open). Returns (ok, target_confirmed) where
+    target_confirmed is True once `target_substr` is the painted value.
+
+    verify_seq + group_substr: MEASURED 09-02 — a combo commit REBUILDS the
+    page and the scroll lands elsewhere, so the painted-value OCR verify
+    can hunt forever with the row off-band. When given, re-scroll
+    `group_substr` into view, re-resolve the combo by the NEW value's word
+    SEQUENCE `verify_seq`, and check the combo's REAL window text (the
+    control exposes it even though the popup painting is OCR-hostile)."""
+    import numpy as np
+    from harness import export_util
+    relocate_wizard(session)
+    if isinstance(locate, (tuple, list)):
+        r, h, cur = find_option_combo_seq(session, locate, group_substr,
+                                          psm=psm)
+    else:
+        r, h, cur = find_option_combo(session, locate, psm=psm)
+    print(f"{log} set_combo_by_popup({locate!r} -> {target_substr!r}): "
+          f"combo text={cur!r}")
+    if not h:
+        return False, False
+    cx, cy = (r[0] + r[2]) // 2, (r[1] + r[3]) // 2
+    winutil.msg_click_screen(cx, cy, session.hwnd)
+    popup = None
+    for _ in range(20):
+        popup = export_util.wait_popup(session.pid, timeout_s=0.5)
+        if popup:
+            break
+    print(f"{log} popup: {popup}")
+    if popup:
+        pr, ph = popup[2], popup[3]
+        time.sleep(0.8)  # self-drawn rows lag the popup creation
+        words = []
+        for _attempt in range(3):
+            w, hgt, bgra = winutil.capture_window(ph)
+            img = np.frombuffer(bgra, np.uint8).reshape(hgt, w, 4)[:, :, :3]
+            words = mdu.ocr_words_img(img, scale=3)
+            if words:
+                break
+            time.sleep(0.6)
+        print(f"{log} popup rows: "
+              f"{' | '.join(t for t, *_ in words)[:140]!r}")
+        clicked = False
+        for t_w, x, y, w_w, w_h in words:
+            if target_substr.lower() in t_w.lower():
+                winutil.msg_click_screen(pr[0] + x + w_w // 2,
+                                         pr[1] + y + w_h // 2)
+                clicked = True
+                break
+        if not clicked:
+            # blind fallback: 28px row pitch; verify by re-locating the
+            # combo by its new value after each click, reopen when missed
+            for row in range(5):
+                winutil.msg_click_screen((pr[0] + pr[2]) // 2,
+                                         pr[1] + 14 + row * 28)
+                time.sleep(1.0)
+                if find_option_combo(session, target_substr)[1]:
+                    clicked = True
+                    print(f"{log} blind row {row} hit {target_substr!r}")
+                    break
+                winutil.msg_click_screen(cx, cy, session.hwnd)
+                time.sleep(1.0)
+                popup2 = None
+                for _ in range(10):
+                    popup2 = export_util.wait_popup(session.pid,
+                                                    timeout_s=0.5)
+                    if popup2:
+                        break
+                    time.sleep(0.2)
+                if not popup2:
+                    break
+                pr = popup2[2]
+        time.sleep(1.5)
+    ok = find_option_combo(session, target_substr, psm=psm)[1] is not None
+    if not ok and verify_seq:
+        if group_substr:
+            scroll_group_into_view(session, group_substr)
+        _r2, _h2, txt2 = find_option_combo_seq(session, verify_seq,
+                                               psm=psm)
+        ok = bool(_h2 and target_substr.lower() in (txt2 or "").lower())
+        print(f"{log} verify by combo text: {txt2!r} ok={ok}")
+    else:
+        print(f"{log} combo now paints target: {ok}")
+    return h is not None, ok
 
 
 def set_option_checkbox(session, label_substr, want_checked,

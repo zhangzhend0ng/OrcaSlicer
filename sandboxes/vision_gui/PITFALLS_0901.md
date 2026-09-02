@@ -207,8 +207,96 @@
 m5b 三个不同断言在三轮里各挂各的）。启新套件前：`clean_guest.ps1` 杀
 孤儿 + 确认上一套件 SUMMARY 已出。
 
-**通信工具清单**（`C:\coilm_setup\`，未入仓库）：
+**通信工具清单**（`C:\coil\vm_setup\`，未入仓库）：
 `push_verify.py`（推+校验一体）/ `fetch_mp4.py` + `fetch_all_mp4.py`
 （guest→host base64，v2 修了 DONE 竞态）/ `fetch_relay.sh`（单文件
 bash 版）/ `clean_guest.ps1`（杀孤儿）/ `max_vmconnect.ps1`（控制台
 最大化，分辨率恢复用）。
+
+---
+
+## 17. 0902 补充：m5e–m5h 轮实测新坑
+
+### 17.1 hv_go 必须在提权 PowerShell 里跑
+- **现象**：非提权 bash 里 `powershell -Command "& hv_go.ps1 ..."` 照样
+  打印 `[4] DONE`，但客机侧什么都没发生（任务/progress/log 全是上一轮
+  的遗留）——`Get-VM` Permission denied 被 tail 截掉。
+- **修法**：hv_go 一律经 elevated relay 跑：
+  `relay_run.py "& hv_go.ps1 -Cases ..."`。
+- **佐证**：log mtime + `progress_tail` 是旧的 = 启动没生效。
+
+### 17.2 PS Direct 查询一律写成 .ps1 探针文件
+- **现象**：经 relay 的内联 `Get-Content/Get-ChildItem | ...` 命令间歇性
+  返回空；`Format-List` 多行输出被 Out-String 吃行。
+- **修法**：宿主侧写专用探针 `zstate.ps1 / zlog.ps1 / zshots.ps1 /
+  zfind.ps1`（字符串拼接输出 + `-ArgumentList` 传参），relay 只
+  `& 文件`。
+- **附加坑**：`relay_run.py` 读取端 v1 把正文第一行当头行丢掉——单行
+  应答读成空串。已修（raw 直接 rsplit DONE）。
+
+### 17.3 宿主→bash→heredoc 的反斜杠会被吃掉一层
+- **现象**：bash heredoc python 里写 `"C:\\coil\\vm_setup"`，落盘内容是
+  `C:\coil\x0bm_setup`（`\v` = 竖直制表符！）——`\\v` 经工具层解码一次
+  变 `\v` 再被 python 转义。
+- **修法**：heredoc python 里路径一律 `r""` 原始串或纯 argv 传参；绝不
+  手写双反斜杠。
+
+### 17.4 neutralize_focus 的 ESC 会回退"刚 Ignored"的字段值
+- **现象**：m5f 里层高 1.0 → Adjust/Ignore 对话框点 Ignore（值保留
+  1.0），若**紧接着** neutralize_focus（先发 ESC），ESC 把字段回退到
+  提交前值（0.16）→ 配置恢复合法 → Slice 复活，"1.0 拒绝切片"断言
+  随机翻车。
+- **修法**：依赖"Ignore 保留值"的断言窗口内**禁止任何 ESC**；恢复焦点
+  挪到断言之后。
+
+### 17.5 模态框关掉后下一次真输入可能失焦（焦距死区）
+- **现象**：m5f run1：Ignore 点击后 real_edit_set 连续 4 次拿不到焦点，
+  输入全吞；`E-pre toplevel` 抓到无关的 `#32770 'Snapmaker Orca info'`
+  漂浮窗（不挡点击）。
+- **修法**：断言窗口过后 neutralize_focus（ESC + Process 标题行点击）
+  即恢复；E/F 步已内建重试+取证打印。
+
+### 17.6 层高越界对话框的真实边界来自 3mf 内嵌机器预设
+- **事实**：fixture（Snapmaker U1 0.8 nozzle）运行时边界
+  min=0.16 / max=0.56（m5b gcode echo 实证；任务表与 m4g 注释里的
+  0.32/0.08 是 fdm_U1 基础值，stale）。
+- **行为**（Tab.cpp:1778-1812 实测复现）：界内 0.4 无对话框；0.04 →
+  "exceeds the limit" Adjust/Ignore 对话框，Adjust→0.16；0 →
+  "too small" OK 对话框自动置下限；1.0 → Ignore 保留 → Print::validate
+  失败 → Slice 置灰（0.666 灰特征）+ 红色错误 toast；'abc' →
+  "Invalid numeric." → 字段重写为 0 → 级联 too-small 对话框 → 0.16。
+
+### 17.7 OCR psm3 会被 '-----' 分隔线艺术字搞瞎
+- **现象**：工艺预设下拉的 `------- User presets -------` 区头让
+  tesseract psm3 整块丢行——`m5g_flow_preset` 行明明在截图里，词表里
+  就是没有；psm 6 全部读出。
+- **修法**：`ocr_words_img(img, scale, psm=...)` 加参数；列表类截图
+  （popup、分区列表）一律 psm=6。
+
+### 17.8 预设管理的黑盒坐标（m5g 全链路实测）
+- **Save/Delete 按钮**：在**预设行**（Process 锚行 +20..+70px），不在
+  Process 标题行（那行是 Advanced 开关 + view/compare 图标，x 314-341
+  的 btn 是 Advanced 开关本体，点击/悬停都无反应）。软盘 tooltip
+  'Save current Process'；删除 cross 只在选中用户预设时出现。
+- **SavePresetDialog**：#32770 'Save preset'，名称 Edit 有预填文本且
+  实时生效（**不需要 Enter**）；'User Preset'/'Preset Inside Project'
+  单选与 'OK'/'Cancel' 全是 wxWindowNR 类（按 class 找 Button 会扑空，
+  必须按文本找）。
+- **落盘**：`<datadir>/user/default/process/<name>.json`（+
+  .info），不是 `<datadir>/process/`。
+- **重启**：空盘重启不恢复打印机上下文，预设列表只剩 'Default
+  Setting'（=PITFALLS #2）；带 fixture 3mf 重启则列表完整（User
+  presets 分区在 System presets 之上，psm6 可读可点）。
+- **删除确认**：'Delete Preset' / 'Are you sure you want to Delete the
+  selected preset?' Yes/No。
+
+### 17.9 Ironing Type 提交后：重建期滚轮会杀死 app
+- **现象**：Ironing Type popup 行点击后立刻 scroll/hunt，PrintWindow
+  报 DC 失效（app 进程已死）两次；type 提交 + 12s 长静置 + tab 往返
+  （Strength→Quality 复位 viewport）则稳定。
+- **配套事实**：Ironing Type 行在组内**最底部**（下面就是 Wall
+  generator 组标题）；Pattern 行的绘制值 psm3/psm6 都读不出、
+  WindowFromPoint 也只解析到容器 panel——m5h 的第二个 combo 用 Seam
+  position（'Aligned' 值 OCR 稳定）替代，Type+Seam 双 combo echo
+  全绿。
+
