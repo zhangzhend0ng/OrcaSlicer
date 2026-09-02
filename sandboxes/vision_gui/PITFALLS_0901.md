@@ -311,3 +311,80 @@ bash 版）/ `clean_guest.ps1`（杀孤儿）/ `max_vmconnect.ps1`（控制台
   尝试前也补一发 ESC。修复后 solo GREEN 且 35 例回归全绿。
 - **通用化**：任何"hover 展开过子菜单"的菜单，关闭一律先真实 ESC。
 
+### 17.11 Global|Objects 开关 pill：OCR 双尺度 + teal 状态判定（m5i）
+- **现象**：Process 标题行的 Global|Objects 开关是微小自绘 pill 文字，
+  单一 OCR 配置读不全——scale=3 只啃出 'G'；psm 6（17.7 的列表规则）
+  在 tight crop 上**全空**，psm 3 反而出字：scale=4 读 'Global'、
+  scale=5 读 'Objects'，没有任何一组同时读出两个。
+- **修法**：两次 OCR 取并集（crop 锚行 x80..260, py-12..py+20）+
+  帧实测几何兜底（Global x106..139 / Objects x150..191）。
+- **状态判定**：pill 矩形的 teal 色散占比——灰 ~0.11-0.19、激活
+  ~0.71；点击 'objects' pill 后 0.108→0.710，切回后回落 0.190。
+- **证据**：diag_m5i_objects t1/t2 帧。
+
+### 17.12 Objects 模式侧栏结构（m5i 实测）
+- 预设 combo 行被**替换**为搜索框 + 对象列表（Plate 1 / Cube / Outside）；
+  Cube 添加后**默认已选中**（teal 高亮行，白字 OCR 读不出 'Cube'——
+  无需点击）；per-object tab 行（Frequent 激活）在锚行 +188px。
+- **pp.options_viewport 在此模式返回 None**（viewport 检测按 Global
+  模式几何），find_option_row 全线失效——用 tab 行锚定 + 自定义带
+  OCR（'height' 词 → y_row → option_edit_at）。
+- per-object Frequent 页 layer height Edit **提交前窗口文本为空**
+  （绘制值）——real_edit_set 的提交后回读才是判定。
+- 对象层高改动的 gcode 证据链：CONFIG_BLOCK 头 echo 保持全局值
+  （append_full_config 只 echo full_print_config），对象覆盖体现在
+  层数（27mm Cube：0.2→134 层 / 0.4→68 层）。
+
+### 17.13 gcode 层数计数的三倍陷阱（m5i）
+- **现象**：`data.count(b"LAYER_CHANGE")` 报 404；实际层数 134。
+- **根因**：每层 gcode 含 3 处 'LAYER_CHANGE' token（历史 m3d 的
+  206/404 也是 3× 值）。
+- **修法**：行锚定 `data.count(b"\n;LAYER_CHANGE")`，或解析后处理
+  插入的 `; total layer number: 134`（两者一致，134 已实测互证）。
+
+### 17.14 耗材预设 popup：全厂商列表 + 滚轮扫描 + 厂商词匹配（m6a）
+- 材料 combo popup 列出**全部厂商**预设（字母序 AliZ→Bambu→…→
+  FDplast→Fiberon→Generic→…→Snapmaker），目标行在视口外——滚轮
+  下行扫描（5 格/簇，psm 6 行分组 y±5px），扫底后反向兜底。
+- **行匹配必须带厂商词**：('pla','silk') 会命中 'Bambu PLA Silk'
+  （实测点击并提交成功——语义错误但 echo 链路照样证明）；要用
+  ('snapmaker','pla','silk')。
+- echo 证据：`; filament_type = PETG;PETG;PLA;PLA;PLA`（分号分隔、
+  按物理槽位）+ `; filament_settings_id` 全名（含 @ 变体后缀）——
+  最强逐槽断言。换耗材后 Color Mixing 条目原样保留。
+- combo 文本无 '@' 后缀（base 名），popup 行与 settings_id 带全名。
+
+### 17.15 打印机变体上下文：combo 不列变体 + echo 带机器边界（m6b）
+- 打印机 combo popup 只列 base 机 + 向导条目（U1 喷嘴变体被
+  PresetComboBoxes 隐藏，m4h 已证）——0.4 上下文用 m4h 的 craft 3mf
+  方式（printer_settings_id/printer_variant/nozzle_diameter 内嵌）。
+- craft 上下文下工艺预设 combo 自动切到内嵌 0.4 预设；其 popup
+  **零 '0.8' 行**（compatible_printers 过滤，PITFALLS #2 的正向利用）。
+- popup 行 OCR **词序会乱**（行分组按 y 并词：'0.4 0.08 Extra Fine
+  @Snapmaker U1 noz...'）——过滤断言只能对连接文本做子串匹配。
+- gcode 头 echo 机器预设边界：nozzle_diameter、min/max_layer_height
+  （0.8 喷嘴：0.16/0.56；0.4 喷嘴：0.08/0.32）——切变体断言无需改参。
+
+### 17.16 Speed 页：Edit 列 x 漂移 + 组标题贴底命中（m6d）
+- **Speed 页选项 Edit 在 client x=208**（Quality/Strength 页 ≥224）——
+  `option_edit_at` 默认 x_lo=220 漏检，`x_lo=200` 才命中。两页机制
+  相同的假设不成立：换页先实测 Edit 几何。
+- `scroll_group_into_view` 的命中判定允许组标题停在**带底**
+  （band_bottom-24），此时首行半切、Edit 出带——定位行前先补 2 格
+  下滚。
+- 排查陷阱：`find_option_row` 的 band 打印按 `[:120]` 截断——round 1
+  'Outer' 其实匹配成功（截断处 'Out' 之后），打印与真实匹配结果不一致，
+  静态分析推断"只循环了一轮"是被截断打印误导。
+
+### 17.17 脏预设切换确认：'Transfer or discard changes'（m6c）
+- 改参数后切工艺预设 → #32770 'Transfer or discard changes'（源码
+  UnsavedChangesDialog.cpp:804）；action line（'You have changed some
+  settings of preset "X".'）+ diff 行（'Layer height'/'0.4'）都是
+  **子 Static 真文本**——GetWindowText 直读，免 OCR（带引号的弯引号
+  OCR 会出 mojibake）。
+- 'Discard'（paint 按钮按**文本**找，m5g 规则）→ 预设切换 + 字段
+  重载预设值（0.24）；**WM_CLOSE = 取消** = 放弃切换：combo 出现
+  `'* 0.24 ...'` 脏标记前缀、字段保留脏值 0.3。
+- switch_process_preset 期间的 `SendMessageTimeoutW(msg=0x202) did
+  not complete` 警告是良性的——切换照常完成。
+
