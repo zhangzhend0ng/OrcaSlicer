@@ -213,6 +213,10 @@ def merge_entry_into_physical(session, label_rect, max_attempts=3):
                        for _t, r, _h in mdu.mix_entry_labels(session))
 
     for attempt in range(max_attempts):
+        # real ESC: dismiss any menu a previous attempt left hovering
+        # (WM_CANCELMODE alone is not enough once a submenu was open)
+        mdu._send_keys([(0x1B, False), (0x1B, True)])
+        time.sleep(0.5)
         menu = mdu.entry_options_menu(session, label_rect)
         if not menu:
             print(f"{LOG} merge: options menu did not open "
@@ -469,6 +473,16 @@ def main() -> int:
                         print(f"{LOG} #46 submenu targets: "
                               f"{[i[1] for i in sub_items]} "
                               f"mixed={has_mixed} physical={has_phys}")
+                # MEASURED 09-02: WM_CANCELMODE cannot dismiss a menu whose
+                # SUBMENU was hovered open — the menu stayed up and every
+                # merge re-open click landed on the floating menu (RED x2
+                # in the 35-case regression). The menu modal loop only
+                # obeys REAL input (m3b precedent): real ESC x2 closes the
+                # submenu and the main menu.
+                mdu._send_keys([(0x1B, False), (0x1B, True)])
+                time.sleep(0.4)
+                mdu._send_keys([(0x1B, False), (0x1B, True)])
+                time.sleep(0.6)
                 mdu.close_entry_menu(session)
                 time.sleep(0.8)
             if menu_ok and sub_ok:
