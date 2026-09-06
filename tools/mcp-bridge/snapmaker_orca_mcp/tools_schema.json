@@ -1,0 +1,126 @@
+{
+  "schema_version": "m0-1",
+  "notes": [
+    "Single source of truth for bridge tool schemas; both CLI and session backends must serve these definitions unchanged.",
+    "Session-only tools (M1+) are gated by the 'backends' field."
+  ],
+  "tools": [
+    {
+      "name": "analyze_mesh",
+      "title": "Analyze mesh",
+      "description": "Structural analysis of a model file (STL/OBJ/PLY/3MF): dimensions, volume, surface area, watertightness, component count. Pure geometry, no slicing.",
+      "backends": ["cli"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path to the mesh file (stl/obj/ply/3mf)" }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "check_printability",
+      "title": "Check printability",
+      "description": "Heuristic FDM printability screen: build-volume fit, minimum feature size vs nozzle/layer, overhang burden, watertightness. Heuristics only - slice for a definitive verdict.",
+      "backends": ["cli"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path to the mesh file" },
+          "build_volume_mm": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3, "description": "Printer build volume as [x, y, z] in mm (optional)" },
+          "layer_height_mm": { "type": "number", "default": 0.2 },
+          "nozzle_diameter_mm": { "type": "number", "default": 0.4 },
+          "overhang_angle_deg": { "type": "number", "default": 50.0, "description": "Angles steeper than this from horizontal need support" }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "suggest_orientation",
+      "title": "Suggest orientation",
+      "description": "Rank candidate build orientations by exposed overhang area (support burden). Geometric starting point; combine with cosmetic/strength judgement.",
+      "backends": ["cli"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Path to the mesh file" },
+          "overhang_angle_deg": { "type": "number", "default": 50.0 },
+          "max_suggestions": { "type": "integer", "default": 5, "minimum": 1, "maximum": 12 }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "estimate_cost",
+      "title": "Estimate cost",
+      "description": "Rough pre-slice estimate of material, time, and optional money cost from mesh volume plus shell+infill assumptions. Slice for exact numbers.",
+      "backends": ["cli"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "infill_density_pct": { "type": "number", "default": 20.0 },
+          "wall_count": { "type": "integer", "default": 2 },
+          "nozzle_diameter_mm": { "type": "number", "default": 0.4 },
+          "layer_height_mm": { "type": "number", "default": 0.2 },
+          "filament_density_g_cm3": { "type": "number", "default": 1.24, "description": "PLA default" },
+          "filament_price_per_kg": { "type": "number", "description": "Optional, enables material_cost" },
+          "electricity_price_per_kwh": { "type": "number", "description": "Optional, enables energy_cost" },
+          "machine_power_w": { "type": "number", "default": 100.0 },
+          "effective_flow_mm3_s": { "type": "number", "default": 7.5 }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "list_params",
+      "title": "List print parameters",
+      "description": "Query the Orca print-parameter catalog (generated from print_config_def): label, tooltip, type, enums, min/max, scope (machine/process/filament).",
+      "backends": ["cli", "session"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scope": { "type": "string", "enum": ["machine", "process", "filament", "cli"], "description": "Filter by scope" },
+          "search": { "type": "string", "description": "Case-insensitive substring across key/label/tooltip" },
+          "limit": { "type": "integer", "default": 60, "minimum": 1, "maximum": 500 },
+          "offset": { "type": "integer", "default": 0 }
+        }
+      }
+    },
+    {
+      "name": "set_and_slice",
+      "title": "Set parameters and slice (headless CLI)",
+      "description": "Slice a model headlessly via the Orca CLI with parameter overrides. Returns the G-code path plus statistics parsed from the G-code footer. Mesh inputs (stl/obj) require presets; Orca project 3mf inputs reuse their embedded settings. Known upstream limitation: some newer-version Orca project 3mf files crash the CLI slicer - the error is reported cleanly, use mesh input instead.",
+      "backends": ["cli"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model_path": { "type": "string", "description": "Model to slice (stl/obj/3mf)" },
+          "plate": { "type": "integer", "default": 1, "description": "1-based plate index, 0 = all plates" },
+          "overrides": { "type": "object", "description": "Print parameter overrides, e.g. {\"layer_height\": 0.16, \"sparse_infill_density\": \"25%\"}; keys must be catalog parameters (see list_params)" },
+          "printer_preset": { "type": "string", "description": "Machine preset name or json path, e.g. 'Snapmaker Artisan (0.4 nozzle)'" },
+          "process_preset": { "type": "string", "description": "Process preset name or json path" },
+          "filament_presets": { "type": "array", "items": { "type": "string" }, "description": "Filament preset names/paths, one per extruder" },
+          "output_dir": { "type": "string", "description": "Where to write the G-code (defaults to a temp dir)" },
+          "timeout_s": { "type": "number", "description": "Slicing timeout in seconds" },
+          "allow_newer_file": { "type": "boolean", "default": true, "description": "Accept 3mf files written by newer Orca versions" }
+        },
+        "required": ["model_path"]
+      }
+    },
+    {
+      "name": "export_3mf",
+      "title": "Export 3mf",
+      "description": "Get the model as a 3mf. 3mf input is copied through; mesh input is wrapped into a minimal valid 3mf. Full project export (settings + thumbnails) is available from the session backend (Orca running, M1+).",
+      "backends": ["cli", "session"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model_path": { "type": "string" },
+          "output_path": { "type": "string", "description": "Destination .3mf path" }
+        },
+        "required": ["model_path", "output_path"]
+      }
+    }
+  ]
+}
