@@ -26,6 +26,8 @@
 #include "slic3r/GUI/GLToolbar.hpp"
 #include "slic3r/GUI/FlowTypeHelper.hpp"
 #include "slic3r/GUI/MainFrame.hpp"
+#include "libslic3r/PrintConfig.hpp"
+#include <wx/modalhook.h>
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/PartPlate.hpp"
 #include "slic3r/GUI/Plater.hpp"
@@ -52,6 +54,33 @@ std::int64_t unix_now_seconds()
     return std::chrono::duration_cast<std::chrono::seconds>(
                std::chrono::system_clock::now().time_since_epoch())
         .count();
+}
+
+/// Counts open modal dialogs. While any modal dialog owns the UI, MCP
+/// write operations are refused with "UI busy" instead of queueing behind
+/// a dialog the user cannot see (integration plan section 5, item 4).
+class ModalDepthHook : public wxModalDialogHook
+{
+public:
+    void Register() { wxModalDialogHook::Register(); }
+    int depth() const { return m_depth.load(); }
+
+protected:
+    int Enter(wxDialog* /*dialog*/) override
+    {
+        ++m_depth;
+        return 0;
+    }
+    void Exit(wxDialog* /*dialog*/) override { --m_depth; }
+
+private:
+    std::atomic<int> m_depth{0};
+};
+
+ModalDepthHook* modal_hook()
+{
+    static ModalDepthHook hook;
+    return &hook;
 }
 
 Slic3r::GUI::GUI_App* app_or_null()
@@ -216,6 +245,7 @@ bool McpServer::enable()
 
     // UI-thread follow-ups: plater event hooks, snapshot freshness loop.
     m_marshaler->post([this]() {
+        modal_hook()->Register();
         ui_install_plater_hooks();
         rebuild_snapshot();
         m_snapshot_timer = std::make_unique<wxTimer>();
@@ -445,7 +475,27 @@ std::string McpServer::dispatch(const std::string& /*method*/, const std::string
         return build_result(result, request.has_id, request.id);
     }
 
-    // Everything below creates a job and posts UI work.
+    // Everything below creates a job and posts UI work. While a modal
+    // dialog owns the UI the user wins: refuse writes with UI busy.
+    {
+        static const char* const write_methods[] = {"load_models", "slice",
+            "export_gcode", "export_3mf", "get_plate_screenshot", "set_params",
+            "remove_object", "set_transform", "arrange"};
+        bool is_write = false;
+        for (const char* name : write_methods) {
+            if (request.method == name) {
+                is_write = true;
+                break;
+            }
+        }
+        if (is_write && modal_hook()->depth() > 0) {
+            return build_error(RpcErrorCode::UiBusy,
+                               "a modal dialog is open in the Orca UI - "
+                               "close it and retry",
+                               request.has_id, request.id);
+        }
+    }
+
     int job_id = 0;
     if (request.method == "load_models") {
         const nlohmann::json paths_json = request.params.value("paths", nlohmann::json::array());
@@ -516,6 +566,53 @@ std::string McpServer::dispatch(const std::string& /*method*/, const std::string
         }
         job_id = McpJobRegistry::instance().create("export_3mf");
         m_marshaler->post([this, job_id, path]() { ui_export_3mf(job_id, path); });
+    } else if (request.method == "set_params") {
+        const nlohmann::json params_json =
+            request.params.value("params", nlohmann::json::object());
+        if (!params_json.is_object() || params_json.empty()) {
+            return build_error(RpcErrorCode::InvalidParams,
+                               "params must be a non-empty object of "
+                               "{option: value}",
+                               request.has_id, request.id);
+        }
+        std::map<std::string, std::string> params;
+        for (auto it = params_json.begin(); it != params_json.end(); ++it) {
+            if (it.value().is_string()) {
+                params[it.key()] = it.value().get<std::string>();
+            } else {
+                params[it.key()] = it.value().dump();
+            }
+        }
+        job_id = McpJobRegistry::instance().create("set_params");
+        m_marshaler->post([this, job_id, params]() { ui_set_params(job_id, params); });
+    } else if (request.method == "remove_object") {
+        const std::int64_t object_id = request.params.value("object_id", 0);
+        if (object_id <= 0) {
+            return build_error(RpcErrorCode::InvalidParams,
+                               "object_id is required (see get_state)",
+                               request.has_id, request.id);
+        }
+        job_id = McpJobRegistry::instance().create("remove_object");
+        m_marshaler->post([this, job_id, object_id]() {
+            ui_remove_object(job_id, object_id);
+        });
+    } else if (request.method == "set_transform") {
+        const std::int64_t object_id = request.params.value("object_id", 0);
+        if (object_id <= 0) {
+            return build_error(RpcErrorCode::InvalidParams,
+                               "object_id is required (see get_state)",
+                               request.has_id, request.id);
+        }
+        nlohmann::json translation = request.params.value("translation_mm", nlohmann::json::object());
+        nlohmann::json rotation = request.params.value("rotation_deg", nlohmann::json::object());
+        nlohmann::json scaling = request.params.value("scaling_factor", nlohmann::json::object());
+        job_id = McpJobRegistry::instance().create("set_transform");
+        m_marshaler->post([this, job_id, object_id, translation, rotation, scaling]() {
+            ui_set_transform(job_id, object_id, translation, rotation, scaling);
+        });
+    } else if (request.method == "arrange") {
+        job_id = McpJobRegistry::instance().create("arrange");
+        m_marshaler->post([this, job_id]() { ui_arrange(job_id); });
     } else {
         return build_error(RpcErrorCode::MethodNotFound,
                            "unknown method: " + request.method, request.has_id, request.id);
@@ -707,6 +804,152 @@ void McpServer::ui_export_3mf(int job_id, const std::string& path)
     } else {
         McpJobRegistry::instance().set_failed(job_id, "export_3mf returned failure");
     }
+}
+
+void McpServer::ui_set_params(int job_id,
+                              const std::map<std::string, std::string>& params)
+{
+    // UI thread. Writes project-level print overrides (the same overrides a
+    // project 3mf carries); each key/value goes through the config
+    // definition's typed deserialization, so an invalid value fails the job
+    // with a message the caller can self-correct from.
+    GUI::Plater* plater = plater_or_null();
+    if (plater == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "plater not ready");
+        return;
+    }
+    std::vector<std::string> applied;
+    Slic3r::GUI::GUI_App* app = app_or_null();
+    if (app == nullptr || app->preset_bundle == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "preset bundle not ready");
+        return;
+    }
+    DynamicPrintConfig& project_config = app->preset_bundle->project_config;
+    for (const auto& entry : params) {
+        const ConfigOptionDef* def = print_config_def.get(entry.first);
+        if (def == nullptr) {
+            McpJobRegistry::instance().set_failed(
+                job_id, "unknown print parameter: " + entry.first
+                    + " (see list_params)");
+            return;
+        }
+        ConfigSubstitutionContext substitutions(ForwardCompatibilitySubstitutionRule::Enable);
+        try {
+            project_config.set_deserialize(entry.first, entry.second,
+                                           substitutions);
+        } catch (const std::exception& ex) {
+            McpJobRegistry::instance().set_failed(
+                job_id, "parameter '" + entry.first + "' rejected: " + ex.what());
+            return;
+        }
+        applied.push_back(entry.first);
+    }
+    plater->take_snapshot("MCP: set parameters");
+    plater->update(true, true);
+    m_marshaler->post([this]() { rebuild_snapshot(); });
+    McpJobRegistry::instance().set_result(
+        job_id, nlohmann::json{{"applied", applied},
+                               {"note", "project-level overrides; re-slice to apply"}});
+}
+
+void McpServer::ui_remove_object(int job_id, std::int64_t object_id)
+{
+    GUI::Plater* plater = plater_or_null();
+    if (plater == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "plater not ready");
+        return;
+    }
+    Model& model = plater->model();
+    for (size_t index = 0; index < model.objects.size(); ++index) {
+        const ModelObject* object = model.objects[index];
+        if (object != nullptr
+            && static_cast<std::int64_t>(object->id().id) == object_id) {
+            plater->take_snapshot("MCP: remove object");
+            plater->remove(index);
+            m_marshaler->post([this]() { rebuild_snapshot(); });
+            McpJobRegistry::instance().set_result(
+                job_id, nlohmann::json{{"removed_object_id", object_id}});
+            return;
+        }
+    }
+    McpJobRegistry::instance().set_failed(job_id,
+                                          "unknown object_id: "
+                                              + std::to_string(object_id));
+}
+
+void McpServer::ui_set_transform(int job_id, std::int64_t object_id,
+                                 const nlohmann::json& translation,
+                                 const nlohmann::json& rotation,
+                                 const nlohmann::json& scaling_factor)
+{
+    GUI::Plater* plater = plater_or_null();
+    if (plater == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "plater not ready");
+        return;
+    }
+    ModelObject* target = nullptr;
+    for (ModelObject* object : plater->model().objects) {
+        if (object != nullptr
+            && static_cast<std::int64_t>(object->id().id) == object_id) {
+            target = object;
+            break;
+        }
+    }
+    if (target == nullptr || target->instances.empty()) {
+        McpJobRegistry::instance().set_failed(job_id,
+                                              "unknown object_id: "
+                                                  + std::to_string(object_id));
+        return;
+    }
+    ModelInstance* instance = target->instances.front();
+    auto axis_vec = [](const nlohmann::json& value,
+                       Vec3d& out) -> bool {
+        if (!value.is_object() || value.empty()) {
+            return false;
+        }
+        if (value.contains("x")) out.x() = value.value("x", out.x());
+        if (value.contains("y")) out.y() = value.value("y", out.y());
+        if (value.contains("z")) out.z() = value.value("z", out.z());
+        if (value.contains("0")) out.x() = value.value("0", out.x());
+        if (value.contains("1")) out.y() = value.value("1", out.y());
+        if (value.contains("2")) out.z() = value.value("2", out.z());
+        return true;
+    };
+    plater->take_snapshot("MCP: set transform");
+    Vec3d vec = instance->get_offset();
+    if (axis_vec(translation, vec)) {
+        instance->set_offset(vec);
+    }
+    vec = instance->get_rotation();
+    if (axis_vec(rotation, vec)) {
+        instance->set_rotation(vec);
+    }
+    vec = instance->get_scaling_factor();
+    if (axis_vec(scaling_factor, vec)) {
+        instance->set_scaling_factor(vec);
+    }
+    target->invalidate_bounding_box();
+    plater->update(true, true);
+    m_marshaler->post([this]() { rebuild_snapshot(); });
+    McpJobRegistry::instance().set_result(
+        job_id, nlohmann::json{{"object_id", object_id},
+                               {"translation", instance->get_offset()},
+                               {"rotation", instance->get_rotation()},
+                               {"scaling_factor", instance->get_scaling_factor()}});
+}
+
+void McpServer::ui_arrange(int job_id)
+{
+    GUI::Plater* plater = plater_or_null();
+    if (plater == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "plater not ready");
+        return;
+    }
+    plater->take_snapshot("MCP: arrange");
+    plater->arrange();
+    m_marshaler->post([this]() { rebuild_snapshot(); });
+    McpJobRegistry::instance().set_result(
+        job_id, nlohmann::json{{"outcome", "arranged"}});
 }
 
 void McpServer::ui_render_screenshot(int job_id, int plate_index, int width, int height)

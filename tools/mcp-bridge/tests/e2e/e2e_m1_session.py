@@ -51,6 +51,7 @@ def foreground_window(title_contains: str) -> None:
     stall on some VMs.
     """
     import ctypes
+    import ctypes.wintypes
     user32 = ctypes.windll.user32
     top = user32.GetTopWindow(0)
     length = 512
@@ -84,6 +85,43 @@ def rpc(port: int, token: str, method: str, params: dict | None = None,
             return json.loads(resp.read().decode()), 200
     except urllib.error.HTTPError as exc:
         return json.loads(exc.read().decode()), exc.code
+
+def start_wizard_reaper(stop_event) -> None:
+    """Auto-close Orca's first-run wizard if it pops during the run.
+
+    The wizard decides 'no printer selected' asynchronously (after preset
+    sync), so it can appear mid-run even with a seeded config; its cancel
+    path is safe and the seeded printer still applies.
+    """
+    import ctypes
+    import ctypes.wintypes
+
+    WM_CLOSE = 0x0010
+    user32 = ctypes.windll.user32
+
+    def loop():
+        # The wizard dialog's title is also "Snapmaker Orca"; discriminate by
+        # size (the main window is fullscreen-sized, the wizard is a small
+        # centered dialog).
+        while not stop_event.is_set():
+            top = user32.GetTopWindow(0)
+            buf = ctypes.create_unicode_buffer(256)
+            rect = ctypes.wintypes.RECT()
+            while top:
+                if user32.IsWindowVisible(top):
+                    n = user32.GetWindowTextLengthW(top)
+                    if 0 < n < 256:
+                        user32.GetWindowTextW(top, buf, 256)
+                        if buf.value == "Snapmaker Orca"                                 and user32.GetWindowRect(top, ctypes.byref(rect)):
+                            width = rect.right - rect.left
+                            height = rect.bottom - rect.top
+                            if 0 < width < 1400 and height < 1000:
+                                user32.PostMessageW(top, WM_CLOSE, 0, 0)
+                top = user32.GetWindow(top, 2)
+            time.sleep(0.5)
+
+    import threading
+    threading.Thread(target=loop, daemon=True).start()
 
 
 def wait_for_listener(discovery: Path, deadline_s: float = 180.0):
@@ -183,6 +221,9 @@ def main() -> int:
         stderr=subprocess.DEVNULL,
     )
     print(f"launched pid={proc.pid}")
+    import threading
+    _stop = threading.Event()
+    start_wizard_reaper(_stop)
     try:
         # 3. wait for listener readiness
         discovery = data_dir / "mcp_session.json"
@@ -254,11 +295,30 @@ def main() -> int:
 
         foreground_window("Snapmaker Orca")
 
+        # 4c2. M2: set_params (before slicing so the override reaches gcode).
+        # sparse_infill_density 15% is verified-legal for the seeded Artisan
+        # 0.4 preset; a rejected value poisons the plate into
+        # process_completed_with_error and every later slice answers
+        # "not sliceable" (E2E semantics, see journal).
+        body, _ = rpc(port, token, "set_params",
+                      {"params": {"sparse_infill_density": "15%"}})
+        pj = wait_job(port, token, body.get("result", {}).get("job_id", 0), 60)
+        check("set_params job done", pj.get("state") == "done", json.dumps(pj)[:300])
+        body, _ = rpc(port, token, "set_params", {"params": {"not_a_key": "1"}})
+        bad = wait_job(port, token, body.get("result", {}).get("job_id", 0), 60)
+        check("set_params rejects unknown key",
+              bad.get("state") == "failed"
+              and "unknown print parameter" in bad.get("message", ""),
+              json.dumps(bad)[:200])
+
         # 4d. slice the loaded scene and wait for real progress.
         # The slice-finalize thumbnail render can stall on VMs with a broken
-        # on-screen GL canvas (CPU-idle deadlock at 80%); the watchdog fails
-        # the job and a retry restarts the background process.
+        # on-screen GL canvas (CPU-idle deadlock); the watchdog fails the
+        # job and a retry restarts the background process. Between attempts
+        # wait for the UI to quiesce (slicing_state.active false) or the
+        # retry hits the same wedged background process.
         job = {}
+        gcode_target = None
         for attempt in range(3):
             body, _ = rpc(port, token, "slice", {"plate": 1})
             check("slice returns job id",
@@ -271,7 +331,17 @@ def main() -> int:
                   f"{job.get('percent')}% {job.get('message', '')[:120]})")
             if job.get("state") == "done":
                 break
+            time.sleep(5.0)
+            quiesce_deadline = time.monotonic() + 30
+            while time.monotonic() < quiesce_deadline:
+                body, _ = rpc(port, token, "get_state")
+                if not body.get("result", {}).get("slicing_state", {}).get("active"):
+                    break
+                time.sleep(1.0)
         check("slice job done", job.get("state") == "done", json.dumps(job)[:300])
+        if job.get("state") != "done":
+            body, _ = rpc(port, token, "get_state")
+            print(f"       (state after failed slice: {json.dumps(body.get('result', {}))[:600]})")
 
         # 4e. unknown job id answers definitively
         body, _ = rpc(port, token, "poll_job", {"job_id": 999999})
@@ -304,6 +374,41 @@ def main() -> int:
             check("export_gcode job done", gj.get("state") == "done",
                   json.dumps(gj)[:300])
             check("export_gcode file exists", gcode_target.is_file())
+        if gcode_target is not None and gcode_target.is_file():
+            text = gcode_target.read_text(encoding="utf-8", errors="replace")
+            check("set_params override visible in exported gcode",
+                  "; sparse_infill_density = 15%" in text,
+                  "expected '; sparse_infill_density = 15%' in config block")
+
+        # 4f3. M2: set_transform + remove_object
+        body, _ = rpc(port, token, "get_state")
+        before_state = body.get("result", {})
+        if before_state.get("objects"):
+            oid = before_state["objects"][0]["id"]
+            old_z = before_state["objects"][0]["instances"][0]["translation"][2]
+            body, _ = rpc(port, token, "set_transform",
+                          {"object_id": oid, "translation_mm": {"z": 3.5}})
+            tj = wait_job(port, token, body.get("result", {}).get("job_id", 0), 60)
+            check("set_transform job done", tj.get("state") == "done",
+                  json.dumps(tj)[:300])
+            body, _ = rpc(port, token, "get_state")
+            new_state = body.get("result", {})
+            new_z = new_state["objects"][0]["instances"][0]["translation"][2]
+            check("set_transform moved object", abs(new_z - 3.5) < 0.01,
+                  f"z {old_z} -> {new_z}")
+            body, _ = rpc(port, token, "remove_object", {"object_id": oid})
+            rj = wait_job(port, token, body.get("result", {}).get("job_id", 0), 60)
+            check("remove_object job done", rj.get("state") == "done",
+                  json.dumps(rj)[:300])
+            body, _ = rpc(port, token, "get_state")
+            after_state = body.get("result", {})
+            gone = all(o["id"] != oid for o in after_state.get("objects", []))
+            check("object removed from session", gone)
+
+        # 4f4. M2: arrange on the empty plate must still complete
+        body, _ = rpc(port, token, "arrange")
+        aj = wait_job(port, token, body.get("result", {}).get("job_id", 0), 120)
+        check("arrange job done", aj.get("state") == "done", json.dumps(aj)[:300])
 
         # 4g. export_3mf of the current (empty) project
         target = out_dir / "session_project.3mf"
@@ -339,7 +444,10 @@ def finish(proc: subprocess.Popen, work: Path, args) -> int:
         proc.kill()
         proc.wait(timeout=30)
     print("orca terminated")
-    if not args.keep:
+    if FAILURES and not args.keep:
+        # Keep the workdir (datadir log, gcode, discovery file) for forensics.
+        print(f"FAILURES present - workdir kept: {work}")
+    elif not args.keep:
         shutil.rmtree(work, ignore_errors=True)
     print()
     if FAILURES:

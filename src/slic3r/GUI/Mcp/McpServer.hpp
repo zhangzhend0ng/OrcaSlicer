@@ -17,6 +17,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -93,6 +94,15 @@ private:
     void ui_export_3mf(int job_id, const std::string& path);
     void ui_render_screenshot(int job_id, int plate_index, int width, int height);
     void ui_install_plater_hooks();
+    void ui_set_params(int job_id, const std::map<std::string, std::string>& params);
+    void ui_remove_object(int job_id, std::int64_t object_id);
+    void ui_set_transform(int job_id, std::int64_t object_id,
+                          const nlohmann::json& translation,
+                          const nlohmann::json& rotation,
+                          const nlohmann::json& scaling_factor);
+    void ui_arrange(int job_id);
+    /// True while a modal dialog owns the UI: writes must be refused.
+    bool ui_busy() const { return m_modal_depth.load() > 0; }
 
     /// Snapshot builder; UI thread only.
     nlohmann::json build_snapshot();
@@ -115,6 +125,7 @@ private:
     int                           m_export_job_in_flight = 0;
 
     std::atomic<bool>             m_enabled{false};
+    std::atomic<int>              m_modal_depth{0};
 };
 
 /// Generate a 32-char lowercase hex token (crypto/rand-backed).
