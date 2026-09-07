@@ -164,3 +164,62 @@
 - [x] E2E：裸 listener + 三跳桥接双 GREEN。
 - [x] 对抗收尾：token 门禁变异、横向 grep（无 SSE/405/CORS/execute_code 字样）。
 - [x] 提交。
+
+---
+
+## M2：会话内配置读写 + 模型操作（完成）
+
+### 交付物
+- C++（全部在 src/slic3r/GUI/Mcp/，零新增既有文件 hook）：
+  - `set_params`：写 `preset_bundle->project_config`（与规格 Plater.cpp:7200 的 project_config.set_key_value
+    同一落点 = 工程级覆盖，即工程 3mf 携带的那层），每键经 `print_config_def` 查目录 +
+    `DynamicPrintConfig::set_deserialize` 类型化校验，非法值连 `ex.what()` 一起回传（模型可自纠）；
+    成功后 take_snapshot → update(true,true) → rebuild_snapshot。
+  - `remove_object`（按 object_id → Plater::remove(index)）、`set_transform`（partial 更新 xyz，
+    支持键名 x/y/z 或 0/1/2）、`arrange`（Plater::arrange）。均 take_snapshot 进 undo。
+  - **ModalDepthHook**（wxModalDialogHook 子类，Enter/Exit 原子计数）：dispatch 层对全部写方法
+    （含截图——它也占 UI 线程 GL）前置检查，模态期间返回 `-32002 UI busy`，文案指引用户关对话框。
+    语义=规格 §2.2"读保持新鲜而写排队"的诚实化（选择拒绝而非排队，避免用户无感知的暗箱操作）。
+- 桥接：tools_schema.json +4 工具（set_params/remove_object/set_transform/arrange），
+  session_backend.py 透传；pytest 42 过。
+
+### 验收证据
+- 构建：`build_mcp_target.bat Snapmaker_Orca_app_gui` 真实编译；DLL 含
+  set_params/remove_object/set_transform/ModalDepthHook 字符串（grep 计数 ≥1）。
+- `e2e_m1_session.py`（真实 GUI + wizard reaper）：**GREEN 全过**——
+  - set_params(sparse_infill_density=15%) → slice 100% → 导出 gcode 内
+    `; sparse_infill_density = 15%` 逐字命中；
+  - 未知键经 job message 拒绝（"unknown print parameter"）；
+  - set_transform z=3.5 → get_state 读回 |Δ|<0.01；remove_object → 会话态消失；空盘 arrange 完成；
+  - M1 全部断言（token 门禁/截图 PNG/单飞/-32003 未知 job）回归通过。
+- `e2e_m1_bridge.py`（MCP stdio 三跳）：**GREEN**。mcp_tests 14 用例 2166 断言全过。
+
+### 关键事实/坑（M2 期间实证）
+1. **layer_height=0.28 是本种子预设的中毒值**：切片时被 Orca 校验拒绝（非 set_deserialize 层——
+   该层通过了，毒在切片时校验），盘进 process_completed_with_error → 后续 slice 全部
+   "not sliceable"（`is_plate_sliceable` → can_slice() 为假，不重试自愈）。且失败无完成事件，
+   只能靠看门狗（180s）兜底。合法覆盖值用 `sparse_infill_density: "15%"`（Artisan 0.4 实证）。
+   E2E 已加失败取证：保留 workdir + dump get_state。
+2. wizard reaper（后台线程按"标题='Snapmaker Orca' 且宽<1400、高<1000"识别首启向导发 WM_CLOSE）
+   首跑有效；主窗口全屏尺寸不受误伤（本 run 无向导弹出，全绿）。
+3. `Plater::update(true,true)` 第二参 = FORCE_BACKGROUND_PROCESSING_UPDATE；update_background_process
+   只 apply 不 start，restart_background_process 的启动语义对未切过盘保持惰性（本次 E2E 序列
+   set_params→slice 无早切副作用，实证无碍）。
+4. E2E 脚本自身缺陷修复：slice 未 done 时 `gcode_target` 未绑定导致 UnboundLocalError 掩盖失败
+   → 提前初始化 + 守卫；重试间加 5s 冷却 + 等 slicing_state.active 落假。
+5. 仓库卫生：`tools/mcp-bridge/**/__pycache__`（20 个 .pyc）此前被误提交 → `git rm --cached` 移出
+   索引（工作区保留）+ `.gitignore`（`__pycache__/`、`*.pyc`）。
+6. M3 侦察（记录备查，实现时复核）：对象级覆盖 UI 同款链 = `object->config.set_deserialize`
+   （ModelConfig 自带 touch() 时间戳，undo 栈友好）+ `obj_list()->object_config_options_changed({obj,nullptr})`
+   （TabPrintObject::notify_changed 同款，刷对象列表设置角标）+ update(true,true)；对象级合法键 =
+   `PrintObjectConfig().keys() ∪ PrintRegionConfig().keys()`（TabPrintObject 构造同款）。
+   PartPlate::config() 是裸 DynamicPrintConfig（非 ModelConfigObject），但随盘序列化（PartPlate.cpp
+   serialize 含 m_config）→ undo 经盘快照成立。`Plater::undo()` 公有 API 存在（Plater.cpp:21908）。
+
+### M2 验收门核对
+- [x] 构建：改动 target 真实编译 + 字符串证据。
+- [x] 测试：mcp_tests 14/14（2166 断言）+ pytest 42/42；新断言先有失败模式（unknown key、
+      gcode 覆盖逐字断言）。
+- [x] E2E：session + bridge 双 GREEN。
+- [x] 对抗收尾：横向 grep（无 execute_code/SSE/CORS）；中毒值教训入档。
+- [x] 提交。

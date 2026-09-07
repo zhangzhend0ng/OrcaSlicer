@@ -40,6 +40,7 @@ def foreground_window(title_contains: str) -> None:
     stall on some VMs.
     """
     import ctypes
+    import ctypes.wintypes
     user32 = ctypes.windll.user32
     top = user32.GetTopWindow(0)
     length = 512
@@ -53,6 +54,43 @@ def foreground_window(title_contains: str) -> None:
                 user32.SetForegroundWindow(top)
                 return
         top = user32.GetWindow(top, 2)  # GW_HWNDNEXT
+
+def start_wizard_reaper(stop_event) -> None:
+    """Auto-close Orca's first-run wizard if it pops during the run.
+
+    The wizard decides 'no printer selected' asynchronously (after preset
+    sync), so it can appear mid-run even with a seeded config; its cancel
+    path is safe and the seeded printer still applies.
+    """
+    import ctypes
+    import ctypes.wintypes
+
+    WM_CLOSE = 0x0010
+    user32 = ctypes.windll.user32
+
+    def loop():
+        # The wizard dialog's title is also "Snapmaker Orca"; discriminate by
+        # size (the main window is fullscreen-sized, the wizard is a small
+        # centered dialog).
+        while not stop_event.is_set():
+            top = user32.GetTopWindow(0)
+            buf = ctypes.create_unicode_buffer(256)
+            rect = ctypes.wintypes.RECT()
+            while top:
+                if user32.IsWindowVisible(top):
+                    n = user32.GetWindowTextLengthW(top)
+                    if 0 < n < 256:
+                        user32.GetWindowTextW(top, buf, 256)
+                        if buf.value == "Snapmaker Orca"                                 and user32.GetWindowRect(top, ctypes.byref(rect)):
+                            width = rect.right - rect.left
+                            height = rect.bottom - rect.top
+                            if 0 < width < 1400 and height < 1000:
+                                user32.PostMessageW(top, WM_CLOSE, 0, 0)
+                top = user32.GetWindow(top, 2)
+            time.sleep(0.5)
+
+    import threading
+    threading.Thread(target=loop, daemon=True).start()
 
 
 def payload_of(result):
@@ -96,6 +134,9 @@ async def run(exe: Path, work: Path) -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    import threading
+    _stop = threading.Event()
+    start_wizard_reaper(_stop)
     try:
         discovery = data_dir / "mcp_session.json"
         sys.path.insert(0, str(Path(__file__).resolve().parent))

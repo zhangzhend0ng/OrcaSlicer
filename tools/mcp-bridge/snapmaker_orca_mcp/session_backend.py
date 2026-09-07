@@ -173,6 +173,35 @@ def make_session_handlers(config: BridgeConfig) -> dict:
         result["last_percent"] = state.get("percent", 100)
         return result
 
+    def set_params(args: dict) -> dict:
+        params = args.get("params")
+        if not isinstance(params, dict) or not params:
+            raise BridgeError("params must be a non-empty object", code="bad_request")
+        return _client().call_and_wait("set_params", {"params": params},
+                                       timeout_s=float(args.get("timeout_s", 120)))
+
+    def remove_object(args: dict) -> dict:
+        object_id = args.get("object_id")
+        if not object_id:
+            raise BridgeError("object_id is required", code="bad_request")
+        return _client().call_and_wait("remove_object", {"object_id": int(object_id)},
+                                       timeout_s=float(args.get("timeout_s", 120)))
+
+    def set_transform(args: dict) -> dict:
+        object_id = args.get("object_id")
+        if not object_id:
+            raise BridgeError("object_id is required", code="bad_request")
+        payload = {"object_id": int(object_id)}
+        for key in ("translation_mm", "rotation_deg", "scaling_factor"):
+            if args.get(key):
+                payload[key] = args[key]
+        return _client().call_and_wait("set_transform", payload,
+                                       timeout_s=float(args.get("timeout_s", 120)))
+
+    def arrange(args: dict) -> dict:
+        return _client().call_and_wait("arrange", {},
+                                       timeout_s=float(args.get("timeout_s", 300)))
+
     def poll_job(args: dict) -> dict:
         return _client().call("poll_job", {"job_id": int(args.get("job_id", 0))})
 
@@ -196,6 +225,10 @@ def make_session_handlers(config: BridgeConfig) -> dict:
     return {
         "get_state": get_state,
         "load_models": load_models,
+        "set_params": set_params,
+        "remove_object": remove_object,
+        "set_transform": set_transform,
+        "arrange": arrange,
         "get_plate_screenshot": get_plate_screenshot,
         "slice": slice_,
         "poll_job": poll_job,

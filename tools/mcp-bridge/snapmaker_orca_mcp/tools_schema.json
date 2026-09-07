@@ -9,81 +9,185 @@
       "name": "analyze_mesh",
       "title": "Analyze mesh",
       "description": "Structural analysis of a model file (STL/OBJ/PLY/3MF): dimensions, volume, surface area, watertightness, component count. Pure geometry, no slicing.",
-      "backends": ["cli"],
+      "backends": [
+        "cli"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Path to the mesh file (stl/obj/ply/3mf)" }
+          "path": {
+            "type": "string",
+            "description": "Path to the mesh file (stl/obj/ply/3mf)"
+          }
         },
-        "required": ["path"]
+        "required": [
+          "path"
+        ]
       }
     },
     {
       "name": "check_printability",
       "title": "Check printability",
       "description": "Heuristic FDM printability screen: build-volume fit, minimum feature size vs nozzle/layer, overhang burden, watertightness. Heuristics only - slice for a definitive verdict.",
-      "backends": ["cli"],
+      "backends": [
+        "cli"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Path to the mesh file" },
-          "build_volume_mm": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3, "description": "Printer build volume as [x, y, z] in mm (optional)" },
-          "layer_height_mm": { "type": "number", "default": 0.2 },
-          "nozzle_diameter_mm": { "type": "number", "default": 0.4 },
-          "overhang_angle_deg": { "type": "number", "default": 50.0, "description": "Angles steeper than this from horizontal need support" }
+          "path": {
+            "type": "string",
+            "description": "Path to the mesh file"
+          },
+          "build_volume_mm": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "Printer build volume as [x, y, z] in mm (optional)"
+          },
+          "layer_height_mm": {
+            "type": "number",
+            "default": 0.2
+          },
+          "nozzle_diameter_mm": {
+            "type": "number",
+            "default": 0.4
+          },
+          "overhang_angle_deg": {
+            "type": "number",
+            "default": 50.0,
+            "description": "Angles steeper than this from horizontal need support"
+          }
         },
-        "required": ["path"]
+        "required": [
+          "path"
+        ]
       }
     },
     {
       "name": "suggest_orientation",
       "title": "Suggest orientation",
       "description": "Rank candidate build orientations by exposed overhang area (support burden). Geometric starting point; combine with cosmetic/strength judgement.",
-      "backends": ["cli"],
+      "backends": [
+        "cli"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Path to the mesh file" },
-          "overhang_angle_deg": { "type": "number", "default": 50.0 },
-          "max_suggestions": { "type": "integer", "default": 5, "minimum": 1, "maximum": 12 }
+          "path": {
+            "type": "string",
+            "description": "Path to the mesh file"
+          },
+          "overhang_angle_deg": {
+            "type": "number",
+            "default": 50.0
+          },
+          "max_suggestions": {
+            "type": "integer",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 12
+          }
         },
-        "required": ["path"]
+        "required": [
+          "path"
+        ]
       }
     },
     {
       "name": "estimate_cost",
       "title": "Estimate cost",
       "description": "Rough pre-slice estimate of material, time, and optional money cost from mesh volume plus shell+infill assumptions. Slice for exact numbers.",
-      "backends": ["cli"],
+      "backends": [
+        "cli"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "path": { "type": "string" },
-          "infill_density_pct": { "type": "number", "default": 20.0 },
-          "wall_count": { "type": "integer", "default": 2 },
-          "nozzle_diameter_mm": { "type": "number", "default": 0.4 },
-          "layer_height_mm": { "type": "number", "default": 0.2 },
-          "filament_density_g_cm3": { "type": "number", "default": 1.24, "description": "PLA default" },
-          "filament_price_per_kg": { "type": "number", "description": "Optional, enables material_cost" },
-          "electricity_price_per_kwh": { "type": "number", "description": "Optional, enables energy_cost" },
-          "machine_power_w": { "type": "number", "default": 100.0 },
-          "effective_flow_mm3_s": { "type": "number", "default": 7.5 }
+          "path": {
+            "type": "string"
+          },
+          "infill_density_pct": {
+            "type": "number",
+            "default": 20.0
+          },
+          "wall_count": {
+            "type": "integer",
+            "default": 2
+          },
+          "nozzle_diameter_mm": {
+            "type": "number",
+            "default": 0.4
+          },
+          "layer_height_mm": {
+            "type": "number",
+            "default": 0.2
+          },
+          "filament_density_g_cm3": {
+            "type": "number",
+            "default": 1.24,
+            "description": "PLA default"
+          },
+          "filament_price_per_kg": {
+            "type": "number",
+            "description": "Optional, enables material_cost"
+          },
+          "electricity_price_per_kwh": {
+            "type": "number",
+            "description": "Optional, enables energy_cost"
+          },
+          "machine_power_w": {
+            "type": "number",
+            "default": 100.0
+          },
+          "effective_flow_mm3_s": {
+            "type": "number",
+            "default": 7.5
+          }
         },
-        "required": ["path"]
+        "required": [
+          "path"
+        ]
       }
     },
     {
       "name": "list_params",
       "title": "List print parameters",
       "description": "Query the Orca print-parameter catalog (generated from print_config_def): label, tooltip, type, enums, min/max, scope (machine/process/filament).",
-      "backends": ["cli", "session"],
+      "backends": [
+        "cli",
+        "session"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "scope": { "type": "string", "enum": ["machine", "process", "filament", "cli"], "description": "Filter by scope" },
-          "search": { "type": "string", "description": "Case-insensitive substring across key/label/tooltip" },
-          "limit": { "type": "integer", "default": 60, "minimum": 1, "maximum": 500 },
-          "offset": { "type": "integer", "default": 0 }
+          "scope": {
+            "type": "string",
+            "enum": [
+              "machine",
+              "process",
+              "filament",
+              "cli"
+            ],
+            "description": "Filter by scope"
+          },
+          "search": {
+            "type": "string",
+            "description": "Case-insensitive substring across key/label/tooltip"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 60,
+            "minimum": 1,
+            "maximum": 500
+          },
+          "offset": {
+            "type": "integer",
+            "default": 0
+          }
         }
       }
     },
@@ -91,69 +195,151 @@
       "name": "set_and_slice",
       "title": "Set parameters and slice (headless CLI)",
       "description": "Slice a model headlessly via the Orca CLI with parameter overrides. Returns the G-code path plus statistics parsed from the G-code footer. Mesh inputs (stl/obj) require presets; Orca project 3mf inputs reuse their embedded settings. Known upstream limitation: some newer-version Orca project 3mf files crash the CLI slicer - the error is reported cleanly, use mesh input instead.",
-      "backends": ["cli"],
+      "backends": [
+        "cli"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "model_path": { "type": "string", "description": "Model to slice (stl/obj/3mf)" },
-          "plate": { "type": "integer", "default": 1, "description": "1-based plate index, 0 = all plates" },
-          "overrides": { "type": "object", "description": "Print parameter overrides, e.g. {\"layer_height\": 0.16, \"sparse_infill_density\": \"25%\"}; keys must be catalog parameters (see list_params)" },
-          "printer_preset": { "type": "string", "description": "Machine preset name or json path, e.g. 'Snapmaker Artisan (0.4 nozzle)'" },
-          "process_preset": { "type": "string", "description": "Process preset name or json path" },
-          "filament_presets": { "type": "array", "items": { "type": "string" }, "description": "Filament preset names/paths, one per extruder" },
-          "output_dir": { "type": "string", "description": "Where to write the G-code (defaults to a temp dir)" },
-          "timeout_s": { "type": "number", "description": "Slicing timeout in seconds" },
-          "allow_newer_file": { "type": "boolean", "default": true, "description": "Accept 3mf files written by newer Orca versions" }
+          "model_path": {
+            "type": "string",
+            "description": "Model to slice (stl/obj/3mf)"
+          },
+          "plate": {
+            "type": "integer",
+            "default": 1,
+            "description": "1-based plate index, 0 = all plates"
+          },
+          "overrides": {
+            "type": "object",
+            "description": "Print parameter overrides, e.g. {\"layer_height\": 0.16, \"sparse_infill_density\": \"25%\"}; keys must be catalog parameters (see list_params)"
+          },
+          "printer_preset": {
+            "type": "string",
+            "description": "Machine preset name or json path, e.g. 'Snapmaker Artisan (0.4 nozzle)'"
+          },
+          "process_preset": {
+            "type": "string",
+            "description": "Process preset name or json path"
+          },
+          "filament_presets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filament preset names/paths, one per extruder"
+          },
+          "output_dir": {
+            "type": "string",
+            "description": "Where to write the G-code (defaults to a temp dir)"
+          },
+          "timeout_s": {
+            "type": "number",
+            "description": "Slicing timeout in seconds"
+          },
+          "allow_newer_file": {
+            "type": "boolean",
+            "default": true,
+            "description": "Accept 3mf files written by newer Orca versions"
+          }
         },
-        "required": ["model_path"]
+        "required": [
+          "model_path"
+        ]
       }
     },
     {
       "name": "export_3mf",
       "title": "Export 3mf",
       "description": "Get the model as a 3mf. With the session backend enabled and Orca running, exports the full current project (settings + plates) to output_path. Otherwise wraps mesh input into a minimal valid 3mf (3mf input is copied through).",
-      "backends": ["cli", "session"],
+      "backends": [
+        "cli",
+        "session"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "model_path": { "type": "string", "description": "CLI backend: model to wrap/copy" },
-          "output_path": { "type": "string", "description": "Destination .3mf path" }
+          "model_path": {
+            "type": "string",
+            "description": "CLI backend: model to wrap/copy"
+          },
+          "output_path": {
+            "type": "string",
+            "description": "Destination .3mf path"
+          }
         },
-        "required": ["output_path"]
+        "required": [
+          "output_path"
+        ]
       }
     },
     {
       "name": "load_models",
       "title": "Load models into session",
       "description": "Load model files into the current Orca session through the same entry point as dropping files on the plater (arranged on bed).",
-      "backends": ["session"],
+      "backends": [
+        "session"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Model file paths (stl/obj/3mf/...)" }
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "Model file paths (stl/obj/3mf/...)"
+          }
         },
-        "required": ["paths"]
+        "required": [
+          "paths"
+        ]
       }
     },
     {
       "name": "get_state",
       "title": "Get Orca session state",
       "description": "Read the current Orca session state from the snapshot cache: plates, objects with transforms, out-of-bounds flags, slicing progress. Served from a cache with a stale_at timestamp - the HTTP thread never blocks the UI.",
-      "backends": ["session"],
-      "inputSchema": { "type": "object", "properties": {} }
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
     },
     {
       "name": "get_plate_screenshot",
       "title": "Get plate screenshot",
       "description": "Render the current plate view in the Orca 3D viewport and return a PNG (base64). Rendered on the UI thread inside Orca; returned via job polling.",
-      "backends": ["session"],
+      "backends": [
+        "session"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "plate_index": { "type": "integer", "default": 1, "minimum": 1 },
-          "width": { "type": "integer", "default": 512, "minimum": 32, "maximum": 2048 },
-          "height": { "type": "integer", "default": 512, "minimum": 32, "maximum": 2048 },
-          "timeout_s": { "type": "number", "default": 60 }
+          "plate_index": {
+            "type": "integer",
+            "default": 1,
+            "minimum": 1
+          },
+          "width": {
+            "type": "integer",
+            "default": 512,
+            "minimum": 32,
+            "maximum": 2048
+          },
+          "height": {
+            "type": "integer",
+            "default": 512,
+            "minimum": 32,
+            "maximum": 2048
+          },
+          "timeout_s": {
+            "type": "number",
+            "default": 60
+          }
         }
       }
     },
@@ -161,12 +347,21 @@
       "name": "slice",
       "title": "Slice current session",
       "description": "Trigger slicing in the running Orca session (same code path as the slice button) and wait for completion, reporting progress.",
-      "backends": ["session"],
+      "backends": [
+        "session"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "plate": { "type": "integer", "default": 0, "description": "0 = all plates, N = plate N" },
-          "timeout_s": { "type": "number", "default": 1800 }
+          "plate": {
+            "type": "integer",
+            "default": 0,
+            "description": "0 = all plates, N = plate N"
+          },
+          "timeout_s": {
+            "type": "number",
+            "default": 1800
+          }
         }
       }
     },
@@ -174,27 +369,126 @@
       "name": "poll_job",
       "title": "Poll session job",
       "description": "Poll a session job (slice / export / screenshot) by id: state (pending/running/done/failed), percent, message, result.",
-      "backends": ["session"],
+      "backends": [
+        "session"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "job_id": { "type": "integer" }
+          "job_id": {
+            "type": "integer"
+          }
         },
-        "required": ["job_id"]
+        "required": [
+          "job_id"
+        ]
       }
     },
     {
       "name": "export_gcode",
       "title": "Export G-code from session",
       "description": "Export the sliced G-code of the current session to an explicit path (non-interactive; no dialog). Requires a completed slice.",
-      "backends": ["session"],
+      "backends": [
+        "session"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Destination .gcode file path" },
-          "timeout_s": { "type": "number", "default": 900 }
+          "path": {
+            "type": "string",
+            "description": "Destination .gcode file path"
+          },
+          "timeout_s": {
+            "type": "number",
+            "default": 900
+          }
         },
-        "required": ["path"]
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "set_params",
+      "title": "Set print parameters",
+      "description": "Write project-level print parameter overrides into the running Orca session (same overrides a project 3mf carries). Values are validated by Orca's config definitions; errors come back for self-correction. Creates an undo snapshot.",
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object",
+            "description": "e.g. {\"layer_height\": \"0.16\", \"sparse_infill_density\": \"25%\"} - see list_params for keys"
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
+      "name": "remove_object",
+      "title": "Remove object",
+      "description": "Remove an object from the current session by its id (see get_state). Creates an undo snapshot.",
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object_id": {
+            "type": "integer",
+            "description": "Object id from get_state"
+          }
+        },
+        "required": [
+          "object_id"
+        ]
+      }
+    },
+    {
+      "name": "set_transform",
+      "title": "Set object transform",
+      "description": "Set translation (mm), rotation (deg) and/or scaling factor of an object's first instance. Partial updates allowed; creates an undo snapshot.",
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object_id": {
+            "type": "integer"
+          },
+          "translation_mm": {
+            "type": "object",
+            "description": "{x,y,z} subset"
+          },
+          "rotation_deg": {
+            "type": "object",
+            "description": "{x,y,z} subset"
+          },
+          "scaling_factor": {
+            "type": "object",
+            "description": "{x,y,z} subset"
+          }
+        },
+        "required": [
+          "object_id"
+        ]
+      }
+    },
+    {
+      "name": "arrange",
+      "title": "Arrange plate",
+      "description": "Arrange all objects on the plate (same as the arrange button). Creates an undo snapshot.",
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
       }
     }
   ]
