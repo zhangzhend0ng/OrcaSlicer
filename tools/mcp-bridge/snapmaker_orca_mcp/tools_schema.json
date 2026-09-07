@@ -2,7 +2,8 @@
   "schema_version": "m0-1",
   "notes": [
     "Single source of truth for bridge tool schemas; both CLI and session backends must serve these definitions unchanged.",
-    "Session-only tools (M1+) are gated by the 'backends' field."
+    "Session-only tools (M1+) are gated by the 'backends' field.",
+    "Protocol-only diagnostic method (no MCP tool): 'undo' - the same path as the Edit menu's Undo - so an agent or the E2E suite can revert its own last write. Snapshot fields 'ui_busy', 'devices', 'selected_device', per-object/per-plate 'config_overrides' back reads for the session tools."
   ],
   "tools": [
     {
@@ -429,6 +430,55 @@
       }
     },
     {
+      "name": "set_object_params",
+      "title": "Set per-object print parameters",
+      "description": "Write per-object print parameter overrides for one object in the running Orca session (the same overrides the object list 'Add settings' creates). Allowed keys are object-scope options (object + region settings, e.g. enable_support, layer_height, sparse_infill_density); project/machine-scope keys are rejected. Values are validated by Orca's config definitions; errors come back for self-correction. Creates an undo snapshot. Re-slice to apply.",
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object_id": {
+            "type": "integer",
+            "description": "object id from get_state"
+          },
+          "params": {
+            "type": "object",
+            "description": "e.g. {\"enable_support\": \"1\"}"
+          }
+        },
+        "required": [
+          "object_id",
+          "params"
+        ]
+      }
+    },
+    {
+      "name": "set_plate_params",
+      "title": "Set per-plate print parameters",
+      "description": "Write per-plate print overrides for one plate in the running Orca session (same as the plate settings dialog). Supported keys: curr_bed_type (bed type name), print_sequence ('by layer' | 'by object'). Values are validated; errors come back for self-correction. Creates an undo snapshot. Re-slice to apply.",
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "plate": {
+            "type": "integer",
+            "description": "1-based plate index from get_state; omit or 0 for the current plate"
+          },
+          "params": {
+            "type": "object",
+            "description": "e.g. {\"print_sequence\": \"by object\"}"
+          }
+        },
+        "required": [
+          "params"
+        ]
+      }
+    },
+    {
       "name": "remove_object",
       "title": "Remove object",
       "description": "Remove an object from the current session by its id (see get_state). Creates an undo snapshot.",
@@ -489,6 +539,53 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      }
+    },
+    {
+      "name": "list_devices",
+      "title": "List printers",
+      "description": "List printers known to the running Orca session (user/cloud devices and locally discovered devices) with their online state, and the currently selected device id. A read over the session snapshot: it stays responsive even while a dialog is open.",
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "send_to_print",
+      "title": "Send print (human confirmation in Orca)",
+      "description": "Open Orca's send-to-printer flow for the current plate. NEVER sends by itself: the send dialog opens in the Orca UI and a human must confirm or cancel the print. The tool result is 'awaiting_user_confirmation'; get_state shows ui_busy=true while the dialog is open. Requires objects on the plate.",
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "run_calibration",
+      "title": "Run printer calibration",
+      "description": "Request calibration (mode: 'flow' or 'pa') on the selected printer. Without a connected printer this fails with a structured 'no connected printer' error. Dispatching calibration commands to a real device is pending real-hardware validation and is intentionally not enabled yet.",
+      "backends": [
+        "session"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "flow",
+              "pa"
+            ]
+          }
+        },
+        "required": [
+          "mode"
+        ]
       }
     }
   ]

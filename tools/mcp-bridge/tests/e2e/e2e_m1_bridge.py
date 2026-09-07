@@ -197,6 +197,22 @@ async def run(exe: Path, work: Path) -> None:
                     await asyncio.sleep(1.0)
                 check("objects visible via bridge", loaded)
 
+                # M3: per-plate override through the full MCP chain
+                result = await session.call_tool(
+                    "set_plate_params",
+                    {"plate": 1, "params": {"print_sequence": "by object"}},
+                )
+                payload = payload_of(result)
+                check("set_plate_params via bridge", "applied" in str(payload),
+                      str(payload)[:200])
+                result = await session.call_tool("get_state", {})
+                payload = payload_of(result)
+                plate_ov = (payload.get("plates", [{}])[0]
+                            .get("config_overrides", {}))
+                check("plate override visible via bridge",
+                      plate_ov.get("print_sequence") == "by object",
+                      str(plate_ov)[:200])
+
                 await asyncio.to_thread(foreground_window, "Snapmaker Orca")
                 payload = {}
                 for attempt in range(3):

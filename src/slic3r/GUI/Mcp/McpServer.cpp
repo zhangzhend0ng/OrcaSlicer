@@ -2,6 +2,7 @@
 #include "McpHttpListener.hpp"
 #include "McpJobs.hpp"
 #include "McpJsonRpc.hpp"
+#include "McpParams.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -29,6 +30,8 @@
 #include "libslic3r/PrintConfig.hpp"
 #include <wx/modalhook.h>
 #include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/GUI_ObjectList.hpp"
+#include "slic3r/GUI/DeviceManager.hpp"
 #include "slic3r/GUI/PartPlate.hpp"
 #include "slic3r/GUI/Plater.hpp"
 
@@ -48,6 +51,12 @@ constexpr int kSliceWatchdogId     = 4243;
 constexpr int kSliceWatchdogMs     = 180000;
 constexpr int kExportRetryId      = 4244;
 constexpr int kExportRetryMs      = 1000;
+constexpr int kSliceStartWatchdogId = 4245;
+// If slicing produces no progress at all this long after the request, the
+// slice event was silently swallowed (e.g. reslice() no-ops when a previous
+// validation failure set process_completed_with_error). Fail fast with an
+// actionable message instead of burning the full watchdog window.
+constexpr int kSliceStartWatchdogMs = 25000;
 
 std::int64_t unix_now_seconds()
 {
@@ -64,10 +73,31 @@ class ModalDepthHook : public wxModalDialogHook
 public:
     void Register() { wxModalDialogHook::Register(); }
     int depth() const { return m_depth.load(); }
+    /// Title of the most recent dialog to enter modal state (diagnostics:
+    /// answers "which dialog owns the UI" for agents and E2E).
+    std::string last_title() const
+    {
+        std::lock_guard<std::mutex> lock(m_title_mutex);
+        return m_last_title;
+    }
+    /// Native handle of that dialog (lets a test harness close it when the
+    /// window is not discoverable via Win32 enumeration).
+    void* last_handle() const
+    {
+        std::lock_guard<std::mutex> lock(m_title_mutex);
+        return m_last_handle;
+    }
 
 protected:
-    int Enter(wxDialog* /*dialog*/) override
+    int Enter(wxDialog* dialog) override
     {
+        if (dialog != nullptr) {
+            const wxString title = dialog->GetTitle();
+            void* handle = dialog->GetHandle();
+            std::lock_guard<std::mutex> lock(m_title_mutex);
+            m_last_title = title.ToUTF8().data();
+            m_last_handle = handle;
+        }
         ++m_depth;
         return 0;
     }
@@ -75,6 +105,9 @@ protected:
 
 private:
     std::atomic<int> m_depth{0};
+    mutable std::mutex m_title_mutex;
+    std::string m_last_title;
+    void* m_last_handle = nullptr;
 };
 
 ModalDepthHook* modal_hook()
@@ -300,6 +333,12 @@ void McpServer::ui_install_plater_hooks()
                                                        event.status.text);
             }
         }
+        if (event.status.percent > 0) {
+            m_slice_progress_seen = true;
+            if (m_slice_start_watchdog_timer != nullptr) {
+                m_slice_start_watchdog_timer->Stop();
+            }
+        }
         std::lock_guard<std::mutex> lock(m_snapshot_mutex);
         if (m_snapshot.is_object()) {
             m_snapshot["slicing_state"] = nlohmann::json{
@@ -313,13 +352,17 @@ void McpServer::ui_install_plater_hooks()
                 McpJobRegistry::instance().set_result(
                     m_slice_job_in_flight,
                     nlohmann::json{{"outcome", "sliced"}});
-            } else if (event.cancelled()) {
-                McpJobRegistry::instance().set_failed(m_slice_job_in_flight,
-                                                      "slicing cancelled");
+                m_slice_job_in_flight = 0;
             } else if (event.error()) {
                 McpJobRegistry::instance().set_failed(m_slice_job_in_flight,
                                                       "slicing failed (see Orca UI)");
+                m_slice_job_in_flight = 0;
             }
+            // event.cancelled(): Orca's own restart flow emits Cancelled
+            // completions when it tears down a superseded run (e.g. the
+            // auto-reslice our explicit slice replaces). Failing the job on
+            // those misattributes unrelated teardown; the start watchdog
+            // fails the job honestly if no progress ever shows up.
             m_slice_job_in_flight = 0;
         }
         if (m_export_job_in_flight != 0) {
@@ -340,6 +383,27 @@ void McpServer::rebuild_snapshot()
     // they stick.
     if (m_hook_plater == nullptr) {
         ui_install_plater_hooks();
+    }
+    // Belt-and-suspenders start watchdog: this beat runs every 1.5s on the
+    // UI thread even when slicing stalls, so enforce the "never started"
+    // deadline here as well, not only via the one-shot timer.
+    {
+        std::lock_guard<std::mutex> lock(m_jobs_in_flight_mutex);
+        if (m_slice_job_in_flight != 0 && !m_slice_progress_seen.load()
+            && std::chrono::steady_clock::now() - m_slice_watch_start
+                   > std::chrono::milliseconds(kSliceStartWatchdogMs)) {
+            McpJobSnapshot snapshot;
+            if (McpJobRegistry::instance().get(m_slice_job_in_flight, snapshot)
+                && (snapshot.state == JobState::Running
+                    || snapshot.state == JobState::Pending)) {
+                McpJobRegistry::instance().set_failed(
+                    m_slice_job_in_flight,
+                    "slicing never started - the plate likely has a "
+                    "validation error (Orca's reslice() no-ops in that "
+                    "state); check the Orca UI");
+                m_slice_job_in_flight = 0;
+            }
+        }
     }
     nlohmann::json snapshot = build_snapshot();
     std::lock_guard<std::mutex> lock(m_snapshot_mutex);
@@ -401,6 +465,13 @@ nlohmann::json McpServer::build_snapshot()
             });
         }
         obj["instances"] = std::move(instances);
+        if (!object->config.empty()) {
+            nlohmann::json overrides = nlohmann::json::object();
+            for (const std::string& key : object->config.keys()) {
+                overrides[key] = object->config.opt_serialize(key);
+            }
+            obj["config_overrides"] = std::move(overrides);
+        }
         obj["out_of_bounds"] =
             std::any_of(obj["instances"].begin(), obj["instances"].end(),
                         [](const nlohmann::json& entry) {
@@ -420,12 +491,20 @@ nlohmann::json McpServer::build_snapshot()
             continue;
         }
         const BoundingBoxf3& bbox = plate->get_bounding_box(false);
-        plates_json.push_back(nlohmann::json{
+        nlohmann::json plate_json = nlohmann::json{
             {"index", index + 1},
             {"bounding_box",
              nlohmann::json{{"min", {bbox.min(0), bbox.min(1), bbox.min(2)}},
                             {"max", {bbox.max(0), bbox.max(1), bbox.max(2)}}}},
-        });
+        };
+        if (plate->config() != nullptr && !plate->config()->empty()) {
+            nlohmann::json overrides = nlohmann::json::object();
+            for (const std::string& key : plate->config()->keys()) {
+                overrides[key] = plate->config()->opt_serialize(key);
+            }
+            plate_json["config_overrides"] = std::move(overrides);
+        }
+        plates_json.push_back(std::move(plate_json));
     }
     snapshot["plates"]        = std::move(plates_json);
     snapshot["current_plate"] = plates.get_curr_plate_index() + 1;
@@ -433,6 +512,43 @@ nlohmann::json McpServer::build_snapshot()
     if (curr_plate != nullptr) {
         snapshot["current_plate_slice_valid"] = curr_plate->is_slice_result_valid();
         snapshot["current_plate_apply_invalid"] = curr_plate->is_apply_result_invalid();
+    }
+    snapshot["ui_busy"] = modal_hook()->depth() > 0;
+    snapshot["ui_busy_dialog"] = modal_hook()->last_title();
+    if (modal_hook()->last_handle() != nullptr) {
+        snapshot["ui_busy_hwnd"] = reinterpret_cast<std::intptr_t>(
+            modal_hook()->last_handle());
+    } else {
+        snapshot["ui_busy_hwnd"] = nlohmann::json();
+    }
+    DeviceManager* device_manager =
+        app_or_null() != nullptr ? app_or_null()->getDeviceManager() : nullptr;
+    snapshot["devices"]         = nlohmann::json::array();
+    snapshot["selected_device"] = nlohmann::json();
+    if (device_manager != nullptr) {
+        auto add_devices = [&snapshot](const std::map<std::string, MachineObject*>& list,
+                                       const char* source) {
+            nlohmann::json devices = snapshot.value("devices", nlohmann::json::array());
+            for (const auto& entry : list) {
+                MachineObject* object = entry.second;
+                if (object == nullptr) {
+                    continue;
+                }
+                devices.push_back(nlohmann::json{
+                    {"dev_id", object->dev_id},
+                    {"name", object->dev_name},
+                    {"online", object->is_online()},
+                    {"source", source},
+                });
+            }
+            snapshot["devices"] = std::move(devices);
+        };
+        add_devices(device_manager->get_my_machine_list(), "user");
+        add_devices(device_manager->get_local_machine_list(), "local");
+        MachineObject* selected = device_manager->get_selected_machine();
+        if (selected != nullptr) {
+            snapshot["selected_device"] = selected->dev_id;
+        }
     }
     return snapshot;
 }
@@ -457,6 +573,20 @@ std::string McpServer::dispatch(const std::string& /*method*/, const std::string
         }
         return build_result(state, request.has_id, request.id);
     }
+    if (request.method == "list_devices") {
+        // Snapshot cache read: the device list is gathered on the UI thread
+        // like every other read, so a modal dialog never blocks it.
+        nlohmann::json state = snapshot_copy();
+        if (state.empty()) {
+            state = nlohmann::json{{"ready", false}};
+        }
+        nlohmann::json result = nlohmann::json{
+            {"devices", state.value("devices", nlohmann::json::array())},
+            {"selected_device",
+             state.value("selected_device", nlohmann::json())},
+        };
+        return build_result(result, request.has_id, request.id);
+    }
     if (request.method == "poll_job") {
         const int job_id = request.params.value("job_id", 0);
         McpJobSnapshot snapshot;
@@ -480,7 +610,8 @@ std::string McpServer::dispatch(const std::string& /*method*/, const std::string
     {
         static const char* const write_methods[] = {"load_models", "slice",
             "export_gcode", "export_3mf", "get_plate_screenshot", "set_params",
-            "remove_object", "set_transform", "arrange"};
+            "remove_object", "set_transform", "arrange", "set_object_params",
+            "set_plate_params", "send_to_print", "run_calibration", "undo"};
         bool is_write = false;
         for (const char* name : write_methods) {
             if (request.method == name) {
@@ -585,6 +716,55 @@ std::string McpServer::dispatch(const std::string& /*method*/, const std::string
         }
         job_id = McpJobRegistry::instance().create("set_params");
         m_marshaler->post([this, job_id, params]() { ui_set_params(job_id, params); });
+    } else if (request.method == "set_object_params") {
+        const std::int64_t object_id = request.params.value("object_id", 0);
+        if (object_id <= 0) {
+            return build_error(RpcErrorCode::InvalidParams,
+                               "object_id is required (see get_state)",
+                               request.has_id, request.id);
+        }
+        const nlohmann::json params_json =
+            request.params.value("params", nlohmann::json::object());
+        if (!params_json.is_object() || params_json.empty()) {
+            return build_error(RpcErrorCode::InvalidParams,
+                               "params must be a non-empty object of "
+                               "{option: value}",
+                               request.has_id, request.id);
+        }
+        std::map<std::string, std::string> params;
+        for (auto it = params_json.begin(); it != params_json.end(); ++it) {
+            if (it.value().is_string()) {
+                params[it.key()] = it.value().get<std::string>();
+            } else {
+                params[it.key()] = it.value().dump();
+            }
+        }
+        job_id = McpJobRegistry::instance().create("set_object_params");
+        m_marshaler->post([this, job_id, object_id, params]() {
+            ui_set_object_params(job_id, object_id, params);
+        });
+    } else if (request.method == "set_plate_params") {
+        int plate_index = request.params.value("plate", 0);
+        const nlohmann::json params_json =
+            request.params.value("params", nlohmann::json::object());
+        if (!params_json.is_object() || params_json.empty()) {
+            return build_error(RpcErrorCode::InvalidParams,
+                               "params must be a non-empty object of "
+                               "{option: value}",
+                               request.has_id, request.id);
+        }
+        std::map<std::string, std::string> params;
+        for (auto it = params_json.begin(); it != params_json.end(); ++it) {
+            if (it.value().is_string()) {
+                params[it.key()] = it.value().get<std::string>();
+            } else {
+                params[it.key()] = it.value().dump();
+            }
+        }
+        job_id = McpJobRegistry::instance().create("set_plate_params");
+        m_marshaler->post([this, job_id, plate_index, params]() {
+            ui_set_plate_params(job_id, plate_index, params);
+        });
     } else if (request.method == "remove_object") {
         const std::int64_t object_id = request.params.value("object_id", 0);
         if (object_id <= 0) {
@@ -613,6 +793,26 @@ std::string McpServer::dispatch(const std::string& /*method*/, const std::string
     } else if (request.method == "arrange") {
         job_id = McpJobRegistry::instance().create("arrange");
         m_marshaler->post([this, job_id]() { ui_arrange(job_id); });
+    } else if (request.method == "undo") {
+        // Protocol-only diagnostic (no MCP tool): the same undo the Edit
+        // menu triggers, so an agent - and the E2E suite - can revert its
+        // own last write through Orca's real undo path.
+        job_id = McpJobRegistry::instance().create("undo");
+        m_marshaler->post([this, job_id]() { ui_undo(job_id); });
+    } else if (request.method == "send_to_print") {
+        job_id = McpJobRegistry::instance().create("send_to_print");
+        m_marshaler->post([this, job_id]() { ui_send_to_print(job_id); });
+    } else if (request.method == "run_calibration") {
+        const std::string mode = request.params.value("mode", std::string());
+        if (mode != "flow" && mode != "pa") {
+            return build_error(RpcErrorCode::InvalidParams,
+                               "mode must be \"flow\" or \"pa\"",
+                               request.has_id, request.id);
+        }
+        job_id = McpJobRegistry::instance().create("run_calibration");
+        m_marshaler->post([this, job_id, mode]() {
+            ui_run_calibration(job_id, mode);
+        });
     } else {
         return build_error(RpcErrorCode::MethodNotFound,
                            "unknown method: " + request.method, request.has_id, request.id);
@@ -668,27 +868,75 @@ void McpServer::ui_slice(int job_id, int plate)
         wxPostEvent(plater, SimpleEvent(GUI::EVT_GLTOOLBAR_SLICE_PLATE));
     }
     // Progress arrives via EVT_SLICING_UPDATE; completion via
-    // EVT_PROCESS_COMPLETED (bound in ui_install_plater_hooks). The
+    // EVT_PROCESS_COMPLETED (bound in ui_install_plater_hooks). Two
+    // watchdogs: the start watchdog fires when slicing never produced any
+    // progress at all (the slice event was silently swallowed); the main
     // watchdog only guards against a stalled finalize.
     m_slice_watchdog_timer = std::make_unique<wxTimer>();
     m_slice_watchdog_timer->SetOwner(m_marshaler.get(), kSliceWatchdogId);
+    m_slice_start_watchdog_timer = std::make_unique<wxTimer>();
+    m_slice_start_watchdog_timer->SetOwner(m_marshaler.get(),
+                                           kSliceStartWatchdogId);
     m_marshaler->Bind(wxEVT_TIMER, [this](wxTimerEvent&) {
-        std::lock_guard<std::mutex> lock(m_jobs_in_flight_mutex);
-        if (m_slice_job_in_flight == 0) {
-            return;
+        {
+            std::lock_guard<std::mutex> lock(m_jobs_in_flight_mutex);
+            if (m_slice_job_in_flight == 0) {
+                return;
+            }
+            McpJobSnapshot snapshot;
+            if (McpJobRegistry::instance().get(m_slice_job_in_flight, snapshot)
+                && (snapshot.state == JobState::Running
+                    || snapshot.state == JobState::Pending)) {
+                std::string message =
+                    "slicing never started - the plate likely has a "
+                    "validation error (Orca's reslice() no-ops in that "
+                    "state); check the Orca UI";
+                // UI thread and the background process is idle here, so the
+                // live validation result is safe to query and is the most
+                // actionable detail we can attach.
+                GUI::Plater* plater = plater_or_null();
+                if (plater != nullptr) {
+                    Print& print =
+                        plater->get_partplate_list().get_current_fff_print();
+                    StringObjectException error = print.validate();
+                    if (!error.string.empty()) {
+                        message += " - validation: " + error.string;
+                    }
+                }
+                McpJobRegistry::instance().set_failed(m_slice_job_in_flight,
+                                                      message);
+                m_slice_job_in_flight = 0;
+            }
         }
-        McpJobSnapshot snapshot;
-        if (McpJobRegistry::instance().get(m_slice_job_in_flight, snapshot)
-            && (snapshot.state == JobState::Running
-                || snapshot.state == JobState::Pending)) {
-            McpJobRegistry::instance().set_failed(
-                m_slice_job_in_flight,
-                "slicing did not complete within the watchdog window - "
-                "check the Orca UI (it may still be finalizing)");
-            m_slice_job_in_flight = 0;
+        if (m_slice_watchdog_timer != nullptr) {
+            m_slice_watchdog_timer->Stop();
+        }
+    }, kSliceStartWatchdogId);
+    m_marshaler->Bind(wxEVT_TIMER, [this](wxTimerEvent&) {
+        {
+            std::lock_guard<std::mutex> lock(m_jobs_in_flight_mutex);
+            if (m_slice_job_in_flight == 0) {
+                return;
+            }
+            McpJobSnapshot snapshot;
+            if (McpJobRegistry::instance().get(m_slice_job_in_flight, snapshot)
+                && (snapshot.state == JobState::Running
+                    || snapshot.state == JobState::Pending)) {
+                McpJobRegistry::instance().set_failed(
+                    m_slice_job_in_flight,
+                    "slicing did not complete within the watchdog window - "
+                    "check the Orca UI (it may still be finalizing)");
+                m_slice_job_in_flight = 0;
+            }
+        }
+        if (m_slice_start_watchdog_timer != nullptr) {
+            m_slice_start_watchdog_timer->Stop();
         }
     }, kSliceWatchdogId);
     m_slice_watchdog_timer->StartOnce(kSliceWatchdogMs);
+    m_slice_start_watchdog_timer->StartOnce(kSliceStartWatchdogMs);
+    m_slice_progress_seen = false;
+    m_slice_watch_start = std::chrono::steady_clock::now();
 }
 
 void McpServer::ui_load_models(int job_id, const std::vector<std::string>& paths)
@@ -845,11 +1093,162 @@ void McpServer::ui_set_params(int job_id,
         applied.push_back(entry.first);
     }
     plater->take_snapshot("MCP: set parameters");
-    plater->update(true, true);
+    // Mark the scene dirty: without this the slice-time forced update is
+    // skipped (nothing "needs update"), the background process sees an
+    // already-applied UNCHANGED print and, being finished, silently
+    // refuses to restart (journal M3).
+    // Tab-identical refresh (no force-restart): a force flag would run
+    // validation and, on a rejected combination, set the error state
+    // that makes reslice() silently no-op (journal M3).
+    plater->update(false, false);
+    plater->set_need_update(true);
     m_marshaler->post([this]() { rebuild_snapshot(); });
     McpJobRegistry::instance().set_result(
         job_id, nlohmann::json{{"applied", applied},
                                {"note", "project-level overrides; re-slice to apply"}});
+}
+
+void McpServer::ui_set_object_params(int job_id, std::int64_t object_id,
+                                     const std::map<std::string, std::string>& params)
+{
+    // UI thread. Writes per-object overrides the same way the object tabs
+    // do (ModelObject::config, PrintObjectConfig + PrintRegionConfig scopes)
+    // and refreshes the object list through the tab-change handler so the
+    // settings badge stays consistent with the model.
+    GUI::Plater* plater = plater_or_null();
+    if (plater == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "plater not ready");
+        return;
+    }
+    GUI::GUI_App* app = app_or_null();
+    if (app == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "app not ready");
+        return;
+    }
+    ModelObject* target = nullptr;
+    for (ModelObject* object : plater->model().objects) {
+        if (object != nullptr
+            && static_cast<std::int64_t>(object->id().id) == object_id) {
+            target = object;
+            break;
+        }
+    }
+    if (target == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id,
+                                              "unknown object_id: "
+                                                  + std::to_string(object_id));
+        return;
+    }
+    for (const auto& entry : params) {
+        if (!Mcp::McpParams::is_valid_object_param(entry.first)) {
+            McpJobRegistry::instance().set_failed(
+                job_id,
+                "'" + entry.first
+                    + "' is not a per-object parameter (object scope = "
+                      "object + region options; project scope via "
+                      "set_params)");
+            return;
+        }
+    }
+    // Stage on a scratch config first so a bad value never leaves a
+    // half-applied override behind.
+    Slic3r::DynamicPrintConfig staged;
+    const std::string error = Mcp::McpParams::deserialize_all(staged, params);
+    if (!error.empty()) {
+        McpJobRegistry::instance().set_failed(job_id, error);
+        return;
+    }
+    plater->take_snapshot("MCP: set object parameters");
+    // Mark the scene dirty: without this the slice-time forced update is
+    // skipped (nothing "needs update"), the background process sees an
+    // already-applied UNCHANGED print and, being finished, silently
+    // refuses to restart (journal M3).
+    target->config.apply_only(staged, staged.keys());
+    GUI::ObjectList* object_list = app->obj_list();
+    if (object_list != nullptr) {
+        // Same refresh as TabPrintObject::notify_changed.
+        object_list->object_config_options_changed({target, nullptr});
+    }
+    // Tab-identical refresh (no force-restart): a force flag would run
+    // validation and, on a rejected combination, set the error state
+    // that makes reslice() silently no-op (journal M3).
+    plater->update(false, false);
+    plater->set_need_update(true);
+    m_marshaler->post([this]() { rebuild_snapshot(); });
+    std::vector<std::string> applied;
+    applied.reserve(params.size());
+    for (const auto& entry : params) {
+        applied.push_back(entry.first);
+    }
+    McpJobRegistry::instance().set_result(
+        job_id, nlohmann::json{{"object_id", object_id},
+                               {"applied", applied},
+                               {"note", "per-object override; re-slice to apply"}});
+}
+
+void McpServer::ui_set_plate_params(int job_id, int plate_index,
+                                    const std::map<std::string, std::string>& params)
+{
+    // UI thread. Writes per-plate overrides through the same semantic
+    // setters the plate settings dialog uses (no dialogs involved); the
+    // background process merges plate config on every slicing apply.
+    GUI::Plater* plater = plater_or_null();
+    if (plater == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "plater not ready");
+        return;
+    }
+    GUI::PartPlateList& plates = plater->get_partplate_list();
+    GUI::PartPlate* plate = plate_index > 0 ? plates.get_plate(plate_index - 1)
+                                            : plates.get_curr_plate();
+    if (plate == nullptr) {
+        McpJobRegistry::instance().set_failed(
+            job_id, "unknown plate: " + std::to_string(plate_index));
+        return;
+    }
+    for (const auto& entry : params) {
+        if (!Mcp::McpParams::is_valid_plate_param(entry.first)) {
+            McpJobRegistry::instance().set_failed(
+                job_id,
+                "'" + entry.first
+                    + "' is not a per-plate parameter (supported: "
+                      "curr_bed_type, print_sequence)");
+            return;
+        }
+    }
+    Slic3r::DynamicPrintConfig staged;
+    const std::string error = Mcp::McpParams::deserialize_all(staged, params);
+    if (!error.empty()) {
+        McpJobRegistry::instance().set_failed(job_id, error);
+        return;
+    }
+    plater->take_snapshot("MCP: set plate parameters");
+    // Mark the scene dirty: without this the slice-time forced update is
+    // skipped (nothing "needs update"), the background process sees an
+    // already-applied UNCHANGED print and, being finished, silently
+    // refuses to restart (journal M3).
+    if (staged.has("curr_bed_type")) {
+        plate->set_bed_type(staged.opt_enum<BedType>("curr_bed_type"));
+    }
+    if (staged.has("print_sequence")) {
+        plate->set_print_seq(
+            staged.opt_enum<PrintSequence>("print_sequence"));
+    }
+    // Tab-identical refresh (no force-restart): a force flag would run
+    // validation and, on a rejected combination, set the error state
+    // that makes reslice() silently no-op (journal M3).
+    plater->update(false, false);
+    plater->set_need_update(true);
+    m_marshaler->post([this]() { rebuild_snapshot(); });
+    std::vector<std::string> applied;
+    applied.reserve(params.size());
+    for (const auto& entry : params) {
+        applied.push_back(entry.first);
+    }
+    McpJobRegistry::instance().set_result(
+        job_id, nlohmann::json{{"plate", plate_index > 0 ? plate_index
+                                                         : plates.get_curr_plate_index() + 1},
+                               {"applied", applied},
+                               {"note", "per-plate override; re-slice to apply"}});
 }
 
 void McpServer::ui_remove_object(int job_id, std::int64_t object_id)
@@ -916,6 +1315,10 @@ void McpServer::ui_set_transform(int job_id, std::int64_t object_id,
         return true;
     };
     plater->take_snapshot("MCP: set transform");
+    // Mark the scene dirty: without this the slice-time forced update is
+    // skipped (nothing "needs update"), the background process sees an
+    // already-applied UNCHANGED print and, being finished, silently
+    // refuses to restart (journal M3).
     Vec3d vec = instance->get_offset();
     if (axis_vec(translation, vec)) {
         instance->set_offset(vec);
@@ -929,7 +1332,8 @@ void McpServer::ui_set_transform(int job_id, std::int64_t object_id,
         instance->set_scaling_factor(vec);
     }
     target->invalidate_bounding_box();
-    plater->update(true, true);
+    plater->update(false, false);
+    plater->set_need_update(true);
     m_marshaler->post([this]() { rebuild_snapshot(); });
     McpJobRegistry::instance().set_result(
         job_id, nlohmann::json{{"object_id", object_id},
@@ -950,6 +1354,73 @@ void McpServer::ui_arrange(int job_id)
     m_marshaler->post([this]() { rebuild_snapshot(); });
     McpJobRegistry::instance().set_result(
         job_id, nlohmann::json{{"outcome", "arranged"}});
+}
+
+void McpServer::ui_undo(int job_id)
+{
+    // UI thread. Plater::undo() is the exact handler behind the Edit menu's
+    // Undo entry. The menu gates the command on the 3D view being shown
+    // (can_undo() also tests is_view3D_shown); switch to the 3D view like a
+    // user would so undo works from any page (e.g. after a slice switched
+    // to Preview).
+    GUI::Plater* plater = plater_or_null();
+    if (plater == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "plater not ready");
+        return;
+    }
+    plater->select_view_3D("3D");
+    plater->undo();
+    m_marshaler->post([this]() { rebuild_snapshot(); });
+    McpJobRegistry::instance().set_result(
+        job_id, nlohmann::json{{"outcome", "undone"}});
+}
+
+void McpServer::ui_send_to_print(int job_id)
+{
+    // UI thread. Opens the same modal send dialog the UI button uses: the
+    // human confirmation IS the safety gate, so this tool never sends by
+    // itself. The job completes when the dialog is up (the modal blocks
+    // this worker until the user closes it, which is fine - the outcome
+    // was recorded first and writes are refused while the dialog owns the
+    // UI anyway).
+    GUI::Plater* plater = plater_or_null();
+    if (plater == nullptr) {
+        McpJobRegistry::instance().set_failed(job_id, "plater not ready");
+        return;
+    }
+    if (plater->model().objects.empty()) {
+        McpJobRegistry::instance().set_failed(job_id,
+                                              "scene has no objects to print");
+        return;
+    }
+    McpJobRegistry::instance().set_result(
+        job_id, nlohmann::json{
+                    {"outcome", "awaiting_user_confirmation"},
+                    {"note", "the send dialog is open in the Orca UI - a "
+                             "human must confirm or cancel the print"}});
+    plater->send_to_printer(false);
+}
+
+void McpServer::ui_run_calibration(int job_id, const std::string& mode)
+{
+    // UI thread. Machine-backed calibration dispatch needs real-hardware
+    // validation (journal M4); without a device the honest answer is a
+    // structured failure, never a fabricated success.
+    DeviceManager* device_manager =
+        app_or_null() != nullptr ? app_or_null()->getDeviceManager() : nullptr;
+    MachineObject* machine =
+        device_manager != nullptr ? device_manager->get_selected_machine()
+                                  : nullptr;
+    if (machine == nullptr) {
+        McpJobRegistry::instance().set_failed(
+            job_id, "no connected printer - calibration requires a device");
+        return;
+    }
+    McpJobRegistry::instance().set_failed(
+        job_id, "calibration ('" + mode + "') dispatch to '"
+                    + machine->dev_name
+                    + "' is not enabled yet: the device path needs "
+                      "real-hardware validation");
 }
 
 void McpServer::ui_render_screenshot(int job_id, int plate_index, int width, int height)

@@ -15,6 +15,7 @@
  */
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <map>
@@ -95,12 +96,19 @@ private:
     void ui_render_screenshot(int job_id, int plate_index, int width, int height);
     void ui_install_plater_hooks();
     void ui_set_params(int job_id, const std::map<std::string, std::string>& params);
+    void ui_set_object_params(int job_id, std::int64_t object_id,
+                              const std::map<std::string, std::string>& params);
+    void ui_set_plate_params(int job_id, int plate_index,
+                             const std::map<std::string, std::string>& params);
     void ui_remove_object(int job_id, std::int64_t object_id);
     void ui_set_transform(int job_id, std::int64_t object_id,
                           const nlohmann::json& translation,
                           const nlohmann::json& rotation,
                           const nlohmann::json& scaling_factor);
     void ui_arrange(int job_id);
+    void ui_undo(int job_id);
+    void ui_send_to_print(int job_id);
+    void ui_run_calibration(int job_id, const std::string& mode);
     /// True while a modal dialog owns the UI: writes must be refused.
     bool ui_busy() const { return m_modal_depth.load() > 0; }
 
@@ -111,6 +119,7 @@ private:
     std::shared_ptr<UiMarshaler>  m_marshaler;
     std::unique_ptr<wxTimer>      m_snapshot_timer;
     std::unique_ptr<wxTimer>      m_slice_watchdog_timer;
+    std::unique_ptr<wxTimer>      m_slice_start_watchdog_timer;
     std::unique_ptr<wxTimer>      m_export_retry_timer;
     int                           m_export_retry_job = 0;
     int                           m_export_retry_attempt = 0;
@@ -123,6 +132,11 @@ private:
     std::mutex                    m_jobs_in_flight_mutex;
     int                           m_slice_job_in_flight  = 0;
     int                           m_export_job_in_flight = 0;
+    // Start-watchdog bookkeeping; enforced both by a one-shot timer and by
+    // rebuild_snapshot (the snapshot beat is the one proven to keep running
+    // when slicing stalls).
+    std::chrono::steady_clock::time_point m_slice_watch_start;
+    std::atomic<bool>             m_slice_progress_seen{false};
 
     std::atomic<bool>             m_enabled{false};
     std::atomic<int>              m_modal_depth{0};

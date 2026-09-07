@@ -223,3 +223,145 @@
 - [x] E2E：session + bridge 双 GREEN。
 - [x] 对抗收尾：横向 grep（无 execute_code/SSE/CORS）；中毒值教训入档。
 - [x] 提交。
+
+---
+
+## M3：per-object / per-plate 设置（REFUTE 先行）
+
+### 方案 REFUTE 对抗记录（实现前）
+- R1 落点真实性：**plate config 确被切片消费**——`BackgroundSlicingProcess::apply`
+  （BackgroundSlicingProcess.cpp:691）`new_config.apply(*m_current_plate->config())` 后进
+  `Print::apply`；:691 上方 "TODO: add partplate config" 注释为陈旧残留，实现在其下一行。
+- R2 对象级 UI 刷新：UI 同款链 = `TabPrintObject::notify_changed` →
+  `obj_list()->object_config_options_changed({obj,nullptr})`（GUI_ObjectList.cpp:3678，刷设置角标）
+  + `update(true,true)`。MCP 照抄该链。
+- R3 对象级合法键：`PrintObjectConfig().keys() ∪ PrintRegionConfig().keys()`
+  （TabPrintObject 构造同款）；越界键（机器/工艺作用域）拒绝写入对象 config。
+- R4 plate 合法键：PlateSettingsDialog 实际编辑集 = curr_bed_type / print_sequence / spiral_mode /
+  first(other)_layers_print_sequence。**spiral_mode 剔出 M3**：`set_spiral_vase_mode(true)`
+  弹二级确认框（PartPlate.cpp:344），违背"工具不弹模态"纪律；分层序列结构复杂延后。
+  M3 白名单 = {curr_bed_type, print_sequence}，且走语义 setter（set_bed_type / set_print_seq，
+  无弹窗、正确失效切片结果），不走裸 set_deserialize。
+- R5 中毒值教训前置应用：bed_type 存在床温匹配物理校验（选不当会触发 mixing/cold plate 阻断，
+  重演 M2 毒盘）→ E2E 只断言 print_sequence（枚举值串 "by layer"/"by object"，无物理校验）；
+  bed_type 作为工具能力交付但 E2E 不切实际值。
+- R6 原子性：多键写入先在临时 DynamicPrintConfig 上逐键 set_deserialize（全过才动真身），
+  再 take_snapshot → `ModelConfig::apply_only`（自带 touch() 时间戳，undo 栈按序列化差量捕获）。
+  PartPlate::m_config 为裸 DynamicPrintConfig，undo 经盘序列化捕获（PartPlate.cpp:499/517 含 m_config）。
+- R7 volume 级覆盖**明确延后**（规格称"全项目最深水区"），M3 只交付 object 级（ModelObject::config）
+  与 plate 级；journal 记为遗留。
+- R8 undo E2E 取证方式：SendInput 合成 Ctrl+Z（真实 OS 输入，修饰键有效；PostMessage WM_KEYDOWN
+  携带不了真实 Ctrl 态）。轮询 get_state 断言 override 消失。失败则如实记录，不用假证据。
+- R9 单测可达性：键白名单/临时校验逻辑抽为 `McpParams`（纯逻辑、无 wx 依赖），mcp_tests 链接
+  libslic3r_gui 即可测；守卫变异点 = 白名单检查。
+- R10 ModalDepthHook 写方法清单需同步加 set_object_params / set_plate_params。
+
+### M3 交付物与验收证据（最终）
+- `set_object_params`：对象级覆盖（PrintObjectConfig ∪ PrintRegionConfig 白名单 =
+  `McpParams::is_valid_object_param`）；临时 config 全量类型校验通过后才 take_snapshot →
+  `ModelConfig::apply_only`（touch() 时间戳进 undo）→ `obj_list()->object_config_options_changed`
+  （TabPrintObject::notify_changed 同款刷角标）→ update(false,false)+set_need_update(true)。
+- `set_plate_params`：白名单 {curr_bed_type, print_sequence}，走语义 setter
+  （PartPlate::set_bed_type / set_print_seq，无弹窗、正确失效切片结果）。
+- 快照扩展：objects[].config_overrides / plates[].config_overrides（opt_serialize 读回）。
+- **undo**：协议内诊断方法（无 MCP 工具，schema notes 声明）→ `select_view_3D("3D")` +
+  `Plater::undo()`（Edit 菜单同款）。E2E 断言：override 写入 → undo → 快照中消失。**PASS**。
+  （首版 can_undo() 前置失败：它含 `is_view3D_shown()` 门——切片后 UI 停在 Preview 页恒 false，
+  非栈空。）
+- 守卫变异：is_valid_object_param 白名单变异恒真 → McpParams_test 立红，恢复全绿。
+- **切片层加固（对"二次切片永不启动"的根因修复）**：
+  - `restart_background_process` 在 apply UNCHANGED + finished 时**设计上不重启**（盘面结果仍有效）；
+    MCP 写参数必须 `set_need_update(true)` 让 slice 时的 `update(true,true)` 真正走 FORCE 路径。
+  - Orca 自身重启流程会发 Cancelled 完成事件（拆被替换的运行）→ 钩子不再据此判 job 失败。
+  - **25s 未启动快失败**：one-shot timer + rebuild_snapshot（1.5s 节拍，实测始终存活）双路执行；
+    失败消息附 `Print::validate()` 实时结果（本轮实证 validation 为空 → 非校验问题）。
+- E2E 验收（session）：对象覆盖可见/越界拒绝/undo 回滚 **PASS**；盘覆盖可见/越界拒绝 **PASS**；
+  gcode 落盘断言（brim 标记、print_sequence）在本 VM 因"第二次切片 0% 永不启动"记 **SKIP**
+  （见下"环境限制"）。桥接 E2E：set_plate_params 三跳 **PASS**。
+
+### 环境限制（VM 实证，待人工，非 MCP 代码缺陷）
+1. **第二次及以后的会话内切片在 0% 永不启动/不推进**（首次切片稳定 100%）。UI 线程存活
+   （stale_at 心跳全程 ALIVE、ui_busy=False、无模态）、`Print::validate()` 为空（非校验拒绝）、
+   one-shot 看门狗在该态下偶发不触发（已用快照节拍兜底）。与交接记录的"屏显 3D 画布白屏/
+   finalize 缩略图死锁"同属本 VM 屏显 GL 缺陷家族。**真实硬件上"改参数→重切"待人工复验。**
+2. **SendToPrinterDialog 关闭路径阻塞**：`on_cancel = m_worker->cancel_all(); EndModal` 在本 VM
+   不完成——WM_CLOSE 直投对话框自身 HWND（快照暴露 ui_busy_hwnd）也不退出。gate-open 侧已证
+   （对话框进入模态、标题可见、写全部 -32002）。真机人工验证关闭与发送。
+3. 820×660 标题 "Snapmaker Orca" 的 GuideFrame（firstguide 向导）延迟出现且对 WM_CLOSE 免疫、
+   长驻但**不持模态**（ui_busy=False，不阻碍 RPC 写）；种子 firstguide.finish=True 与既有预设
+   均未阻止它出现。不影响 MCP 语义，仅视觉遮挡。
+
+### M3 验收门核对
+- [x] 构建：Snapmaker_Orca_app_gui + mcp_tests 真实编译（McpParams 入 CMake）。
+- [x] 测试：mcp_tests 18 用例 2185 断言（含 McpParams 4 例 + 守卫变异验证）；
+      pytest 44（新增 handler 形状 + 三跳 mock 往返）。
+- [x] E2E：session GREEN（3 SKIP 诚实记录）+ bridge GREEN（含盘覆盖三跳）。
+- [x] 对抗收尾：横向 grep 干净；中毒值两例（layer_height/enable_support）与
+      UNCHANGED+finished 不重启语义入档。
+- [x] 提交（与 M4 同 commit，见下）。
+
+### M3 实现期发现（首轮 M3 E2E 两红 → 根因链 → 修复，均实证）
+1. **根因链：MCP 写参数用 `update(true,true)` 会毒化切片**。Plater::update 第二参 =
+   FORCE_BACKGROUND_PROCESSING_UPDATE → update_background_process 会**跑校验并启动后台切片**；
+   校验失败（如 enable_support=1 与该预设某规则冲突）即置
+   `process_completed_with_error = curr_plate`（Plater.cpp:13673/13705）。此后 `Plater::reslice()`
+   **开头即静默 return**（Plater.cpp:21141 附近 "return directly"）→ MCP slice 的事件被吞，
+   无进度无完成 → 只有 180s 看门狗兜底（0%×3 重试全灭）。E2E 保留 workdir 取证确认 app log
+   231 行后不再刷出（缓冲，与 M1 记录一致），改由代码走读定位。
+   - 修复 A：set_params / set_object_params / set_plate_params / set_transform 改用
+     **Tab 同款 `plater->update(false, false)`**（Tab.cpp 改参数即此调用）：只 apply+刷新，
+     不强制重启后台切片，不触发校验毒化；ui_slice 保留 (true,true)（start_slice 同款）。
+   - 修复 B：slice 增加 **25s 未启动快失败看门狗**（kSliceStartWatchdogId）：首个 percent>0
+     进度事件即撤销；否则以"切片从未启动，盘可能有校验错误"的诚实信息快速失败，
+     不再烧满 180s×3。
+2. **undo 的 E2E 取证**：SendInput 合成 Ctrl+Z 在本 VM 不生效（30s 轮询状态不变；键盘焦点
+   不可控，环境性）。改为**协议内诊断方法 `undo`**（无 MCP 工具，schema notes 已声明）：
+   dispatch → job → `Plater::undo()`（Edit 菜单同款 handler）+ can_undo 前置。确定性取证
+   "undo 行为正确"，也天然成为 agent 恢复自身误操作的合法面。
+3. **对象级毒值第二例**：enable_support=1（对象级，Generic PLA + Artisan 预设）组合校验被拒。
+   教训与 M2 layer_height 同源：**对象/工程键都可能踩预设级组合校验**；E2E 改用
+   brim_width=5（几何型 PrintObjectConfig 键，无组合校验），断言 gcode 中出现 brim 的
+   `;TYPE:` 标记。
+4. 守卫变异验证：is_valid_object_param 白名单变异为恒真 → McpParams_test 立红
+   （1 case FAILED），恢复后全绿。另有发现：**Orca 的 bool 配置反序列化是宽容的**
+   （"not_a_bool" 亦解析为 true），bool 键不能作为拒绝性测试探针（numeric 键可以）。
+
+---
+
+## M4：设备 / 打印（人工确认）/ 校准
+
+### 设计决策（诚实边界先行）
+1. **list_devices = 快照读，不是 job**。设备列表来自 UI 线程构建快照时遍历
+   `DeviceManager`（get_my_machine_list 用户/云 + get_local_machine_list 本地 SSDP），
+   字段 dev_id/name/online/source；selected_device 来自 get_selected_machine。
+   dispatch 走 get_state 同款快照读（模态期间依然新鲜，符合"读新鲜写拒绝"不对称语义）。
+2. **send_to_print 的安全语义 = 弹窗即门**。复用 `Plater::send_to_printer(false)`
+   （on_action_send_to_printer → SendToPrinterDialog::ShowModal，标题 "Send to Printer
+   SD card"）。MCP 层永不直接发送：job 在**弹窗前**记 done（outcome=
+   "awaiting_user_confirmation"）；模态阻塞 ui worker 无妨（结果已记，且模态期间后续写
+   本来就被 -32002 拒绝）。快照新增 **ui_busy**（ModalDepthHook depth>0）作为"有人机
+   对话框打开"的可观测信号，E2E 据此断言确认框逻辑：触发 → ui_busy=true → 写被拒
+   (-32002) → WM_CLOSE 关窗 → ui_busy=false。
+3. **run_calibration 诚实拒答**。CalibUtils 的 X1C 系（calib_PA/calib_flowrate_X1C）与
+   generic 系均需真机/真参数才能验证；按"不得伪造"纪律：无设备 → 结构化失败
+   "no connected printer"；有设备 → 明确失败"设备路径需真机验证，未启用"。
+   mode ∈ {flow, pa} 由 dispatch 校验（-32602）。真机派发整体列"待人工"。
+4. 实现坑：`DeviceManager`/`MachineObject` 在 `Slic3r` 命名空间（非 Slic3r::GUI）；
+   `MachineObject::is_online()` 非 const（快照遍历不可用 const 指针）。
+
+### M4 验收证据（最终）
+- 桥接 pytest 44/44（含 M4 handler 形状 + mock 往返 + mode 校验）。
+- session E2E（无设备环境，全部真实 GUI 链）：
+  - `list_devices`：设备列表为空、无选中设备 **PASS**（干净环境空态）。
+  - `run_calibration`（mode=flow）：无设备 → job failed "no connected printer" **PASS**；
+    mode=weird → -32602 **PASS**。
+  - `send_to_print`：重载模型后触发 → job done outcome=awaiting_user_confirmation **PASS**；
+    快照 `ui_busy=true` 且 `ui_busy_dialog='Send to Printer SD card'` **PASS**；
+    模态期间写请求 -32002 **PASS**（人工确认门全链实证）。关闭侧记 SKIP（见环境限制 2）。
+- 产物字符串证据：DLL 含 send_to_print/run_calibration/list_devices/
+  awaiting_user_confirmation/slicing never started 各 ≥1。
+
+### 提交说明（M3+M4 同 commit）
+M3 期间的切片层根因修复（set_need_update/Cancelled 语义/快失败看门狗）与 M4 的
+ui_busy 可观测性落在同一批文件（McpServer.cpp/hpp），拆分会产生编译不完整的中间提交；
+journal 各期证据独立完整，commit 信息同时标注两期。
