@@ -111,15 +111,90 @@
     {
       "name": "export_3mf",
       "title": "Export 3mf",
-      "description": "Get the model as a 3mf. 3mf input is copied through; mesh input is wrapped into a minimal valid 3mf. Full project export (settings + thumbnails) is available from the session backend (Orca running, M1+).",
+      "description": "Get the model as a 3mf. With the session backend enabled and Orca running, exports the full current project (settings + plates) to output_path. Otherwise wraps mesh input into a minimal valid 3mf (3mf input is copied through).",
       "backends": ["cli", "session"],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "model_path": { "type": "string" },
+          "model_path": { "type": "string", "description": "CLI backend: model to wrap/copy" },
           "output_path": { "type": "string", "description": "Destination .3mf path" }
         },
-        "required": ["model_path", "output_path"]
+        "required": ["output_path"]
+      }
+    },
+    {
+      "name": "load_models",
+      "title": "Load models into session",
+      "description": "Load model files into the current Orca session through the same entry point as dropping files on the plater (arranged on bed).",
+      "backends": ["session"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Model file paths (stl/obj/3mf/...)" }
+        },
+        "required": ["paths"]
+      }
+    },
+    {
+      "name": "get_state",
+      "title": "Get Orca session state",
+      "description": "Read the current Orca session state from the snapshot cache: plates, objects with transforms, out-of-bounds flags, slicing progress. Served from a cache with a stale_at timestamp - the HTTP thread never blocks the UI.",
+      "backends": ["session"],
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "get_plate_screenshot",
+      "title": "Get plate screenshot",
+      "description": "Render the current plate view in the Orca 3D viewport and return a PNG (base64). Rendered on the UI thread inside Orca; returned via job polling.",
+      "backends": ["session"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "plate_index": { "type": "integer", "default": 1, "minimum": 1 },
+          "width": { "type": "integer", "default": 512, "minimum": 32, "maximum": 2048 },
+          "height": { "type": "integer", "default": 512, "minimum": 32, "maximum": 2048 },
+          "timeout_s": { "type": "number", "default": 60 }
+        }
+      }
+    },
+    {
+      "name": "slice",
+      "title": "Slice current session",
+      "description": "Trigger slicing in the running Orca session (same code path as the slice button) and wait for completion, reporting progress.",
+      "backends": ["session"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "plate": { "type": "integer", "default": 0, "description": "0 = all plates, N = plate N" },
+          "timeout_s": { "type": "number", "default": 1800 }
+        }
+      }
+    },
+    {
+      "name": "poll_job",
+      "title": "Poll session job",
+      "description": "Poll a session job (slice / export / screenshot) by id: state (pending/running/done/failed), percent, message, result.",
+      "backends": ["session"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "job_id": { "type": "integer" }
+        },
+        "required": ["job_id"]
+      }
+    },
+    {
+      "name": "export_gcode",
+      "title": "Export G-code from session",
+      "description": "Export the sliced G-code of the current session to an explicit path (non-interactive; no dialog). Requires a completed slice.",
+      "backends": ["session"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Destination .gcode file path" },
+          "timeout_s": { "type": "number", "default": 900 }
+        },
+        "required": ["path"]
       }
     }
   ]

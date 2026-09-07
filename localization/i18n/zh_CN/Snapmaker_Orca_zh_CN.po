@@ -15726,3 +15726,18 @@ msgstr "  • 接触面图案 → 交叠直线\n"
 #, c-format, boost-format
 msgid "  • Interface spacing: %.2f → 0 mm\n"
 msgstr "  • 接触面间距：%.2f → 0 mm\n"
+
+msgid "AI / MCP Interface"
+msgstr "AI / MCP 接口"
+
+msgid "Enable MCP local interface (port 13620)"
+msgstr "启用 MCP 本地接口（端口 13620）"
+
+msgid "Lets local AI assistants (MCP clients) query and control this Orca session. Listens on 127.0.0.1 only and requires an access token. Takes effect after restarting Snapmaker Orca."
+msgstr "允许本地 AI 助手（MCP 客户端）查询与控制当前 Orca 会话。仅监听 127.0.0.1，需要访问令牌。重启 Snapmaker Orca 后生效。"
+
+msgid "Could not start the MCP interface: port 13620 is busy. The interface stays disabled."
+msgstr "无法启动 MCP 接口：端口 13620 被占用，接口保持关闭。"
+
+msgid "MCP Interface"
+msgstr "MCP 接口"

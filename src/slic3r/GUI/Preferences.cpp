@@ -1,6 +1,7 @@
 #include "Preferences.hpp"
 #include "OptionsGroup.hpp"
 #include "GUI_App.hpp"
+#include "Mcp/McpServer.hpp"
 #include "MainFrame.hpp"
 #include "Plater.hpp"
 #include "MsgDialog.hpp"
@@ -1271,6 +1272,22 @@ wxWindow* PreferencesDialog::create_general_page()
     auto item_step_mesh_setting = create_item_checkbox(_L("Show the step mesh parameter setting dialog."), page, _L("If enabled,a parameter settings dialog will appear during STEP file import."), 50, "enable_step_mesh_setting");
     auto item_multi_machine = create_item_checkbox(_L("Multi-device Management (Take effect after restarting Snapmaker Orca)."), page, _L("With this option enabled, you can send a task to multiple devices at the same time and manage multiple devices."), 50, "enable_multi_machine");
     auto item_auto_arrange  = create_item_checkbox(_L("Auto arrange plate after cloning"), page, _L("Auto arrange plate after object cloning"), 50, "auto_arrange");
+    // MCP: local AI-assistant interface (default off, loopback + token).
+    auto title_mcp = create_item_title(_L("AI / MCP Interface"), page, _L("AI / MCP Interface"));
+    auto item_mcp_enable = create_item_checkbox(_L("Enable MCP local interface (port 13620)"), page,
+        _L("Lets local AI assistants (MCP clients) query and control this Orca session. Listens on 127.0.0.1 only and requires an access token. Takes effect after restarting Snapmaker Orca."), 50, "mcp_enabled",
+        [this](bool new_val, bool /*old_val*/) -> bool {
+            if (new_val) {
+                if (!Mcp::McpServer::instance().enable()) {
+                    MessageDialog dlg(this, _L("Could not start the MCP interface: port 13620 is busy. The interface stays disabled."), _L("MCP Interface"), wxICON_WARNING | wxOK);
+                    dlg.ShowModal();
+                    return false;
+                }
+                return true;
+            }
+            Mcp::McpServer::instance().disable();
+            return true;
+        });
     auto title_presets = create_item_title(_L("Presets"), page, _L("Presets"));
     //auto title_network = create_item_title(_L("Network"), page, _L("Network"));
     auto item_user_sync        = create_item_checkbox(_L("Auto sync user presets (Printer/Filament/Process)"), page, _L("User Sync"), 50, "sync_user_preset");
@@ -1372,6 +1389,8 @@ wxWindow* PreferencesDialog::create_general_page()
     sizer_page->Add(item_multi_machine, 0, wxTOP, FromDIP(3));
     sizer_page->Add(item_step_mesh_setting, 0, wxTOP, FromDIP(3));
     sizer_page->Add(item_auto_arrange, 0, wxTOP, FromDIP(3));
+    sizer_page->Add(title_mcp, 0, wxTOP | wxEXPAND, FromDIP(20));
+    sizer_page->Add(item_mcp_enable, 0, wxTOP, FromDIP(3));
     sizer_page->Add(title_presets, 0, wxTOP | wxEXPAND, FromDIP(20));
     sizer_page->Add(item_calc_mode, 0, wxTOP, FromDIP(3));
     sizer_page->Add(item_user_sync, 0, wxTOP, FromDIP(3));
