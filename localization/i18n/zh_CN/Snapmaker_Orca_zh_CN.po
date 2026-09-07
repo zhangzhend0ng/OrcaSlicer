@@ -15555,3 +15555,18 @@ msgstr "手动选择当前列表中的耗材进行混色匹配。"
 
 msgid "Official Full Spectrum filaments are not configured. Configured filaments will be used instead. Once the official filaments are added, the previously selected filaments can be replaced in the filament list without affecting the color mixing match result."
 msgstr "未配置官方 Full Spectrum 全光谱耗材，将自动使用已配置的耗材。完成官方耗材配置后，可在耗材列表中进行替换，不影响混色匹配结果。"
+
+msgid "AI / MCP Interface"
+msgstr "AI / MCP 接口"
+
+msgid "Enable MCP local interface (port 13620)"
+msgstr "启用 MCP 本地接口（端口 13620）"
+
+msgid "Lets local AI assistants (MCP clients) query and control this Orca session. Listens on 127.0.0.1 only and requires an access token. Takes effect after restarting Snapmaker Orca."
+msgstr "允许本地 AI 助手（MCP 客户端）查询与控制当前 Orca 会话。仅监听 127.0.0.1，需要访问令牌。重启 Snapmaker Orca 后生效。"
+
+msgid "Could not start the MCP interface: port 13620 is busy. The interface stays disabled."
+msgstr "无法启动 MCP 接口：端口 13620 被占用，接口保持关闭。"
+
+msgid "MCP Interface"
+msgstr "MCP 接口"

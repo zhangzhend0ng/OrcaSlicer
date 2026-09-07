@@ -116,10 +116,11 @@ def build_server(registry: ToolRegistry, name: str = "snapmaker-orca-mcp") -> Se
 
 
 def default_handlers(config, backends: list[str]) -> dict[str, Handler]:
-    """Construct the M0 handler set (CLI + knowledge + catalog)."""
+    """Construct the handler set for the enabled backends."""
     from .cli_backend import CliBackend
     from .knowledge import mesh_tools
     from .params_catalog import ParamsCatalog
+    from .session_backend import make_session_handlers
 
     catalog: ParamsCatalog | None = None
     try:
@@ -138,7 +139,7 @@ def default_handlers(config, backends: list[str]) -> dict[str, Handler]:
 
     handlers: dict[str, Handler] = {}
 
-    if "cli" in backends or True:  # knowledge tools are backend-independent
+    if "cli" in backends:
         handlers["analyze_mesh"] = lambda a: mesh_tools.analyze_mesh(_require(a, "path"))
         handlers["check_printability"] = lambda a: mesh_tools.check_printability(
             _require(a, "path"),
@@ -188,6 +189,21 @@ def default_handlers(config, backends: list[str]) -> dict[str, Handler]:
             timeout_s=(float(a["timeout_s"]) if a.get("timeout_s") else None),
             allow_newer_file=bool(a.get("allow_newer_file", True)),
         )
+
+    if "session" in backends:
+        session = make_session_handlers(config)
+        for name, handler in session.items():
+            handlers[name] = handler
+
+        # With a live session, project export beats the mesh-wrap fallback.
+        if "session" in backends and "export_3mf" in session:
+            def export_3mf_mixed(a: dict):
+                output_path = _require(a, "output_path")
+                if a.get("model_path"):
+                    return cli.export_3mf(a["model_path"], output_path)
+                return session["export_3mf"]({"path": output_path})
+
+            handlers["export_3mf"] = export_3mf_mixed
 
     return handlers
 

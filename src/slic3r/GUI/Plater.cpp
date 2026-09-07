@@ -20348,7 +20348,51 @@ void Plater::send_to_printer(bool isall)
     p->on_action_send_to_printer(isall);
 }
 
-//BBS export gcode 3mf to file
+// MCP: export the current plate's sliced G-code to an explicit path.
+// Primary path mirrors priv::export_gcode (schedule_export + forced
+// restart so the finalize step runs); when the background process will
+// not settle, fall back to copying the temp G-code the completed slice
+// already wrote. Runs on the UI thread.
+int Plater::mcp_export_gcode_to(const std::string& path, std::string* reason)
+{
+    auto fail = [reason](const std::string& text) {
+        if (reason != nullptr) *reason = text;
+        return 0;
+    };
+    if (p->model.objects.empty())
+        return fail("scene has no objects");
+    const fs::path output_path(path);
+    if (output_path.empty())
+        return fail("empty output path");
+
+    // Canonical path: schedule + force the export step like the UI does.
+    try {
+        unsigned int state = this->p->update_background_process(true);
+        if ((state & priv::UPDATE_BACKGROUND_PROCESS_INVALID) == 0
+            && !p->background_process.running()) {
+            p->background_process.schedule_export(output_path.string(), false);
+            p->background_process.set_task(PrintBase::TaskParams());
+            p->restart_background_process(priv::UPDATE_BACKGROUND_PROCESS_FORCE_EXPORT);
+            return 2;
+        }
+    } catch (const std::exception&) {
+        // fall through to the temp-copy fallback
+    }
+
+    // Fallback: the completed slice already wrote the full G-code to the
+    // plate's temp path; hand those bytes over directly.
+    GUI::PartPlate* plate = p->partplate_list.get_curr_plate();
+    if (plate == nullptr)
+        return fail("no current plate");
+    const fs::path tmp_path = plate->get_tmp_gcode_path();
+    if (tmp_path.empty() || !fs::exists(tmp_path))
+        return fail("sliced gcode file not found (slice did not complete)");
+    std::string error_message;
+    if (Slic3r::copy_file(tmp_path.string(), output_path.string(), error_message, false) != SUCCESS)
+        return fail("copy failed: " + error_message);
+    return 1;
+}
+
 void Plater::export_gcode_3mf(bool export_all)
 {
     if (p->model.objects.empty())

@@ -54,6 +54,7 @@ class SLAPrint;
 //BBS: add partplatelist and SlicingStatusEvent
 class PartPlateList;
 class SlicingStatusEvent;
+class SlicingProcessCompletedEvent;
 enum SLAPrintObjectStep : unsigned int;
 enum class ConversionType : int;
 class Ams;
@@ -93,6 +94,8 @@ enum class ActionButtonType : int;
 
 //BBS: add EVT_SLICING_UPDATE declare here
 wxDECLARE_EVENT(EVT_SLICING_UPDATE, Slic3r::SlicingStatusEvent);
+// MCP: completion event consumed by the Mcp listener hooks (defined in Plater.cpp).
+wxDECLARE_EVENT(EVT_PROCESS_COMPLETED, Slic3r::SlicingProcessCompletedEvent);
 wxDECLARE_EVENT(EVT_PUBLISH,        wxCommandEvent);
 wxDECLARE_EVENT(EVT_OPEN_PLATESETTINGSDIALOG,        wxCommandEvent);
 wxDECLARE_EVENT(EVT_REPAIR_MODEL,        wxCommandEvent);
@@ -492,6 +495,10 @@ public:
 
     void send_to_printer(bool isall = false);
     void export_gcode(bool prefer_removable);
+    // MCP: copy the current plate's sliced G-code to an explicit path
+    // (non-interactive; requires a completed slice).
+    // MCP: 0 = failed (reason set), 1 = copied synchronously, 2 = export scheduled.
+    int mcp_export_gcode_to(const std::string& path, std::string* reason = nullptr);
     void export_gcode_3mf(bool export_all = false);
     void send_gcode_finish(wxString name);
     void export_core_3mf();

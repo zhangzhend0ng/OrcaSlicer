@@ -86,6 +86,7 @@
 #include "libslic3r/Color.hpp"
 
 #include "GUI.hpp"
+#include "Mcp/McpServer.hpp"
 #include "GUI_Utils.hpp"
 #include "3DScene.hpp"
 #include "MainFrame.hpp"
@@ -1267,6 +1268,9 @@ GUI_App::GUI_App()
     m_page_http_server.set_request_handler(HttpServer::web_server_handle_request);
     m_page_http_server.start();
     profiler.mark("m_page_http_server.start");
+    // MCP interface: starts only when enabled in app_config (default off).
+    Mcp::McpServer::instance().startup_from_config();
+    profiler.mark("mcp_server.startup");
     BOOST_LOG_TRIVIAL(info) << "[Flutter] Version:" << common::get_flutter_version();
     BOOST_LOG_TRIVIAL(info) << "[Profile] Version:" << common::get_profile_version();
     flush_logs();
@@ -1281,6 +1285,9 @@ void GUI_App::shutdown(bool isRecreate)
 	if (m_removable_drive_manager) {
 		removable_drive_manager()->shutdown();
 	}
+
+    // MCP interface: stop listener, remove discovery file.
+    Mcp::McpServer::instance().shutdown();
 
     // destroy login dialog
     if (login_dlg != nullptr) {

@@ -1,4 +1,4 @@
-#include <catch2/catch.hpp>
+#include <catch2/catch_all.hpp>  // Catch2 v3 (repo uses FetchContent Catch2; the v2 header path never existed here)
 
 #include "libslic3r/SSWCPProtocol.hpp"
 

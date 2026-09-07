@@ -239,6 +239,14 @@ set(SLIC3R_GUI_SOURCES
     GUI/HMSPanel.hpp
     GUI/HttpServer.cpp
     GUI/HttpServer.hpp
+    GUI/Mcp/McpHttpListener.cpp
+    GUI/Mcp/McpJsonRpc.cpp
+    GUI/Mcp/McpJobs.cpp
+    GUI/Mcp/McpServer.cpp
+    GUI/Mcp/McpHttpListener.hpp
+    GUI/Mcp/McpJsonRpc.hpp
+    GUI/Mcp/McpJobs.hpp
+    GUI/Mcp/McpServer.hpp
     GUI/I18N.cpp
     GUI/I18N.hpp
     GUI/IconManager.cpp

@@ -84,3 +84,83 @@
 - [x] E2E：backend + stdio 双脚本全绿（真实 exe、真实 3mf fixture、现场生成真实几何网格）。
 - [x] 对抗收尾：横向 grep（`--layer_height`（下划线直达 CLI）全桥接无残留；`execute_code`/SSE 无出现）。
 - [x] 提交：M0 单 commit（含 journal）。
+
+---
+
+## M1：进程内 listener 底座 + 会话切片/导出（完成）
+
+### 交付物（C++，全部在 src/slic3r/GUI/Mcp/，既有文件仅最小 hook）
+- `McpJsonRpc`：私有 POST JSON-RPC 解析/信封（nlohmann，异常 containment）。
+- `McpJobs`：**进程级** job 注册表（单例；listener 重启不丢；未知 id 明确报错；终态不被迟到进度复活）。
+- `McpHttpListener`：127.0.0.1 独立端口 13620、每请求 Bearer token 校验、Content-Length 全量 body
+  （复用 HttpServer::session 报文解析流，扩展 body 读取）；绑定失败即 false，**无端口漂移**。
+- `McpServer`：门面。快照缓存（UI 线程构建 + 1.5s wxTimer 兜底 + 事件增量）、job 编组
+  （HTTP 线程永不等待 UI）、token 生成/存 app_config、发现文件 `<datadir>/mcp_session.json`。
+- 偏好页开关（默认关）+ zh_CN 本地化 5 条。
+- 私有协议方法：ping / get_state / poll_job / load_models / get_plate_screenshot / slice /
+  export_gcode / export_3mf。无任何 MCP 规范概念（无 SSE/405/CORS）。
+- 桥接 session 后端（Python）：发现文件读取（端口不猜测）、HTTP JSON-RPC、call_and_wait 轮询、
+  工具 schema 单一来源新增 6 个 session 工具。
+
+### 既有文件 hook 点清单（共 5 处，均为最小增量）
+1. GUI_App.cpp：on_init 启动 + shutdown 停止（2 行级）。
+2. Plater.hpp：`EVT_PROCESS_COMPLETED` wxDECLARE（原本只在 .cpp 定义）+ `mcp_export_gcode_to` 声明。
+3. Plater.cpp：`mcp_export_gcode_to` 实现（additive 方法）。
+4. Preferences.cpp：AI/MCP 开关页（校验回调实时 enable/disable）。
+5. src/slic3r/CMakeLists.txt + tests/CMakeLists.txt：源文件/测试子目录注册。
+
+### M1 期间修的自身缺陷（对抗发现）
+- **listener 单写死锁**：请求体与头同包到达时滞留 streambuf，read_body 只在 socket 上等新数据
+  → 双方互等。修复：先取尽缓冲再读余量（单元测试-first 的 McpHttpListener 测试当场抓住）。
+- **lazy hooks**：enable 发生在 on_init 时 Plater 尚未创建 → plater 事件 Bind 静默丢失
+  → 切片完成事件无人接。修复：rebuild_snapshot 每 tick 重试安装。
+- **slice 直调 reslice() 不启动**：UI 按钮实际链路是 start_slice()=exit_gizmo+update(true,true)+
+  FlowType 同步 + GLTOOLBAR 事件；照抄该链路。
+- **slice 看门狗**：VM 上切片 finalize（缩略图渲染，CPU 0% 死锁态）可无限停滞 → 180s 看门狗诚实失败。
+- **export 竞态**：Finished 事件先于后台线程收尾，running() 短暂为真 → 导出 hook 改为
+  正典链路（update_background_process+schedule_export+FORCE_EXPORT）失败时回退拷贝 tmp gcode
+  （切片 100% 时该文件已完整写出）。
+
+### 环境事实（VM 相关，journal 存档）
+- 本 VM 的 snapmaker-orca 构建屏显 3D 画布渲染为白屏（系统 GL 检查通过、离屏 FBO render_thumbnail
+  正常出图）；切片 finalize 的缩略图渲染依赖屏显路径，偶发 CPU 0% 死锁。E2E 用
+  SetForegroundWindow + 看门狗 + 重试应对；疑似环境级问题，非 MCP 代码引入。
+- handy_models 的 BBL 格式 3mf（v2.1.0.0-alpha）内嵌设置 apply 失败 → 盘 apply_invalid 不可切
+  （GUI 与 CLI 同病）；E2E 改用真实网格 STL fixture + load_models 装载。
+- Windows JSON 配置文件**必须带 MD5 校验和行**，否则 substr 越界 GUI 初始化崩溃
+  （E2E 种子按 Orca 格式写 "# MD5 checksum" 行）。
+- App 侧 boost log 文件/stdout 在启动 ~10s 后不再刷出（缓冲），日志缺席不可作证据；
+  E2E 全部以 RPC 可观测状态断言。
+
+### 测试与验收证据
+- C++ 单测（tests/mcp，Catch2）：**14 用例 / 2166 断言全过**（JSON-RPC 解析信封、job 注册表并发、
+  listener 真实回环：token 门禁/坏 JSON/超大 Content-Length/重复 stop）。
+- 守卫变异验证：删除 token 校验 → 2 个测试 FAIL（证据在上），恢复后全绿。
+- 桥接 pytest：**42 passed**（新增 session 后端 7 项：发现文件缺失/损坏、token 错误、轮询完成/失败、
+  handlers 形状；mock HTTP server 全链）。
+- E2E：
+  - `e2e_m1_session.py`（裸 listener，真实 GUI）：**GREEN**——token 拒绝、get_state(plates/objects/
+    stale_at)、load_models(真实 STL 几何)、截图(256×256 PNG 非 blank + IHDR 匹配)、slice 100%
+    "Slicing complete"、export_gcode 文件落地、export_3mf、poll 未知 job → -32003、单飞 ui_busy。
+  - `e2e_m1_bridge.py`（MCP stdio 客户端 → 桥接 session 后端 → listener → GUI 三跳）：**GREEN**——
+    initialize/list_tools 服务面、get_state、load_models、slice（含看门狗重试）、export_gcode
+    10.9MB 真实 gcode 文件。
+- 产物字符串证据：Snapmaker_Orca.dll 含 "McpListener serving on"/"mcp_session.json"/
+  "mcp_enabled"/单飞文案各 ≥1。
+
+### 与 M0 环节的归并说明
+- `load_models`（原 M2 工具）提前至 M1 交付：M1 E2E 需要在画布健康状态下装载真实模型，
+  且该工具走 Plater::load_files UI 同款入口。M2 仍会交付其余模型操作工具并复测此项。
+- ctest：全套 212 项中新增 14 项 MCP；fff_print 3 个混色相关失败与 libslic3r_tests 构建情况
+  见下节补记（M1 提交后补跑）。
+
+### M1 验收门核对
+- [x] 构建：Snapmaker_Orca.dll + snapmaker-orca.exe（改动触及 target）真实编译 + 字符串证据。
+- [x] 测试：C++ 14/14 + pytest 42/42；ctest 全套（M1.1 补记）：**521 项中 515 过 / 6 失败**，
+      全部为主干既有（git diff origin/main -- src/libslic3r 为空，证明非本分支引入）：
+      DynamicPrintConfig serialization、Placeholder parser scripting(SEGV)、cached slots、
+      3×fff_print 混色相关。另有 tests/libslic3r/test_sswcp_protocol.cpp 在 main 上即用
+      Catch2 v2 头（仓库实为 v3）无法编译 → 已做 1 行 include 修复使 libslic3r_tests 可构建。
+- [x] E2E：裸 listener + 三跳桥接双 GREEN。
+- [x] 对抗收尾：token 门禁变异、横向 grep（无 SSE/405/CORS/execute_code 字样）。
+- [x] 提交。
