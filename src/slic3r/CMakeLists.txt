@@ -242,10 +242,12 @@ set(SLIC3R_GUI_SOURCES
     GUI/Mcp/McpHttpListener.cpp
     GUI/Mcp/McpJsonRpc.cpp
     GUI/Mcp/McpJobs.cpp
+    GUI/Mcp/McpParams.cpp
     GUI/Mcp/McpServer.cpp
     GUI/Mcp/McpHttpListener.hpp
     GUI/Mcp/McpJsonRpc.hpp
     GUI/Mcp/McpJobs.hpp
+    GUI/Mcp/McpParams.hpp
     GUI/Mcp/McpServer.hpp
     GUI/I18N.cpp
     GUI/I18N.hpp

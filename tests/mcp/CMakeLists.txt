@@ -10,6 +10,7 @@ add_executable(${_TEST_NAME}_tests
     McpJsonRpc_test.cpp
     McpJobs_test.cpp
     McpHttpListener_test.cpp
+    McpParams_test.cpp
     )
 
 find_package(JPEG REQUIRED)

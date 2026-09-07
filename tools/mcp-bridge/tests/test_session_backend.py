@@ -20,6 +20,7 @@ class _MockOrca:
         self.token = token
         self.requests = []
         self.script = []  # list of response bodies for poll_job
+        self.last_kind = None
 
     def serve(self):
         orca = self
@@ -53,13 +54,24 @@ class _MockOrca:
     def respond(self, doc):
         if doc["method"] == "get_state":
             return {"result": {"ready": True, "plates": [{"index": 1}]}}
-        if doc["method"] == "slice":
-            return {"result": {"job_id": 7, "kind": "slice", "state": "pending"}}
+        if doc["method"] == "list_devices":
+            return {"result": {"devices": [], "selected_device": None}}
+        if doc["method"] in ("slice", "set_object_params", "set_plate_params",
+                             "send_to_print", "run_calibration"):
+            self.last_kind = doc["method"]
+            job_id = {"slice": 7, "set_object_params": 8, "set_plate_params": 9,
+                      "send_to_print": 10, "run_calibration": 11}[doc["method"]]
+            return {"result": {"job_id": job_id, "kind": doc["method"],
+                               "state": "pending"}}
         if doc["method"] == "poll_job":
             if self.script:
                 return {"result": self.script.pop(0)}
-            return {"result": {"job_id": 7, "state": "done", "percent": 100,
-                               "result": {"outcome": "sliced"}}}
+            outcome = "sliced" if self.last_kind == "slice" else "applied"
+            if self.last_kind == "send_to_print":
+                outcome = "awaiting_user_confirmation"
+            return {"result": {"job_id": doc["params"].get("job_id", 0),
+                               "state": "done", "percent": 100,
+                               "result": {"outcome": outcome}}}
         return {"error": {"code": -32601, "message": "unknown method"}}
 
 
@@ -141,7 +153,50 @@ def test_session_handlers_shape(mock_orca):
     orca, config = mock_orca
     handlers = make_session_handlers(config)
     assert {"get_state", "get_plate_screenshot", "slice", "poll_job",
-            "export_gcode", "export_3mf"} <= set(handlers)
+            "export_gcode", "export_3mf", "set_object_params",
+            "set_plate_params"} <= set(handlers)
     assert handlers["get_state"]({})["backend"] == "session"
     with pytest.raises(BridgeError):
         handlers["export_gcode"]({})  # missing path
+    with pytest.raises(BridgeError):
+        handlers["set_object_params"]({})  # missing object_id/params
+    with pytest.raises(BridgeError):
+        handlers["set_plate_params"]({})  # missing params
+
+
+def test_session_object_and_plate_params_roundtrip(mock_orca):
+    orca, config = mock_orca
+    handlers = make_session_handlers(config)
+    result = handlers["set_object_params"](
+        {"object_id": 12, "params": {"enable_support": "1"}})
+    assert result == {"outcome": "applied"}
+    result = handlers["set_plate_params"](
+        {"plate": 1, "params": {"print_sequence": "by object"}})
+    assert result == {"outcome": "applied"}
+    methods = [doc["method"] for doc, _ in orca.requests]
+    assert methods.count("set_object_params") == 1
+    assert methods.count("set_plate_params") == 1
+    obj_doc = next(doc for doc, _ in orca.requests
+                   if doc["method"] == "set_object_params")
+    assert obj_doc["params"] == {"object_id": 12, "params": {"enable_support": "1"}}
+    plate_doc = next(doc for doc, _ in orca.requests
+                     if doc["method"] == "set_plate_params")
+    assert plate_doc["params"] == {"plate": 1, "params": {"print_sequence": "by object"}}
+
+
+def test_session_m4_device_tools(mock_orca):
+    orca, config = mock_orca
+    handlers = make_session_handlers(config)
+    assert {"list_devices", "send_to_print", "run_calibration"} <= set(handlers)
+    with pytest.raises(BridgeError):
+        handlers["run_calibration"]({"mode": "temperature"})  # invalid mode
+    result = handlers["list_devices"]({})
+    assert result == {"devices": [], "selected_device": None}
+    result = handlers["send_to_print"]({})
+    assert result == {"outcome": "awaiting_user_confirmation"}
+    result = handlers["run_calibration"]({"mode": "flow"})
+    assert result == {"outcome": "applied"}  # mock polls to done
+    methods = [doc["method"] for doc, _ in orca.requests]
+    assert methods.count("list_devices") == 1
+    assert methods.count("send_to_print") == 1
+    assert methods.count("run_calibration") == 1

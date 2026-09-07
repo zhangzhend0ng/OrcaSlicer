@@ -180,6 +180,25 @@ def make_session_handlers(config: BridgeConfig) -> dict:
         return _client().call_and_wait("set_params", {"params": params},
                                        timeout_s=float(args.get("timeout_s", 120)))
 
+    def set_object_params(args: dict) -> dict:
+        object_id = args.get("object_id")
+        if not object_id:
+            raise BridgeError("object_id is required", code="bad_request")
+        params = args.get("params")
+        if not isinstance(params, dict) or not params:
+            raise BridgeError("params must be a non-empty object", code="bad_request")
+        return _client().call_and_wait(
+            "set_object_params", {"object_id": int(object_id), "params": params},
+            timeout_s=float(args.get("timeout_s", 120)))
+
+    def set_plate_params(args: dict) -> dict:
+        params = args.get("params")
+        if not isinstance(params, dict) or not params:
+            raise BridgeError("params must be a non-empty object", code="bad_request")
+        payload = {"plate": int(args.get("plate", 0)), "params": params}
+        return _client().call_and_wait("set_plate_params", payload,
+                                       timeout_s=float(args.get("timeout_s", 120)))
+
     def remove_object(args: dict) -> dict:
         object_id = args.get("object_id")
         if not object_id:
@@ -205,6 +224,20 @@ def make_session_handlers(config: BridgeConfig) -> dict:
     def poll_job(args: dict) -> dict:
         return _client().call("poll_job", {"job_id": int(args.get("job_id", 0))})
 
+    def list_devices(args: dict) -> dict:
+        return _client().call("list_devices", {})
+
+    def send_to_print(args: dict) -> dict:
+        return _client().call_and_wait("send_to_print", {},
+                                       timeout_s=float(args.get("timeout_s", 120)))
+
+    def run_calibration(args: dict) -> dict:
+        mode = args.get("mode")
+        if mode not in ("flow", "pa"):
+            raise BridgeError("mode must be 'flow' or 'pa'", code="bad_request")
+        return _client().call_and_wait("run_calibration", {"mode": mode},
+                                       timeout_s=float(args.get("timeout_s", 120)))
+
     def export_gcode(args: dict) -> dict:
         path = args.get("path")
         if not path:
@@ -226,12 +259,17 @@ def make_session_handlers(config: BridgeConfig) -> dict:
         "get_state": get_state,
         "load_models": load_models,
         "set_params": set_params,
+        "set_object_params": set_object_params,
+        "set_plate_params": set_plate_params,
         "remove_object": remove_object,
         "set_transform": set_transform,
         "arrange": arrange,
         "get_plate_screenshot": get_plate_screenshot,
         "slice": slice_,
         "poll_job": poll_job,
+        "list_devices": list_devices,
+        "send_to_print": send_to_print,
+        "run_calibration": run_calibration,
         "export_gcode": export_gcode,
         "export_3mf": export_3mf,
     }
