@@ -19,6 +19,8 @@ add_executable(${_TEST_NAME}_tests
     test_slicing_pipeline_config.cpp
     test_plugin_sort.cpp
     test_plugin_cloud_metadata.cpp
+    test_plugin_audit.cpp
+    test_plugin_json_depth.cpp
     ../fff_print/test_helpers.cpp
     )
 
@@ -179,4 +181,5 @@ elseif (APPLE)
     )
 endif()
 
-orcaslicer_discover_tests(${_TEST_NAME}_tests)
+# NOTE: slic3rutils_tests already registers via catch_discover_tests above; the
+# upstream orcaslicer_discover_tests wrapper (88fb89b5eb) would register it twice.

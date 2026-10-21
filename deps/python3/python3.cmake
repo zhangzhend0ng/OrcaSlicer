@@ -84,12 +84,9 @@ if(WIN32)
         set(_python_pcbuild_output_dir win32)
     endif()
 
+    # pybind11 undefines _DEBUG around Python.h so a debug build links the
+    # release python3xx.lib; Py_DEBUG could not load release plugin modules.
     set(_python_pcbuild_config Release)
-    set(_python_layout_debug OFF)
-    if(DEFINED DEP_DEBUG AND DEP_DEBUG)
-        set(_python_pcbuild_config Debug)
-        set(_python_layout_debug ON)
-    endif()
 
     # CPython's own libraries, fetched here instead of by get_externals.bat, which ignores failed
     # downloads. Must match PCbuild/get_externals.bat for _python_version.
@@ -182,7 +179,6 @@ if(WIN32)
             -DPYTHON_BUILD_DIR=<SOURCE_DIR>/PCbuild/${_python_pcbuild_output_dir}
             -DPYTHON_DEST_DIR=${DESTDIR}/libpython
             -DPYTHON_LAYOUT_ARCH=${_python_layout_arch}
-            -DPYTHON_DEBUG=${_python_layout_debug}
             -P ${CMAKE_CURRENT_LIST_DIR}/stage_windows.cmake
     )
 elseif(APPLE)
@@ -369,10 +365,11 @@ if(TARGET dep_ZLIB)
     add_dependencies(dep_python3 dep_ZLIB)
 endif()
 
-if (NOT WIN32 AND NOT APPLE)
-    # CPython's Makefile rules for _ssl and _hashlib depend only on their own
-    # sources, not on the OpenSSL archives, so a rebuilt OpenSSL does not make
-    # them relink and they keep the previous symbols. On an incremental tree,
+if (NOT WIN32)
+    # _ssl and _hashlib embed the static OpenSSL built in deps/ (Windows uses
+    # CPython's prebuilt OpenSSL instead). Their Makefile rules depend only on
+    # their own sources, not on the OpenSSL archives, so a rebuilt OpenSSL does
+    # not make them relink and they keep the previous one. On an incremental tree,
     # drop the built modules and relink them against the current OpenSSL; a
     # fresh build is left alone (its PGO target builds them). "make" alone is a
     # no-op once PGO has run, so sharedmods is invoked explicitly.
