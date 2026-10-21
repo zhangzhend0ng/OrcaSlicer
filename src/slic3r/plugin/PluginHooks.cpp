@@ -8,7 +8,9 @@
 #include "libslic3r/Config.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/Print.hpp"
-#include "libslic3r_version.h"
+#include "common_func/common_func.hpp"
+// Snapmaker port: SoftFever_VERSION is upstream's host-version macro; map it to our release version.
+#define SoftFever_VERSION Snapmaker_VERSION
 
 #include <boost/log/trivial.hpp>
 

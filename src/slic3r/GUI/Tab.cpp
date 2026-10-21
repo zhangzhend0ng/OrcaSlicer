@@ -1761,13 +1761,15 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
 
     // Keep this preset's "plugins" manifest in sync when a plugin picker changes, so full_config() and
     // save_to_json() always find resolved "name;uuid;capability" references and rebuild it nowhere else.
-    if (const ConfigOptionDef* opt_def = m_config->def()->get(opt_key);
-        opt_def && opt_def->is_plugin_backed())
-        m_config->update_plugin_manifest();
-
     if (m_config == nullptr) {
         return;
     }
+
+    // Keep this preset's "plugins" manifest in sync when a plugin picker changes, so full_config() and
+    // save_to_json() always find resolved "name;uuid;capability" references and rebuild it nowhere else.
+    if (const ConfigOptionDef* opt_def = m_config->def()->get(opt_key);
+        opt_def && opt_def->is_plugin_backed())
+        m_config->update_plugin_manifest();
 
     if (opt_key == "compatible_prints")
         this->compatible_widget_reload(m_compatible_prints);

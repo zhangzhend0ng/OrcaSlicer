@@ -2155,6 +2155,42 @@ void NotificationManager::push_import_finished_notification(const std::string& p
     set_slicing_progress_hidden();
 }
 
+void NotificationManager::PopNotification::render_hyperlink_action(ImGuiWrapper& imgui, float text_x, float text_y,
+	const std::string& text, const char* button_id, const std::function<void()>& on_click)
+{
+	// Invisible button over the label
+	ImVec2 part_size = ImGui::CalcTextSize(text.c_str());
+	ImGui::SetCursorPosX(text_x - 4);
+	ImGui::SetCursorPosY(text_y - 5);
+	ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(.0f, .0f, .0f, .0f));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.0f, .0f, .0f, .0f));
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(.0f, .0f, .0f, .0f));
+	if (imgui.button(button_id, part_size.x + 6, part_size.y + 10) && on_click)
+		on_click();
+	ImGui::PopStyleColor(3);
+
+	// Hover color
+	ImVec4 color = m_HyperTextColor;
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly))
+		color = m_HyperTextColorHover;
+
+	// Text
+	push_style_color(ImGuiCol_Text, color, m_state == EState::FadingOut, m_current_fade_opacity);
+	ImGui::SetCursorPosX(text_x);
+	ImGui::SetCursorPosY(text_y);
+	imgui.text(text.c_str());
+	ImGui::PopStyleColor();
+
+	// Underline
+	ImVec2 lineEnd = ImGui::GetItemRectMax();
+	lineEnd.y -= 2;
+	ImVec2 lineStart = lineEnd;
+	lineStart.x = ImGui::GetItemRectMin().x;
+	ImGui::GetWindowDrawList()->AddLine(lineStart, lineEnd,
+		IM_COL32((int)(color.x * 255), (int)(color.y * 255), (int)(color.z * 255),
+			(int)(color.w * 255.f * (m_state == EState::FadingOut ? m_current_fade_opacity : 1.f))));
+}
+
 void NotificationManager::PluginMissingNotification::init()
 {
 	PopNotification::init();

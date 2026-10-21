@@ -2,7 +2,9 @@
 
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/format.hpp"
-#include "libslic3r_version.h"
+#include "common_func/common_func.hpp"
+// Snapmaker port: SoftFever_VERSION is upstream's host-version macro; map it to our release version.
+#define SoftFever_VERSION Snapmaker_VERSION
 #include "I18N.hpp"
 
 // Post-processing plugins are executed through the embedded-Python plugin system, which is why this

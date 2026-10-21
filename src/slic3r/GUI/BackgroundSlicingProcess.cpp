@@ -907,49 +907,7 @@ void BackgroundSlicingProcess::export_gcode()
 	// BBS: to be checked. Whether use export_path or output_path.
 	gcode_add_line_number(export_path, m_fff_print->full_print_config());
 
-    // FIXME localize the messages
-    std::string error_message;
-    int copy_ret_val = CopyFileResult::SUCCESS;
-    try {
-        copy_ret_val = copy_file(output_path, export_path, error_message, m_export_path_on_removable_media);
-    } catch (...) {
-        throw Slic3r::ExportError(_utf8(L("Unknown error with G-code export")));
-    }
-    switch (copy_ret_val) {
-    case CopyFileResult::SUCCESS: break; // no error
-    case CopyFileResult::FAIL_COPY_FILE:
-        // throw Slic3r::ExportError((boost::format(_utf8(L("Copying of the temporary G-code to the output G-code failed. Maybe the SD card
-        // is write locked?\nError message: %1%"))) % error_message).str()); break;
-    case CopyFileResult::FAIL_FILES_DIFFERENT:
-        // throw Slic3r::ExportError((boost::format(_utf8(L("Copying of the temporary G-code to the output G-code failed. There might be
-        // problem with target device, please try exporting again or using different device. The corrupted output G-code is at %1%.tmp.")))
-        // % export_path).str()); break;
-    case CopyFileResult::FAIL_RENAMING:
-        // throw Slic3r::ExportError((boost::format(_utf8(L("Renaming of the G-code after copying to the selected destination folder has
-        // failed. Current path is %1%.tmp. Please try exporting again."))) % export_path).str()); break;
-    case CopyFileResult::FAIL_CHECK_ORIGIN_NOT_OPENED:
-        // throw Slic3r::ExportError((boost::format(_utf8(L("Copying of the temporary G-code has finished but the original code at %1%
-        // couldn't be opened during copy check. The output G-code is at %2%.tmp."))) % output_path % export_path).str()); break;
-    case CopyFileResult::FAIL_CHECK_TARGET_NOT_OPENED:
-        // throw Slic3r::ExportError((boost::format(_utf8(L("Copying of the temporary G-code has finished but the exported code couldn't be
-        // opened during copy check. The output G-code is at %1%.tmp."))) % export_path).str()); break;
-    default:
-        BOOST_LOG_TRIVIAL(error) << "Fail code(" << (int) copy_ret_val << ") when copy " << output_path << " to " << export_path << ".";
-        throw Slic3r::ExportError(
-            (boost::format(_utf8(L("Failed to save G-code file.\nError message: %1%.\nSource file %2%."))) % error_message % output_path)
-                .str());
-        // throw Slic3r::ExportError(_utf8(L("Unknown error when exporting G-code.")));
-        break;
-    }
 
-    // BBS
-    auto evt                  = new wxCommandEvent(m_event_export_finished_id, GUI::wxGetApp().mainframe->m_plater->GetId());
-    wxString output_gcode_str = wxString::FromUTF8(export_path.c_str(), export_path.length());
-    evt->SetString(output_gcode_str);
-    wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, evt);
-
-    // BBS: to be checked. Whether use export_path or output_path.
-    gcode_add_line_number(export_path, m_fff_print->full_print_config());
 }
 
 // A print host upload job has been scheduled, enqueue it to the printhost job queue

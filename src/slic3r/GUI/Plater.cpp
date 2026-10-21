@@ -3530,7 +3530,6 @@ void Sidebar::update_all_preset_comboboxes(bool reload_printer_view)
 
     auto p_mainframe = wxGetApp().mainframe;
     auto cfg = preset_bundle.printers.get_edited_preset().config;
-    const bool use_native_device_tab = preset_bundle.use_bbl_device_tab();
 
     const bool use_new_connection = wxGetApp().physical_printer_connected();
 
@@ -10150,6 +10149,8 @@ struct Plater::priv
     // (has_missing_plugins()), not cached here.
     std::string m_local_missing_shown_sig;
     std::string m_cloud_missing_shown_sig;
+    std::string m_inactive_shown_sig;
+    std::string m_broken_shown_sig;
     bool m_is_publishing {false};
     int m_is_RightClickInLeftUI{-1};
     int m_cur_slice_plate;

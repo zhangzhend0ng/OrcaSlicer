@@ -2520,6 +2520,88 @@ void GUI_App::init_plugin_gui_wiring()
         });
 }
 
+void GUI_App::open_plugins_dialog(size_t open_on_tab, const std::string& highlight_option)
+{
+    if (m_plugins_dlg) {
+        m_plugins_dlg->Show();
+        m_plugins_dlg->Raise();
+        return;
+    }
+
+    try {
+        m_plugins_dlg = new PluginsDialog(mainframe, wxID_ANY, _L("Plugins"));
+        m_plugins_dlg->set_open_terminal_dlg_fn();
+        m_plugins_dlg->Bind(wxEVT_DESTROY, [this](wxWindowDestroyEvent& event) {
+            if (event.GetEventObject() == m_plugins_dlg)
+                m_plugins_dlg = nullptr;
+            event.Skip();
+        });
+
+        m_plugins_dlg->Show();
+        m_plugins_dlg->Raise();
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "open_plugins_dialog failed: " << e.what();
+        if (m_plugins_dlg) {
+            m_plugins_dlg->Destroy();
+            m_plugins_dlg = nullptr;
+        }
+        wxMessageBox(wxString::Format(_L("Failed to open the Plugins dialog:\n%s"), from_u8(e.what())), _L("Plugins"),
+                     wxOK | wxICON_ERROR, mainframe);
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(error) << "open_plugins_dialog failed with a non-standard exception";
+        if (m_plugins_dlg) {
+            m_plugins_dlg->Destroy();
+            m_plugins_dlg = nullptr;
+        }
+        wxMessageBox(_L("Failed to open the Plugins dialog (unknown error)."), _L("Plugins"), wxOK | wxICON_ERROR, mainframe);
+    }
+}
+
+void GUI_App::open_terminal_dialog()
+{
+    // Reached from the plugins dialog's webview ("open_terminal" command), i.e. from
+    // inside the webview script-message callback, which GTK/macOS deliver synchronously
+    // (see ui_create_window in PluginHostUi.cpp). TerminalDialog hosts a webview of its
+    // own, so creating or presenting it on that stack is the same class as the Linux
+    // gtk_window_present crash — defer all window work to a clean main-loop iteration.
+    CallAfter([this]() {
+        if (m_terminal_dlg) {
+            // Re-front the existing window; guard Show() per #13657 (GTK re-enters
+            // layout when showing an already-visible window).
+            if (!m_terminal_dlg->IsShown())
+                m_terminal_dlg->Show();
+            m_terminal_dlg->Raise();
+            return;
+        }
+
+        m_terminal_dlg = new TerminalDialog(mainframe, wxID_ANY, _L("Plugin Terminal"),
+                                            wxDefaultPosition, wxSize(820, 600));
+        m_terminal_dlg->Bind(wxEVT_DESTROY, [this](wxWindowDestroyEvent& event) {
+            if (event.GetEventObject() == m_terminal_dlg)
+                m_terminal_dlg = nullptr;
+            event.Skip();
+        });
+
+        // Show() alone activates and fronts a freshly created window on every platform.
+        m_terminal_dlg->Show();
+    });
+}
+
+void GUI_App::open_speed_dial()
+{
+    if (!mainframe)
+        return;
+    if (!m_speed_dial_dialog) {
+        m_speed_dial_dialog = new SpeedDialWebDialog(mainframe);
+        m_speed_dial_dialog->Bind(wxEVT_DESTROY, [this](wxWindowDestroyEvent& event) {
+            if (event.GetEventObject() == m_speed_dial_dialog)
+                m_speed_dial_dialog = nullptr;
+            event.Skip();
+        });
+    }
+    m_speed_dial_dialog->request_show();
+}
+
 
 
 bool GUI_App::on_init_inner()
@@ -6570,86 +6652,6 @@ void  GUI_App::show_ip_address_enter_dialog_handler(wxCommandEvent& evt)
 {
     wxString title = evt.GetString();
     show_modal_ip_address_enter_dialog(title);
-void GUI_App::open_plugins_dialog(size_t open_on_tab, const std::string& highlight_option)
-{
-    if (m_plugins_dlg) {
-        m_plugins_dlg->Show();
-        m_plugins_dlg->Raise();
-        return;
-    }
-
-    try {
-        m_plugins_dlg = new PluginsDialog(mainframe, wxID_ANY, _L("Plugins"));
-        m_plugins_dlg->set_open_terminal_dlg_fn();
-        m_plugins_dlg->Bind(wxEVT_DESTROY, [this](wxWindowDestroyEvent& event) {
-            if (event.GetEventObject() == m_plugins_dlg)
-                m_plugins_dlg = nullptr;
-            event.Skip();
-        });
-
-        m_plugins_dlg->Show();
-        m_plugins_dlg->Raise();
-    } catch (const std::exception& e) {
-        BOOST_LOG_TRIVIAL(error) << "open_plugins_dialog failed: " << e.what();
-        if (m_plugins_dlg) {
-            m_plugins_dlg->Destroy();
-            m_plugins_dlg = nullptr;
-        }
-        wxMessageBox(wxString::Format(_L("Failed to open the Plugins dialog:\n%s"), from_u8(e.what())), _L("Plugins"),
-                     wxOK | wxICON_ERROR, mainframe);
-    } catch (...) {
-        BOOST_LOG_TRIVIAL(error) << "open_plugins_dialog failed with a non-standard exception";
-        if (m_plugins_dlg) {
-            m_plugins_dlg->Destroy();
-            m_plugins_dlg = nullptr;
-        }
-        wxMessageBox(_L("Failed to open the Plugins dialog (unknown error)."), _L("Plugins"), wxOK | wxICON_ERROR, mainframe);
-    }
-}
-
-void GUI_App::open_terminal_dialog()
-{
-    // Reached from the plugins dialog's webview ("open_terminal" command), i.e. from
-    // inside the webview script-message callback, which GTK/macOS deliver synchronously
-    // (see ui_create_window in PluginHostUi.cpp). TerminalDialog hosts a webview of its
-    // own, so creating or presenting it on that stack is the same class as the Linux
-    // gtk_window_present crash — defer all window work to a clean main-loop iteration.
-    CallAfter([this]() {
-        if (m_terminal_dlg) {
-            // Re-front the existing window; guard Show() per #13657 (GTK re-enters
-            // layout when showing an already-visible window).
-            if (!m_terminal_dlg->IsShown())
-                m_terminal_dlg->Show();
-            m_terminal_dlg->Raise();
-            return;
-        }
-
-        m_terminal_dlg = new TerminalDialog(mainframe, wxID_ANY, _L("Plugin Terminal"),
-                                            wxDefaultPosition, wxSize(820, 600));
-        m_terminal_dlg->Bind(wxEVT_DESTROY, [this](wxWindowDestroyEvent& event) {
-            if (event.GetEventObject() == m_terminal_dlg)
-                m_terminal_dlg = nullptr;
-            event.Skip();
-        });
-
-        // Show() alone activates and fronts a freshly created window on every platform.
-        m_terminal_dlg->Show();
-    });
-}
-
-void GUI_App::open_speed_dial()
-{
-    if (!mainframe)
-        return;
-    if (!m_speed_dial_dialog) {
-        m_speed_dial_dialog = new SpeedDialWebDialog(mainframe);
-        m_speed_dial_dialog->Bind(wxEVT_DESTROY, [this](wxWindowDestroyEvent& event) {
-            if (event.GetEventObject() == m_speed_dial_dialog)
-                m_speed_dial_dialog = nullptr;
-            event.Skip();
-        });
-    }
-    m_speed_dial_dialog->request_show();
 }
 
 }

@@ -162,6 +162,7 @@ enum class NotificationType
         FilamentIncompatibleMixed,
     // Active preset requires plugin capabilities that are not installed/loadable. Persistent,
     // non-modal; offers install / search and blocks slicing.
+    OrcaCloudAPIError,
     OrcaLocalPluginMissingError,
     OrcaCloudPluginMissingError,
     // Active preset references capabilities that are installed but not active (plugin not loaded, or
@@ -487,6 +488,11 @@ private:
 			                          const float text_x, const float text_y,
 		                              const std::string text,
 		                              bool more = false);
+		// Renders an underlined, hyperlink-style clickable label backed by an invisible button.
+		// on_click runs when pressed; the callback itself decides whether to close().
+		void render_hyperlink_action(ImGuiWrapper& imgui, float text_x, float text_y,
+		                             const std::string& text, const char* button_id,
+		                             const std::function<void()>& on_click);
 		virtual void bbl_render_block_notif_text(ImGuiWrapper& imgui,
 			const float win_size_x, const float win_size_y,
 			const float win_pos_x, const float win_pos_y);

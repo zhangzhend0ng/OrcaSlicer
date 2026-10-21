@@ -2,7 +2,6 @@
 
 #include "PluginManager.hpp"
 #include "../Utils/Http.hpp"
-#include "../Utils/OrcaCloudServiceAgent.hpp"
 #include "../GUI/GUI.hpp"
 #include "../GUI/GUI_App.hpp"
 #include "../GUI/I18N.hpp"

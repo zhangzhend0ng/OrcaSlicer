@@ -324,9 +324,9 @@ endif (MINGW)
 if (APPLE)
     # A linker flag rather than the BUILD_RPATH property because the release
     # flow uses the Xcode generator, which does not honor BUILD_RPATH.
-    target_link_options(OrcaSlicer PRIVATE "LINKER:-rpath,@executable_path/python/lib")
+    target_link_options(Snapmaker_Orca PRIVATE "LINKER:-rpath,@executable_path/python/lib")
 elseif (UNIX AND NOT WIN32)
-    set_target_properties(OrcaSlicer PROPERTIES
+    set_target_properties(Snapmaker_Orca PROPERTIES
         # Build tree + AppImage, which packages the build-tree binary.
         BUILD_RPATH "$ORIGIN/python/lib;$ORIGIN/../lib/python/lib"
         # Flatpak (cmake --install).
@@ -490,9 +490,9 @@ if (WIN32)
         endif()
     endif ()
     # copy libpython to the bin folder for Windows
-    add_custom_command(TARGET OrcaSlicer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:OrcaSlicer>/python"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_PREFIX_PATH}/libpython" "$<TARGET_FILE_DIR:OrcaSlicer>/python"
+    add_custom_command(TARGET Snapmaker_Orca POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:Snapmaker_Orca>/python"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_PREFIX_PATH}/libpython" "$<TARGET_FILE_DIR:Snapmaker_Orca>/python"
         COMMENT "Copying Python runtime into the build tree"
         VERBATIM)
 
@@ -541,9 +541,12 @@ else ()
         set(BIN_CONF_DIR "Debug")
     else ()
         set(BIN_RESOURCES_DIR "${CMAKE_CURRENT_BINARY_DIR}/../resources")
-        set(BIN_DIR "$<TARGET_FILE_DIR:OrcaSlicer>")
+        set(BIN_DIR "$<TARGET_FILE_DIR:Snapmaker_Orca>")
     endif ()
     if (CMAKE_MACOSX_BUNDLE)
+        # Upstream PR #14530 port: python runtime staging + rpath expect BIN_DIR to point at the
+        # bundle executable directory on macOS.
+        set(BIN_DIR "$<TARGET_FILE_DIR:Snapmaker_Orca>")
         set(MACOSX_BUNDLE_ICON_FILE Icon.icns)
         set_target_properties(Snapmaker_Orca PROPERTIES
             MACOSX_BUNDLE TRUE
