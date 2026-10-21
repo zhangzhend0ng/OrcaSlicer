@@ -309,6 +309,7 @@ void PluginManager::merge_discovered_plugins(std::vector<PluginDescriptor> disco
             }
 
             seen.push_back(descriptor.plugin_key);
+            m_missing_plugin_keys.erase(descriptor.plugin_key);
 
             Plugin* existing = find_plugin_locked(descriptor.plugin_key);
             if (existing == nullptr) {
@@ -320,6 +321,8 @@ void PluginManager::merge_discovered_plugins(std::vector<PluginDescriptor> disco
 
             // A manifest-only rescan has nothing to say about capabilities, so the live module and
             // instances are left alone.
+            if (!descriptor.install_state_valid)
+                descriptor.enabled = existing->descriptor.enabled;
             existing->descriptor = std::move(descriptor);
         }
 
@@ -327,12 +330,47 @@ void PluginManager::merge_discovered_plugins(std::vector<PluginDescriptor> disco
             return;
     }
 
-    // Unloading may call Python and lifecycle subscribers may re-enter the manager, so never do it
-    // while holding m_mutex. unload_and_erase_if() retries until no matching entry is loaded at the
-    // moment of erase, in case another caller starts a load between the initial snapshot and the
-    // teardown.
-    unload_and_erase_if(
-        [&seen](const Plugin& plugin) { return std::find(seen.begin(), seen.end(), plugin.descriptor.plugin_key) == seen.end(); });
+    // A package can be temporarily absent while an external side-loader replaces it. Keep the
+    // descriptor and its persisted enable state until the user explicitly removes the missing
+    // entry, or a later scan rediscovers it. In particular, do not unload here: the unload callback
+    // would turn a transient filesystem gap into enabled=false in the sidecar.
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (const Plugin& plugin : m_plugins) {
+            if (plugin.descriptor.has_local_package() &&
+                std::find(seen.begin(), seen.end(), plugin.descriptor.plugin_key) == seen.end())
+                m_missing_plugin_keys.insert(plugin.descriptor.plugin_key);
+        }
+    }
+}
+
+std::vector<PluginDescriptor> PluginManager::get_missing_plugin_descriptors() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    std::vector<PluginDescriptor> result;
+    result.reserve(m_missing_plugin_keys.size());
+    for (const Plugin& plugin : m_plugins)
+        if (m_missing_plugin_keys.count(plugin.descriptor.plugin_key) != 0)
+            result.push_back(plugin.descriptor);
+    return result;
+}
+
+void PluginManager::remove_missing_plugins(const std::vector<std::string>& plugin_keys)
+{
+    const std::unordered_set<std::string> requested(plugin_keys.begin(), plugin_keys.end());
+
+    // The predicate is evaluated only while m_mutex is held by unload_and_erase_if(). Checking the
+    // current missing set here prevents a package that reappeared between the dialog and removal
+    // from being erased.
+    unload_and_erase_if([this, &requested](const Plugin& plugin) {
+        return requested.count(plugin.descriptor.plugin_key) != 0 &&
+               m_missing_plugin_keys.count(plugin.descriptor.plugin_key) != 0;
+    });
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (const std::string& plugin_key : requested)
+        m_missing_plugin_keys.erase(plugin_key);
 }
 
 void PluginManager::unload_and_erase_if(const std::function<bool(const Plugin&)>& should_remove,
@@ -481,6 +519,27 @@ bool PluginManager::try_get_plugin_descriptor_for_capability(const std::string& 
     }
 
     return false;
+}
+
+std::string PluginManager::get_storage_dir(const std::string& plugin_key) const
+{
+    namespace fs = boost::filesystem;
+
+    PluginDescriptor descriptor;
+    if (!try_get_plugin_descriptor(plugin_key, descriptor))
+        throw std::runtime_error("The current plugin is not registered");
+
+    const fs::path base_storage_dir = fs::path(get_orca_plugins_dir()) / PLUGIN_DATA_DIR;
+
+    if (!descriptor.is_cloud_plugin()) {
+        const fs::path local_storage_dir = base_storage_dir / plugin_key;
+        fs::create_directories(local_storage_dir);
+        return local_storage_dir.string();
+    }
+
+    // Cloud storage short-circuit: upstream queries the cloud agent's user id here; on this fork
+    // the cloud agent is trimmed, so cloud plugin storage is permanently unavailable.
+    throw std::runtime_error("Cloud plugin storage is unavailable before networking is initialized");
 }
 
 // ── Capability instances ────────────────────────────────────────────────────────────────────

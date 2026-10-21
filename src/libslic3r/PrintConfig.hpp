@@ -1458,6 +1458,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionBool,               dithering_local_z_direct_multicolor))
     ((ConfigOptionBool,               dithering_step_painted_zones_only))
     ((ConfigOptionStrings,            slicing_pipeline_plugin))
+    ((ConfigOptionString,             print_plugin_config_overrides))
     ((ConfigOptionString,             printer_model))
     ((ConfigOptionFloat,              resolution))
     ((ConfigOptionFloats,             retraction_minimum_travel))

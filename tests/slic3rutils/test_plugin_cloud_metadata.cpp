@@ -30,6 +30,9 @@ namespace {
 // same as any other plugin.
 struct ScopedManagerShutdown
 {
+    // Before initialize(): the interpreter creates {data_dir}/python/packages and {data_dir}/log,
+    // which would otherwise land in the working directory.
+    ScopedDataDir python_data_dir{"plugin-python"};
     bool initialized = PluginManager::instance().initialize();
 
     ~ScopedManagerShutdown()
@@ -51,6 +54,29 @@ print('ok')
 )PY";
 
 } // namespace
+
+TEST_CASE("plugin latest version uses the authoritative catalog field", "[PluginDescriptor]")
+{
+    PluginDescriptor descriptor;
+    descriptor.version        = "1.3.0";
+    descriptor.latest_version = "1.3.0";
+    PluginChangelog changelog;
+    changelog.version = "1.2.0";
+    descriptor.changelog.push_back(changelog);
+
+    CHECK(descriptor.latest_available_version() == "1.3.0");
+}
+
+TEST_CASE("plugin latest version falls back to the descriptor version", "[PluginDescriptor]")
+{
+    PluginDescriptor descriptor;
+    descriptor.version = "1.1.0";
+    PluginChangelog changelog;
+    changelog.version = "1.0.0";
+    descriptor.changelog.push_back(changelog);
+
+    CHECK(descriptor.latest_available_version() == "1.1.0");
+}
 
 // Regression: update_cloud_metadata() replaces a matched entry's descriptor wholesale with the
 // cloud catalog record (`entry = cloud_entry`). Configuration used to ride on the descriptor, so
