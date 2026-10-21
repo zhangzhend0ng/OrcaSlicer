@@ -10,6 +10,7 @@
 #include "Widgets/Label.hpp"
 
 #include <wx/button.h>
+#include <wx/dcclient.h>
 #include <wx/sizer.h>
 
 wxDEFINE_EVENT(wxCUSTOMEVT_NOTEBOOK_SEL_CHANGED, wxCommandEvent);
@@ -172,7 +173,7 @@ void ButtonsListCtrl::SetSelection(int sel)
 
 bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /* = false*/, const std::string &bmp_name /* = ""*/, const std::string &inactive_bmp_name)
 {
-    Button * btn = new Button(this, text.empty() ? text : " " + text, bmp_name, wxNO_BORDER);
+    Button * btn = new Button(this, text, bmp_name, wxNO_BORDER);
     btn->SetCornerRadius(0);
 
     int em = em_unit(this);
@@ -202,6 +203,8 @@ bool ButtonsListCtrl::InsertPage(size_t n, const wxString &text, bool bSelect /*
     });
     Slic3r::GUI::wxGetApp().UpdateDarkUI(btn);
     m_pageButtons.insert(m_pageButtons.begin() + n, btn);
+    m_pageLabels.insert(m_pageLabels.begin() + n, text); // ORCA
+    m_pageIcons.insert(m_pageIcons.begin() + n, bmp_name);
     m_buttons_sizer->Insert(n, new wxSizerItem(btn));
     m_buttons_sizer->SetCols(m_buttons_sizer->GetCols() + 1);
     m_sizer->Layout();
@@ -212,6 +215,8 @@ void ButtonsListCtrl::RemovePage(size_t n)
 {
     Button* btn = m_pageButtons[n];
     m_pageButtons.erase(m_pageButtons.begin() + n);
+    m_pageLabels.erase(m_pageLabels.begin() + n); // ORCA
+    m_pageIcons.erase(m_pageIcons.begin() + n);
     m_buttons_sizer->Remove(n);
 #if __WXOSX__
     RemoveChild(btn);
@@ -244,6 +249,30 @@ wxString ButtonsListCtrl::GetPageText(size_t n) const
 {
     Button* btn = m_pageButtons[n];
     return btn->GetLabel();
+}
+
+// ORCA
+wxString ButtonsListCtrl::GetPageLabel(size_t n) const
+{
+    return n < m_pageLabels.size() ? m_pageLabels[n] : wxString();
+}
+
+// ORCA
+void ButtonsListCtrl::SetOverflowButton(wxWindow* button)
+{
+    if (m_overflow_button == button)
+        return;
+
+    if (m_overflow_button != nullptr)
+        m_sizer->Detach(m_overflow_button);
+
+    m_overflow_button = button;
+
+    if (m_overflow_button != nullptr)
+        // Right after the tab buttons (index 0), ahead of any stretch spacer / side_tools.
+        m_sizer->Insert(1, m_overflow_button, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxBOTTOM, m_btn_margin);
+
+    m_sizer->Layout();
 }
 
 //#endif // _WIN32

@@ -399,6 +399,17 @@ public:
     Field*          get_field(const t_config_option_key &opt_key, Page** selected_page, int opt_index = -1);
     void            toggle_option(const std::string &opt_key, bool toggle, int opt_index = -1);
     void            toggle_line(const std::string &opt_key, bool toggle); // BBS: hide some line
+    // TRIM: set_option_label (runtime row rename) excised; the fork's Line has no set_label
+
+    // Live state of the settings row that owns an option, read from the built pages.
+    struct SettingRowState
+    {
+        bool     visible{true}; // false when ConfigManipulation hides the row
+        wxString label;         // Line::label the row draws (may change at runtime)
+        bool     multi{false};  // row packs several options, so label is precomposed
+    };
+    SettingRowState setting_row_state(const std::string &opt_id) const;
+
 	wxSizer*		description_line_widget(wxWindow* parent, ogStaticText** StaticText, wxString text = wxEmptyString);
 	bool			current_preset_is_dirty() const;
 	bool			saved_preset_is_dirty() const;

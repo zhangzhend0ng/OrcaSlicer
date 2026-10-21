@@ -210,6 +210,55 @@ void AppConfig::set_defaults()
     if (get("camera_orbit_mult").empty())
         set("camera_orbit_mult", "1.0");
 
+    if (get(SETTING_OPENGL_AA_SAMPLES).empty())
+        set(SETTING_OPENGL_AA_SAMPLES, "4");
+
+    if (get(SETTING_OPENGL_FXAA_ENABLED).empty())
+        set_bool(SETTING_OPENGL_FXAA_ENABLED, false);
+
+    if (get(SETTING_OPENGL_FPS_CAP).empty())
+        set(SETTING_OPENGL_FPS_CAP, "0");
+    else {
+        int fps_cap = 0;
+        try {
+            fps_cap = std::stoi(get(SETTING_OPENGL_FPS_CAP));
+        }
+        catch (...) {
+            fps_cap = 0;
+        }
+        fps_cap = std::max(0, std::min(fps_cap, 240));
+        set(SETTING_OPENGL_FPS_CAP, std::to_string(fps_cap));
+    }
+
+    // The getter already defaults, parses and clamps; write back what it resolves to.
+    set(SETTING_PLUGIN_PAGES_VISIBLE_COUNT, std::to_string(get_plugin_pages_visible_count()));
+
+    set(SETTING_SPEED_DIAL_RECENT_COUNT, std::to_string(get_speed_dial_recent_count()));
+
+    if (get(SETTING_OPENGL_SHOW_FPS_OVERLAY).empty())
+        set_bool(SETTING_OPENGL_SHOW_FPS_OVERLAY, false);
+
+    if (get(SETTING_OPENGL_REALISTIC_MODE).empty())
+        set_bool(SETTING_OPENGL_REALISTIC_MODE, false);
+
+    if (get(SETTING_OPENGL_REALISTIC_PHONG).empty())
+        set_bool(SETTING_OPENGL_REALISTIC_PHONG, true);
+
+    if (get(SETTING_OPENGL_SHADING_MODEL).empty())
+        set(SETTING_OPENGL_SHADING_MODEL, "gouraud");
+
+    if (get(SETTING_OPENGL_PHONG_BASIC_PLATE_SHADOWS).empty())
+        set_bool(SETTING_OPENGL_PHONG_BASIC_PLATE_SHADOWS, false);
+
+    if (get(SETTING_OPENGL_PHONG_SMOOTH_NORMALS).empty())
+        set_bool(SETTING_OPENGL_PHONG_SMOOTH_NORMALS, false);
+
+    if (get(SETTING_OPENGL_PHONG_SSAO).empty())
+        set_bool(SETTING_OPENGL_PHONG_SSAO, false);
+
+    if (get("export_sources_full_pathnames").empty())
+        set_bool("export_sources_full_pathnames", false);
+
     if (get("zoom_to_mouse").empty())
         set_bool("zoom_to_mouse", false);
 
@@ -1396,6 +1445,170 @@ std::vector<std::string> AppConfig::get_custom_color_from_config()
         }
     }
     return colors;
+}
+
+std::string AppConfig::get_network_plugin_version() const
+{
+    return get(SETTING_NETWORK_PLUGIN_VERSION);
+}
+
+void AppConfig::set_network_plugin_version(const std::string& version)
+{
+    set(SETTING_NETWORK_PLUGIN_VERSION, version);
+}
+
+int AppConfig::get_plugin_pages_visible_count() const
+{
+    std::string value = get(SETTING_PLUGIN_PAGES_VISIBLE_COUNT);
+    if (value.empty())
+        return PLUGIN_PAGES_VISIBLE_COUNT_DEFAULT;
+
+    int visible_count = PLUGIN_PAGES_VISIBLE_COUNT_DEFAULT;
+    try {
+        visible_count = std::stoi(value);
+    }
+    catch (...) {
+        return PLUGIN_PAGES_VISIBLE_COUNT_DEFAULT;
+    }
+    return std::clamp(visible_count, PLUGIN_PAGES_VISIBLE_COUNT_MIN, PLUGIN_PAGES_VISIBLE_COUNT_MAX);
+}
+
+int AppConfig::get_speed_dial_recent_count() const
+{
+    std::string value = get(SETTING_SPEED_DIAL_RECENT_COUNT);
+    if (value.empty())
+        return SPEED_DIAL_RECENT_COUNT_DEFAULT;
+
+    int recent_count = SPEED_DIAL_RECENT_COUNT_DEFAULT;
+    try {
+        recent_count = std::stoi(value);
+    }
+    catch (...) {
+        return SPEED_DIAL_RECENT_COUNT_DEFAULT;
+    }
+    return std::clamp(recent_count, SPEED_DIAL_RECENT_COUNT_MIN, SPEED_DIAL_RECENT_COUNT_MAX);
+}
+
+std::vector<std::string> AppConfig::get_skipped_network_versions() const
+{
+    std::vector<std::string> result;
+    std::string skipped = get(SETTING_NETWORK_PLUGIN_SKIPPED_VERSIONS);
+    if (skipped.empty())
+        return result;
+
+    std::stringstream ss(skipped);
+    std::string version;
+    while (std::getline(ss, version, ';')) {
+        if (!version.empty())
+            result.push_back(version);
+    }
+    return result;
+}
+
+void AppConfig::add_skipped_network_version(const std::string& version)
+{
+    auto skipped = get_skipped_network_versions();
+    if (std::find(skipped.begin(), skipped.end(), version) == skipped.end()) {
+        skipped.push_back(version);
+        std::string joined;
+        for (size_t i = 0; i < skipped.size(); ++i) {
+            if (i > 0) joined += ";";
+            joined += skipped[i];
+        }
+        set(SETTING_NETWORK_PLUGIN_SKIPPED_VERSIONS, joined);
+    }
+}
+
+bool AppConfig::is_network_version_skipped(const std::string& version) const
+{
+    auto skipped = get_skipped_network_versions();
+    return std::find(skipped.begin(), skipped.end(), version) != skipped.end();
+}
+
+void AppConfig::clear_skipped_network_versions()
+{
+    set(SETTING_NETWORK_PLUGIN_SKIPPED_VERSIONS, "");
+}
+
+bool AppConfig::is_network_update_prompt_disabled() const
+{
+    return get_bool(SETTING_NETWORK_PLUGIN_UPDATE_DISABLED);
+}
+
+void AppConfig::set_network_update_prompt_disabled(bool disabled)
+{
+    set_bool(SETTING_NETWORK_PLUGIN_UPDATE_DISABLED, disabled);
+}
+
+bool AppConfig::should_remind_network_update_later() const
+{
+    return get_bool(SETTING_NETWORK_PLUGIN_REMIND_LATER);
+}
+
+void AppConfig::set_remind_network_update_later(bool remind)
+{
+    set_bool(SETTING_NETWORK_PLUGIN_REMIND_LATER, remind);
+}
+
+void AppConfig::clear_remind_network_update_later()
+{
+    set_bool(SETTING_NETWORK_PLUGIN_REMIND_LATER, false);
+}
+
+std::vector<std::string> AppConfig::get_cloud_providers() const
+{
+    std::vector<std::string> result;
+    std::string providers = get(SETTING_CLOUD_PROVIDERS);
+    if (providers.empty()) {
+        result.push_back("orca");
+        return result;
+    }
+
+    std::stringstream ss(providers);
+    std::string provider;
+    while (std::getline(ss, provider, ';')) {
+        if (!provider.empty())
+            result.push_back(provider);
+    }
+    // Ensure "orca" is always present
+    if (std::find(result.begin(), result.end(), "orca") == result.end()) {
+        result.insert(result.begin(), "orca");
+    }
+    return result;
+}
+
+void AppConfig::set_cloud_providers(const std::vector<std::string>& providers)
+{
+    std::string joined;
+    for (size_t i = 0; i < providers.size(); ++i) {
+        if (i > 0) joined += ";";
+        joined += providers[i];
+    }
+    set(SETTING_CLOUD_PROVIDERS, joined);
+}
+
+bool AppConfig::has_cloud_provider(const std::string& provider) const
+{
+    auto providers = get_cloud_providers();
+    return std::find(providers.begin(), providers.end(), provider) != providers.end();
+}
+
+void AppConfig::add_cloud_provider(const std::string& provider)
+{
+    auto providers = get_cloud_providers();
+    if (std::find(providers.begin(), providers.end(), provider) == providers.end()) {
+        providers.push_back(provider);
+        set_cloud_providers(providers);
+    }
+}
+
+void AppConfig::remove_cloud_provider(const std::string& provider)
+{
+    if (provider == "orca")
+        return; // Cannot remove orca
+    auto providers = get_cloud_providers();
+    providers.erase(std::remove(providers.begin(), providers.end(), provider), providers.end());
+    set_cloud_providers(providers);
 }
 
 void AppConfig::reset_selections()

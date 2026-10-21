@@ -225,6 +225,7 @@ public:
 
     std::vector<PlaterPresetComboBox*>&   combos_filament();
     Search::OptionsSearcher&        get_searcher();
+    Search::SettingsIndex&          settings_index();
     std::string&                    get_search_line();
     void                            update_printer_thumbnail();
     const std::vector<std::string>& get_bed_type_combo_enum_values() const { return m_bed_type_combo_enum_values; }
@@ -347,7 +348,11 @@ public:
     bool open_3mf_file(const fs::path &file_path);
     int  get_3mf_file_count(std::vector<fs::path> paths);
     void add_file();
-    void add_model(bool imperial_units = false, std::string fname = "");
+    // Returns false when no object was added (e.g. the user cancelled the load dialog).
+    bool add_model(bool imperial_units = false, std::string fname = "");
+    // Opens the connection/management dialog appropriate for the current printer's
+    // technology: the machine picker for BBL/printer-agents, the print-host dialog otherwise.
+    void connect_to_printer();
     void import_zip_archive();
     void import_sl1_archive();
     void extract_config_from_project();
@@ -817,6 +822,9 @@ public:
     void apply_background_progress();
     //BBS: select the plate by hover_id
     int select_plate_by_hover_id(int hover_id, bool right_click = false, bool isModidyPlateName = false);
+    //BBS: add an empty plate and switch to it (the toolbar's Add Plate). Returns the new
+    // plate index, or -1 when the plate cap is reached.
+    int add_plate();
     //BBS: delete the plate, index= -1 means the current plate
     int delete_plate(int plate_index = -1);
     int duplicate_plate(int plate_index = -1);

@@ -2028,6 +2028,15 @@ private:
     static uint64_t             s_last_timestamp;
 };
 
+
+
+// Variant-aware option key sets (upstream BBS machinery; consumed by SettingsIndex).
+extern std::set<std::string> printer_extruder_options;
+extern std::set<std::string> print_options_with_variant;
+extern std::set<std::string> filament_options_with_variant;
+extern std::set<std::string> printer_options_with_variant_1;
+extern std::set<std::string> printer_options_with_variant_2;
+
 } // namespace Slic3r
 
 // Serialization through the Cereal library

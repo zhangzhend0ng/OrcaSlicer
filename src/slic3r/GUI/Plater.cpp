@@ -9849,6 +9849,11 @@ Search::OptionsSearcher& Sidebar::get_searcher()
     return p->searcher;
 }
 
+Search::SettingsIndex& Sidebar::settings_index()
+{
+    return p->searcher.index();
+}
+
 std::string& Sidebar::get_search_line()
 {
     return p->searcher.search_string();
@@ -10512,6 +10517,8 @@ struct Plater::priv
     void on_action_slice_all(SimpleEvent&);
     void on_action_publish(wxCommandEvent &evt);
     void on_action_print_plate(SimpleEvent&);
+    void open_machine_select_dialog(int plate_idx, PrintFromType print_type = PrintFromType::FROM_NORMAL);
+    void connect_to_printer();
     void on_action_print_all(SimpleEvent&);
     void on_action_export_gcode(SimpleEvent&);
     void on_action_send_gcode(SimpleEvent&);
@@ -10911,10 +10918,6 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
 
         view3D_canvas->Bind(EVT_GLCANVAS_SELECT_ALL, [this](SimpleEvent&) { this->q->select_all(); });
         view3D_canvas->Bind(EVT_GLCANVAS_QUESTION_MARK, [](SimpleEvent&) { wxGetApp().keyboard_shortcuts(); });
-        view3D_canvas->Bind(EVT_GLCANVAS_OPEN_SPEED_DIAL, [this](SimpleEvent&) {
-            if (this->q->is_view3D_shown())
-                wxGetApp().open_speed_dial();
-        });
         view3D_canvas->Bind(EVT_GLCANVAS_INCREASE_INSTANCES, [this](Event<int>& evt)
             { if (evt.data == 1) this->q->increase_instances(); else if (this->can_decrease_instances()) this->q->decrease_instances(); });
         view3D_canvas->Bind(EVT_GLCANVAS_INSTANCE_MOVED, [this](SimpleEvent&) { update(); });
@@ -15571,18 +15574,8 @@ void Plater::priv::on_action_add(SimpleEvent&)
 //BBS: add plate from toolbar
 void Plater::priv::on_action_add_plate(SimpleEvent&)
 {
-    if (q != nullptr) {
-        take_snapshot("add partplate");
-        this->partplate_list.create_plate();
-        int new_plate = this->partplate_list.get_plate_count() - 1;
-        this->partplate_list.select_plate(new_plate);
-        q->sync_print_seq_warning_notification();
-        update();
-
-        // BBS set default view
-        //q->get_camera().select_view("topfront");
-        q->get_camera().requires_zoom_to_plate = REQUIRES_ZOOM_TO_ALL_PLATE;
-    }
+    if (q != nullptr)
+        q->add_plate();
 }
 
 //BBS: remove plate from toolbar
@@ -15717,6 +15710,31 @@ void Plater::priv::on_action_print_plate(SimpleEvent&)
         record_start_print_preset("print_plate");
     } else {
         q->send_gcode_legacy(PLATE_CURRENT_IDX, nullptr, true);
+    }
+}
+
+void Plater::priv::open_machine_select_dialog(int plate_idx, PrintFromType print_type)
+{
+    // BBS
+    if (!m_select_machine_dlg)
+        m_select_machine_dlg = new SelectMachineDialog(q);
+    m_select_machine_dlg->set_print_type(print_type);
+    m_select_machine_dlg->prepare(plate_idx);
+    m_select_machine_dlg->ShowModal();
+}
+
+void Plater::priv::connect_to_printer()
+{
+    // BBL network (vendor BBL, not print-host) and printer-agents mode surface the real
+    // machine picker (lists discovered printers, connects on selection). Everything else
+    // is a print-host printer: the Connection button's dialog (host/API-key config).
+    PresetBundle* pb           = wxGetApp().preset_bundle;
+    const bool    bbl_or_agent = (pb && pb->use_bbl_network()); // TRIM: upstream also ORs use_printer_agents (agent architecture trimmed)
+    if (bbl_or_agent)
+        open_machine_select_dialog(q->get_partplate_list().get_curr_plate_index());
+    else {
+        PhysicalPrinterDialog dlg(q->GetParent());
+        dlg.ShowModal();
     }
 }
 
@@ -18084,7 +18102,7 @@ bool Plater::up_to_date(bool saved, bool backup)
                                         !Slic3r::has_other_changes(backup));
 }
 
-void Plater::add_model(bool imperial_units, std::string fname)
+bool Plater::add_model(bool imperial_units, std::string fname)
 {
     wxArrayString input_files;
 
@@ -18092,7 +18110,7 @@ void Plater::add_model(bool imperial_units, std::string fname)
     if (fname.empty()) {
         wxGetApp().import_model(this, input_files);
         if (input_files.empty())
-            return;
+            return false; // ADAPTED: bool return per upstream (no object added)
 
         for (const auto& file : input_files)
             paths.emplace_back(into_path(file));
@@ -18145,6 +18163,7 @@ void Plater::add_model(bool imperial_units, std::string fname)
 
         wxGetApp().mainframe->update_title();
     }
+    return true; // ADAPTED: upstream returns whether an object was added
 }
 
 void Plater::calib_pa(const Calib_Params& params)
@@ -20053,6 +20072,8 @@ void Plater::collapse_sidebar(bool collapse) { p->collapse_sidebar(collapse); }
 Sidebar::DockingState Plater::get_sidebar_docking_state() const { return p->get_sidebar_docking_state(); }
 
 void Plater::reset_window_layout() { p->reset_window_layout(); }
+
+void Plater::connect_to_printer() { p->connect_to_printer(); }
 
 //BBS
 void Plater::select_curr_plate_all() { p->select_curr_plate_all(); }
@@ -24548,6 +24569,24 @@ int Plater::select_plate_by_hover_id(int hover_id, bool right_click, bool isModi
 
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" %1%: return %2%")%__LINE__ % ret;
     return ret;
+}
+
+//BBS: add an empty plate and switch to it (mirrors the toolbar's Add Plate).
+int Plater::add_plate()
+{
+    if (!p->can_add_plate())
+        return -1;
+    take_snapshot("add partplate");
+    int new_plate = p->partplate_list.create_plate();
+    if (new_plate < 0)
+        return new_plate;
+    p->partplate_list.select_plate(new_plate);
+    update();
+
+    // BBS set default view
+    //get_camera().select_view("topfront");
+    p->camera.requires_zoom_to_plate = REQUIRES_ZOOM_TO_ALL_PLATE;
+    return new_plate;
 }
 
 int Plater::duplicate_plate(int plate_index)

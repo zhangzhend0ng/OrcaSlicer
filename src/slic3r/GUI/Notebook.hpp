@@ -29,6 +29,18 @@ public:
     bool SetPageImage(size_t n, const std::string& bmp_name) const;
     void SetPageText(size_t n, const wxString& strText);
     wxString GetPageText(size_t n) const;
+    // ORCA: the full page label, unaffected by SetCompact() blanking the button text.
+    wxString GetPageLabel(size_t n) const;
+    // Resource name the page was inserted with (empty for plugin pages, which pass a wxBitmap).
+    const std::string& GetPageIcon(size_t n) const
+    {
+        static const std::string empty;
+        return n < m_pageIcons.size() ? m_pageIcons[n] : empty;
+    }
+    wxFlexGridSizer* GetBtnsSizer(){return m_buttons_sizer;}; // ORCA
+    // ORCA: a companion widget shown right after the tab buttons (before any side_tools), e.g.
+    // an overflow indicator. Pass nullptr to remove it; ownership stays with the caller.
+    void SetOverflowButton(wxWindow* button);
 
 private:
     wxFlexGridSizer*                m_buttons_sizer;
@@ -38,7 +50,9 @@ private:
     int                             m_selection {-1};
     int                             m_btn_margin;
     int                             m_line_margin;
-    //ModeSizer*                      m_mode_sizer {nullptr};
+    std::vector<wxString>           m_pageLabels; // ORCA
+    std::vector<std::string>        m_pageIcons;  // ORCA: resource icon name per page, plugin pages empty
+    wxWindow*                       m_overflow_button{nullptr}; // ORCA
 };
 
 class Notebook: public wxBookCtrlBase
@@ -225,6 +239,20 @@ public:
     {
         wxCHECK_MSG(n < GetPageCount(), wxString(), wxS("Invalid page"));
         return GetBtnsListCtrl()->GetPageText(n);
+    }
+
+    // ORCA: the real page label. GetPageText() returns the button label, which SetCompact() blanks.
+    wxString GetPageLabel(size_t n) const
+    {
+        wxCHECK_MSG(n < GetPageCount(), wxString(), wxS("Invalid page"));
+        return GetBtnsListCtrl()->GetPageLabel(n);
+    }
+
+    // Resource icon name the page was inserted with; empty for pages added with a wxBitmap.
+    std::string GetPageIcon(size_t n) const
+    {
+        wxCHECK_MSG(n < GetPageCount(), std::string(), wxS("Invalid page"));
+        return GetBtnsListCtrl()->GetPageIcon(n);
     }
 
     virtual bool SetPageImage(size_t WXUNUSED(n), int WXUNUSED(imageId)) override

@@ -200,6 +200,9 @@ void KBShortcutsDialog::fill_shortcuts()
 
             // Switch table page
             { ctrl + L("Tab"), L("Switch table page")},
+            // Open speed dial
+            { L_CONTEXT("Space", "Keyboard Shortcut"), L("Open speed dial") },
+            { alt + "1..9,0", L("Run a Speed Dial favourite (while the Speed Dial is open)") },
             //DEL
             #ifdef __APPLE__
                 {"fn+⌫", L("Delete selected")},
@@ -265,7 +268,6 @@ void KBShortcutsDialog::fill_shortcuts()
             { "O", L("Zoom out") },
             { L("Tab"), L("Switch between Prepare/Preview") },
             { L("Space"), L("Open actions speed dial") },
-
         };
         m_full_shortcuts.push_back({ { _L("Plater"), "" }, plater_shortcuts });
 

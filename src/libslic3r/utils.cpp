@@ -285,7 +285,13 @@ void set_data_dir(const std::string &dir)
 {
     g_data_dir = dir;
     if (!g_data_dir.empty() && !boost::filesystem::exists(g_data_dir)) {
-       boost::filesystem::create_directory(g_data_dir);
+       // create_directories (upstream semantics): callers may pass a nested path such as
+       // <tmp>/config/<app-key>, whose parents do not exist yet.
+       try {
+           boost::filesystem::create_directories(g_data_dir);
+       } catch (const std::exception&) {
+           BOOST_LOG_TRIVIAL(error) << "set_data_dir: failed to create " << g_data_dir;
+       }
     }
 }
 

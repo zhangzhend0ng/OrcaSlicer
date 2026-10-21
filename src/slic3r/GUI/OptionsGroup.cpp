@@ -1,6 +1,7 @@
 #include "OptionsGroup.hpp"
 #include "ConfigExceptions.hpp"
 #include "Plater.hpp"
+#include "SettingsIndex.hpp"
 #include "GUI_App.hpp"
 #include "MainFrame.hpp"
 #include "OG_CustomCtrl.hpp"
@@ -227,6 +228,14 @@ void OptionsGroup::set_name(const wxString& new_name) { stb->SetLabel(new_name);
 void OptionsGroup::append_line(const Line& line)
 {
     m_lines.emplace_back(line);
+
+    // TRIM: upstream feeds the searcher (sidebar SettingsIndex) the row's wiki path and drawn
+    // label here so a Speed Dial setting action is named like the page. The fork's sidebar does
+    // not expose settings_index(); setting actions fall back to def names (setting_text).
+    if (false && m_use_custom_ctrl) {
+        const bool multi = line.get_options().size() > 1;
+        (void) multi;
+    }
 
     if (line.full_width && (line.widget != nullptr || !line.get_extra_widgets().empty()))
         return;
@@ -636,8 +645,8 @@ Option ConfigOptionsGroup::get_option(const std::string& opt_key, int opt_index 
     std::pair<std::string, int> pair(opt_key, opt_index);
     m_opt_map.emplace(opt_id, pair);
 
-    if (m_use_custom_ctrl) // fill group and category values just for options from Settings Tab
-        wxGetApp().sidebar().get_searcher().add_key(opt_id, static_cast<Preset::Type>(this->config_type()), title, this->config_category());
+    if (false && m_use_custom_ctrl) // TRIM: fork sidebar has no settings_index(); see append_line note
+        (void) opt_id;
 
     return Option(*m_config->def()->get(opt_key), opt_id);
 }

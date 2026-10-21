@@ -9436,6 +9436,188 @@ bool is_XL_printer(const PrintConfig &cfg)
 {
     return is_XL_printer(cfg.printer_notes.value);
 }
+// Variant-aware option key sets (upstream BBS multi-extruder-variant machinery; consumed by
+// SettingsIndex/UnsavedChangesDialog). Snapmaker fork import.
+std::set<std::string> print_options_with_variant = {
+    "initial_layer_speed",
+    "initial_layer_infill_speed",
+    "outer_wall_speed",
+    "inner_wall_speed",
+    "small_perimeter_speed",  //coFloatsOrPercents
+    "small_perimeter_threshold",
+    "sparse_infill_speed",
+    "internal_solid_infill_speed",
+    "top_surface_speed",
+    "enable_overhang_speed", //coBools
+    "overhang_1_4_speed",
+    "overhang_2_4_speed",
+    "overhang_3_4_speed",
+    "overhang_4_4_speed",
+    "slowdown_for_curled_perimeters",
+    "bridge_speed",
+    "internal_bridge_speed",
+    "gap_infill_speed",
+    "support_speed",
+    "support_interface_speed",
+    "travel_speed",
+    "travel_speed_z",
+    "initial_layer_travel_speed",
+    "default_acceleration",
+    "bridge_acceleration",
+    "travel_acceleration",
+    "initial_layer_travel_acceleration",
+    "initial_layer_acceleration",
+    "outer_wall_acceleration",
+    "inner_wall_acceleration",
+    "sparse_infill_acceleration", //coFloatsOrPercents
+    "internal_solid_infill_acceleration", //coFloatsOrPercents
+    "top_surface_acceleration",
+    "default_jerk",
+    "outer_wall_jerk",
+    "inner_wall_jerk",
+    "infill_jerk",
+    "top_surface_jerk",
+    "initial_layer_jerk",
+    "travel_jerk",
+    "initial_layer_travel_jerk",
+    "default_junction_deviation",
+    "print_extruder_id", //coInts
+    "print_extruder_variant", //coStrings
+    "top_solid_infill_flow_ratio"
+};
+std::set<std::string> filament_options_with_variant = {
+    "filament_flow_ratio",
+    "filament_max_volumetric_speed",
+    // Per-variant ramming / pre-cooling / nozzle-change filament overrides
+    "filament_ramming_volumetric_speed",
+    "filament_pre_cooling_temperature",
+    "filament_ramming_travel_time",
+    "filament_ramming_volumetric_speed_nc",
+    "filament_pre_cooling_temperature_nc",
+    "filament_ramming_travel_time_nc",
+    "filament_retract_length_nc",
+    "filament_preheat_temperature_delta",
+    //"filament_extruder_id",
+    "filament_extruder_variant",
+    "filament_retraction_length",
+    "filament_z_hop",
+    "filament_z_hop_types",
+    "filament_retract_lift_above",
+    "filament_retract_lift_below",
+    "filament_retract_lift_enforce",
+    "filament_retract_restart_extra",
+    "filament_retract_length_toolchange",
+    "filament_retract_restart_extra_toolchange",
+    "filament_retraction_speed",
+    "filament_deretraction_speed",
+    "filament_retraction_minimum_travel",
+    "filament_retract_when_changing_layer",
+    "filament_wipe",
+    //BBS
+    "filament_wipe_distance",
+    "filament_retract_before_wipe",
+    // Orca
+    "filament_retract_after_wipe",
+    //BBS
+    "filament_long_retractions_when_cut",
+    "filament_retraction_distances_when_cut",
+    "long_retractions_when_ec",
+    "retraction_distances_when_ec",
+    "nozzle_temperature_initial_layer",
+    "nozzle_temperature",
+    "filament_flush_volumetric_speed",
+    "filament_flush_temp",
+    "filament_cooling_before_tower",
+    "volumetric_speed_coefficients",
+    "filament_adaptive_volumetric_speed",
+    "filament_ironing_flow",
+    "filament_ironing_spacing",
+    "filament_ironing_inset",
+    "filament_ironing_speed",
+    // Orca: pressure advance
+    "enable_pressure_advance",
+    "pressure_advance",
+    "adaptive_pressure_advance",
+    "adaptive_pressure_advance_model",
+    "adaptive_pressure_advance_overhangs",
+    "adaptive_pressure_advance_bridges",
+    // Orca: cooling fans, multi-tool ramming and recommended nozzle temperature range
+    "fan_min_speed",
+    "fan_max_speed",
+    "additional_cooling_fan_speed",
+    "filament_minimal_purge_on_wipe_tower",
+    "filament_multitool_ramming",
+    "filament_multitool_ramming_volume",
+    "filament_multitool_ramming_flow",
+    "nozzle_temperature_range_low",
+    "nozzle_temperature_range_high",
+    "activate_air_filtration",
+    "activate_air_filtration_during_print",
+    "activate_air_filtration_on_completion",
+    "during_print_exhaust_fan_speed",
+    "complete_print_exhaust_fan_speed"
+};
+std::set<std::string> printer_extruder_options = {
+    "extruder_type",
+    "nozzle_diameter",
+    "default_nozzle_volume_type",
+    "extruder_printable_area",
+    "extruder_printable_height",
+    "min_layer_height",
+    "max_layer_height",
+    "extruder_max_nozzle_count"     // Per-extruder max (sub-)nozzle count
+};
+std::set<std::string> printer_options_with_variant_1 = {
+    "nozzle_volume",
+    "retraction_length",
+    "z_hop",
+    "travel_slope",
+    "retract_lift_above",
+    "retract_lift_below",
+    "retract_lift_enforce",
+    "z_hop_types",
+    "retraction_speed",
+    "deretraction_speed",
+    "retraction_minimum_travel",
+    "retract_when_changing_layer",
+    "wipe",
+    "wipe_distance",
+    "retract_before_wipe",
+    // Orca:
+    "retract_after_wipe",
+    "retract_length_toolchange",
+    "retract_restart_extra",
+    "retract_restart_extra_toolchange",
+    "long_retractions_when_cut",
+    "retraction_distances_when_cut",
+    "nozzle_volume",
+    "nozzle_type",
+    "printer_extruder_id",
+    "printer_extruder_variant",
+    // Per-variant hotend heat-up / cool-down rates (pre-heat time model)
+    "hotend_cooling_rate",
+    "hotend_heating_rate",
+    "nozzle_flush_dataset"
+};
+std::set<std::string> printer_options_with_variant_2 = {
+    "machine_max_acceleration_x",
+    "machine_max_acceleration_y",
+    "machine_max_acceleration_z",
+    "machine_max_acceleration_e",
+    "machine_max_acceleration_extruding",
+    "machine_max_acceleration_retracting",
+    "machine_max_acceleration_travel",
+    "machine_max_speed_x",
+    "machine_max_speed_y",
+    "machine_max_speed_z",
+    "machine_max_speed_e",
+    "machine_max_jerk_x",
+    "machine_max_jerk_y",
+    "machine_max_jerk_z",
+    "machine_max_jerk_e",
+    "machine_max_junction_deviation",
+};
+
 } // namespace Slic3r
 
 #include <cereal/types/polymorphic.hpp>

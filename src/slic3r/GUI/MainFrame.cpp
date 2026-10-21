@@ -1,6 +1,7 @@
 #include "MainFrame.hpp"
 
 #include <wx/panel.h>
+#include <wx/textentry.h>
 #include <wx/notebook.h>
 #include <wx/listbook.h>
 #include <wx/simplebook.h>
@@ -47,6 +48,7 @@
 #include "PartPlate.hpp"
 #include "Preferences.hpp"
 #include "Widgets/ProgressDialog.hpp"
+#include "Widgets/StaticBox.hpp"
 #include "BindDialog.hpp"
 #include "../Utils/MacDarkMode.hpp"
 
@@ -156,6 +158,138 @@ enum class ERescaleTarget
     Mainframe,
     SettingsDialog
 };
+
+namespace {
+
+// Space opens the speed dial, but it is the activation key for buttons, checkboxes and other
+// controls. CHAR_HOOK runs before the focused child, so only take Space when the focused window has
+// no keyboard-activation meaning of its own. Canvases (GLCanvas3D) and panels are not controls and
+// fall through to "open"; the Notebook itself does too, so Space still opens the dial on any page.
+bool focus_keeps_space(wxWindow* focus)
+{
+    if (!focus)
+        return false;
+    if (dynamic_cast<wxTextEntryBase*>(focus))
+        return true; // typing a space into a text field
+    if (dynamic_cast<wxWebView*>(focus))
+        return true; // web content scrolls and hosts its own text fields
+    if (dynamic_cast<::Button*>(focus))
+        return true; // custom button: Space clicks it (it is a wxWindow, not a wxControl)
+    if (dynamic_cast<StaticBox*>(focus))
+        return true; // custom composites (ComboBox, SpinInput, ...) activate with Space and are wxWindow
+    if (dynamic_cast<wxControl*>(focus) && !dynamic_cast<Notebook*>(focus))
+        return true; // stock button/checkbox/choice/list/etc. keep Space
+    return false;
+}
+
+} // namespace
+
+#ifdef __WXGTK__
+// A thin transparent panel placed at a window edge to handle resize.
+// Works regardless of underlying content (GLCanvas3D, wxWebView, etc.)
+// because these panels are Raise()'d above all siblings, so their GDK
+// windows receive pointer events even over WebKit2GTK or GL surfaces.
+class ResizeEdgePanel : public wxPanel
+{
+public:
+    enum Edge { Bottom, Left, Right };
+
+    static constexpr int BORDER_PX = 5;
+
+    ResizeEdgePanel(MainFrame* frame, Edge edge)
+        : wxPanel(frame, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                  wxBORDER_NONE)
+        , m_frame(frame)
+        , m_edge(edge)
+    {
+        SetBackgroundStyle(wxBG_STYLE_TRANSPARENT);
+        Bind(wxEVT_MOTION,       &ResizeEdgePanel::OnCursorUpdate, this);
+        Bind(wxEVT_ENTER_WINDOW, &ResizeEdgePanel::OnCursorUpdate, this);
+        Bind(wxEVT_LEFT_DOWN,    &ResizeEdgePanel::OnLeftDown,     this);
+        Bind(wxEVT_LEAVE_WINDOW, &ResizeEdgePanel::OnLeave,        this);
+        Bind(wxEVT_PAINT,        &ResizeEdgePanel::OnPaint,        this);
+    }
+
+private:
+    void OnPaint(wxPaintEvent&)
+    {
+        wxPaintDC dc(this);
+        // Transparent — draw nothing
+    }
+
+    GdkWindowEdge get_gdk_edge(const wxPoint& pos) const
+    {
+        wxSize size = GetSize();
+        switch (m_edge) {
+        case Bottom:
+            if (pos.x < BORDER_PX)           return GDK_WINDOW_EDGE_SOUTH_WEST;
+            if (pos.x > size.x - BORDER_PX)  return GDK_WINDOW_EDGE_SOUTH_EAST;
+            return GDK_WINDOW_EDGE_SOUTH;
+        case Left:
+            if (pos.y < BORDER_PX)            return GDK_WINDOW_EDGE_NORTH_WEST;
+            if (pos.y > size.y - BORDER_PX)   return GDK_WINDOW_EDGE_SOUTH_WEST;
+            return GDK_WINDOW_EDGE_WEST;
+        case Right:
+            if (pos.y < BORDER_PX)            return GDK_WINDOW_EDGE_NORTH_EAST;
+            if (pos.y > size.y - BORDER_PX)   return GDK_WINDOW_EDGE_SOUTH_EAST;
+            return GDK_WINDOW_EDGE_EAST;
+        }
+        return GDK_WINDOW_EDGE_SOUTH;
+    }
+
+    void OnCursorUpdate(wxMouseEvent& evt)
+    {
+        GdkWindowEdge edge = get_gdk_edge(evt.GetPosition());
+        const char* name;
+        switch (edge) {
+        case GDK_WINDOW_EDGE_NORTH:       name = "n-resize";  break;
+        case GDK_WINDOW_EDGE_SOUTH:       name = "s-resize";  break;
+        case GDK_WINDOW_EDGE_WEST:        name = "w-resize";  break;
+        case GDK_WINDOW_EDGE_EAST:        name = "e-resize";  break;
+        case GDK_WINDOW_EDGE_NORTH_WEST:  name = "nw-resize"; break;
+        case GDK_WINDOW_EDGE_NORTH_EAST:  name = "ne-resize"; break;
+        case GDK_WINDOW_EDGE_SOUTH_WEST:  name = "sw-resize"; break;
+        case GDK_WINDOW_EDGE_SOUTH_EAST:  name = "se-resize"; break;
+        default:                          name = "s-resize";  break;
+        }
+        if (name == m_last_cursor_name) return;
+        m_last_cursor_name = name;
+
+        GdkDisplay* display = gtk_widget_get_display(m_widget);
+        GdkCursor*  cursor  = gdk_cursor_new_from_name(display, name);
+        if (cursor) {
+            gdk_window_set_cursor(gtk_widget_get_window(m_widget), cursor);
+            g_object_unref(cursor);
+        }
+    }
+
+    void OnLeave(wxMouseEvent&)
+    {
+        m_last_cursor_name = nullptr;
+        gdk_window_set_cursor(gtk_widget_get_window(m_widget), nullptr);
+    }
+
+    void OnLeftDown(wxMouseEvent& evt)
+    {
+        if (m_frame->IsMaximized() || m_frame->IsFullScreen())
+            return;
+
+        GdkWindowEdge edge = get_gdk_edge(evt.GetPosition());
+        wxPoint mouse = ClientToScreen(evt.GetPosition());
+
+        gtk_window_begin_resize_drag(
+            GTK_WINDOW(m_frame->m_widget),
+            edge,
+            1,  // left button
+            mouse.x, mouse.y,
+            gtk_get_current_event_time());
+    }
+
+    MainFrame*    m_frame;
+    Edge          m_edge;
+    const char*   m_last_cursor_name{nullptr};
+};
+#endif // __WXGTK__
 
 #ifdef __APPLE__
 class Snapmaker_OrcaTaskBarIcon : public wxTaskBarIcon
@@ -629,6 +763,22 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
             }
             return;}
 #endif
+        // Orca: open the speed dial from any page with a bare Space. Only when no modifier is held (so
+        // editing shortcuts like Ctrl+Shift+Space in the canvas still reach it) and the focused window
+        // doesn't use Space to activate itself (buttons, checkboxes, list/choice controls, text fields),
+        // so a bare Space there still clicks/toggles instead of being hijacked. Gated by a preference
+        // (default on) so users can hand Space back to the focused control entirely.
+        if (wxGetApp().app_config->get_bool("enable_speed_dial") && !evt.CmdDown() && !evt.ShiftDown() &&
+            !evt.AltDown() && evt.GetKeyCode() == WXK_SPACE) {
+            if (focus_keeps_space(wxWindow::FindFocus())) {
+                evt.Skip(); // let the focused control keep Space
+                return;
+            }
+            // Defer out of the native key-event stack: open_speed_dial() may create a WebView and
+            // run script, the same window work the codebase avoids doing on native callbacks.
+            this->CallAfter([this] { wxGetApp().open_speed_dial(); });
+            return;
+        }
         if (evt.CmdDown() && evt.GetKeyCode() == 'R')
         {
             if (m_slice_enable)
@@ -2965,6 +3115,11 @@ void MainFrame::init_menubar_as_editor()
                 plater()->refresh_print();
         },
         "", nullptr, []() { return true; }, this, 1);
+    parent_menu->AppendSeparator();
+    append_menu_item(
+        parent_menu, wxID_ANY, _L("Open speed dial...") + sep + "Space", "",
+        [](wxCommandEvent &) { wxGetApp().open_speed_dial(); },
+        "", nullptr, []() { return true; }, this);
     //parent_menu->Insert(1, preference_item);
 #endif
     // Help menu
@@ -2989,6 +3144,11 @@ void MainFrame::init_menubar_as_editor()
 
     m_topbar->GetTopMenu()->AppendSeparator();
     append_menu_item(
+        m_topbar->GetTopMenu(), wxID_ANY, _L("Open speed dial...") + "\t" + ctrl + "K", "",
+        [](wxCommandEvent &) { wxGetApp().open_speed_dial(); },
+        "", nullptr, []() { return true; }, this);
+
+    append_menu_item(
         m_topbar->GetTopMenu(), wxID_ANY, _L("Plugins") + "	", "",
         [this](wxCommandEvent &) {
             wxGetApp().open_plugins_dialog();
@@ -3001,11 +3161,7 @@ void MainFrame::init_menubar_as_editor()
 
     // Temperature
     append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Temperature"), _L("Temperature Calibration"),
-        [this](wxCommandEvent&) {
-            if (!m_temp_calib_dlg)
-                m_temp_calib_dlg = new Temp_Calibration_Dlg((wxWindow*)this, wxID_ANY, m_plater);
-            m_temp_calib_dlg->ShowModal();
-        }, "", nullptr,
+        [this](wxCommandEvent&) { run_calibration(CalibKind::Temperature); }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
     // Flow rate (with submenu)
@@ -3028,11 +3184,7 @@ void MainFrame::init_menubar_as_editor()
 
     // Pressure Advance
     append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("Pressure advance"), _L("Pressure advance"),
-        [this](wxCommandEvent&) {
-            if (!m_pa_calib_dlg)
-                m_pa_calib_dlg = new PA_Calibration_Dlg((wxWindow*)this, wxID_ANY, m_plater);
-            m_pa_calib_dlg->ShowModal();
-        }, "", nullptr,
+        [this](wxCommandEvent&) { run_calibration(CalibKind::PressureAdvance); }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
     // Retraction test
@@ -3090,11 +3242,7 @@ void MainFrame::init_menubar_as_editor()
 
     // VFA
     append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L("VFA"), _L("VFA"),
-        [this](wxCommandEvent&) {
-            if (!m_vfa_test_dlg)
-                m_vfa_test_dlg = new VFA_Test_Dlg((wxWindow*)this, wxID_ANY, m_plater);
-            m_vfa_test_dlg->ShowModal();
-        }, "", nullptr,
+        [this](wxCommandEvent&) { run_calibration(CalibKind::VFA); }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
     // help
@@ -3130,11 +3278,7 @@ void MainFrame::init_menubar_as_editor()
 
     // Temperature
     append_menu_item(calib_menu, wxID_ANY, _L("Temperature"), _L("Temperature"),
-        [this](wxCommandEvent&) {
-            if (!m_temp_calib_dlg)
-                m_temp_calib_dlg = new Temp_Calibration_Dlg((wxWindow*)this, wxID_ANY, m_plater);
-            m_temp_calib_dlg->ShowModal();
-        }, "", nullptr,
+        [this](wxCommandEvent&) { run_calibration(CalibKind::Temperature); }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
     // Flowrate (with submenu)
@@ -3157,11 +3301,7 @@ void MainFrame::init_menubar_as_editor()
 
     // Pressure Advance
     append_menu_item(calib_menu, wxID_ANY, _L("Pressure advance"), _L("Pressure advance"),
-        [this](wxCommandEvent&) {
-            if (!m_pa_calib_dlg)
-                m_pa_calib_dlg = new PA_Calibration_Dlg((wxWindow*)this, wxID_ANY, m_plater);
-            m_pa_calib_dlg->ShowModal();
-        }, "", nullptr,
+        [this](wxCommandEvent&) { run_calibration(CalibKind::PressureAdvance); }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
     // Retraction test
@@ -3219,11 +3359,7 @@ void MainFrame::init_menubar_as_editor()
 
     // VFA
     append_menu_item(calib_menu, wxID_ANY, _L("VFA"), _L("VFA"),
-        [this](wxCommandEvent&) {
-            if (!m_vfa_test_dlg)
-                m_vfa_test_dlg = new VFA_Test_Dlg((wxWindow*)this, wxID_ANY, m_plater);
-            m_vfa_test_dlg->ShowModal();
-        }, "", nullptr,
+        [this](wxCommandEvent&) { run_calibration(CalibKind::VFA); }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
     // help
     append_menu_item(calib_menu, wxID_ANY, _L("Tutorial"), _L("Calibration help"),
@@ -4145,8 +4281,74 @@ void MainFrame::technology_changed()
 {
     // update menu titles
     PrinterTechnology pt = plater()->printer_technology();
-    if (int id = m_menubar->FindMenu(pt == ptFFF ? _omitL("Material Settings") : _L("Filament Settings")); id != wxNOT_FOUND)
-        m_menubar->SetMenuLabel(id, pt == ptSLA ? _omitL("Material Settings") : _L("Filament Settings"));
+    if (int id = m_menubar->FindMenu(pt == ptFFF ? _omitL("Material Settings") : _L("Filament settings")); id != wxNOT_FOUND)
+        m_menubar->SetMenuLabel(id, pt == ptSLA ? _omitL("Material Settings") : _L("Filament settings"));
+}
+
+// Opens the calibration wizard for `calib_kind`. Single source of truth for the wizard lifecycle:
+// the Calibration menu handlers and the Speed Dial native commands both call it. Most wizards are
+// cached members reused across launches; cornering/input-shaping build a fresh transient dialog.
+// Call while the Prepare (3D) panel is shown.
+void MainFrame::run_calibration(CalibKind calib_kind)
+{
+    switch (calib_kind) {
+    case CalibKind::Temperature: {
+        if (!m_temp_calib_dlg)
+            m_temp_calib_dlg = new Temp_Calibration_Dlg((wxWindow*) this, wxID_ANY, m_plater);
+        m_temp_calib_dlg->ShowModal();
+        break;
+    }
+    case CalibKind::MaxVolumetric: {
+        if (!m_vol_test_dlg)
+            m_vol_test_dlg = new MaxVolumetricSpeed_Test_Dlg((wxWindow*) this, wxID_ANY, m_plater);
+        m_vol_test_dlg->ShowModal();
+        break;
+    }
+    case CalibKind::PressureAdvance: {
+        if (!m_pa_calib_dlg)
+            m_pa_calib_dlg = new PA_Calibration_Dlg((wxWindow*) this, wxID_ANY, m_plater);
+        m_pa_calib_dlg->ShowModal();
+        break;
+    }
+    case CalibKind::FlowRatio: {
+        // ADAPTED: upstream opens its FlowRateCalibrationDialog wizard; the fork drives flow
+        // calibration through Plater (same entry point as the Calibration menu's Pass 1).
+        if (m_plater)
+            m_plater->calib_flowrate(false, 1);
+        break;
+    }
+    case CalibKind::Retraction: {
+        if (!m_retraction_calib_dlg)
+            m_retraction_calib_dlg = new Retraction_Test_Dlg((wxWindow*) this, wxID_ANY, m_plater);
+        m_retraction_calib_dlg->ShowModal();
+        break;
+    }
+    case CalibKind::Cornering: {
+        // ADAPTED: the fork's cornering calibration is the junction-deviation dialog.
+        if (!m_junction_deviation_calib_dlg)
+            m_junction_deviation_calib_dlg = new Junction_Deviation_Test_Dlg((wxWindow*) this, wxID_ANY, m_plater);
+        m_junction_deviation_calib_dlg->ShowModal();
+        break;
+    }
+    case CalibKind::InputShapingFreq: {
+        auto dlg = new Input_Shaping_Freq_Test_Dlg((wxWindow*) this, wxID_ANY, m_plater);
+        dlg->ShowModal();
+        dlg->Destroy();
+        break;
+    }
+    case CalibKind::InputShapingDamp: {
+        auto dlg = new Input_Shaping_Damp_Test_Dlg((wxWindow*) this, wxID_ANY, m_plater);
+        dlg->ShowModal();
+        dlg->Destroy();
+        break;
+    }
+    case CalibKind::VFA: {
+        if (!m_vfa_test_dlg)
+            m_vfa_test_dlg = new VFA_Test_Dlg((wxWindow*) this, wxID_ANY, m_plater);
+        m_vfa_test_dlg->ShowModal();
+        break;
+    }
+    }
 }
 
 //

@@ -114,6 +114,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/SpeedDialDialog.hpp
     GUI/ActionRegistry.cpp
     GUI/ActionRegistry.hpp
+    GUI/NativeCommands.cpp
+    GUI/NativeCommands.hpp
     GUI/PluginsConfigDialog.cpp
     GUI/PluginsConfigDialog.hpp
     GUI/ProcessRunner.cpp
@@ -453,6 +455,9 @@ set(SLIC3R_GUI_SOURCES
     GUI/SceneRaycaster.hpp
     GUI/Search.cpp
     GUI/Search.hpp
+    GUI/SettingsIndex.cpp
+    GUI/SettingsIndex.hpp
+    GUI/Lazy.hpp
     GUI/Selection.cpp
     GUI/Selection.hpp
     GUI/SelectMachine.cpp

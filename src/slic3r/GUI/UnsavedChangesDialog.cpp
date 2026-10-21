@@ -1709,8 +1709,9 @@ static wxString get_flow_variant_string_value(const std::string& opt_key,
 
 void UnsavedChangesDialog::update_tree(Preset::Type type, PresetCollection* presets_)
 {
-    Search::OptionsSearcher& searcher = wxGetApp().sidebar().get_searcher();
-    searcher.sort_options_by_key();
+    // ADAPTED: batch-4 search refactor moved the index out of OptionsSearcher
+    Search::SettingsIndex& index = wxGetApp().sidebar().settings_index();
+    index.sort_options_by_key();
 
     // list of the presets with unsaved changes
     std::vector<PresetCollection*> presets_list;
@@ -1782,7 +1783,8 @@ void UnsavedChangesDialog::update_tree(Preset::Type type, PresetCollection* pres
 
         for (const std::string& opt_key : dirty_options) {
             const std::string pure_opt_key = get_pure_opt_key(opt_key);
-            const Search::Option& option = searcher.get_option(pure_opt_key, type);
+            int variant_hint = -2; // ADAPTED: final SettingsIndex::get_option takes (key, type, variant&)
+            const Search::Option& option = index.get_option(pure_opt_key, type, variant_hint);
             const bool flow_variant = flow_options != nullptr && pure_opt_key != opt_key &&
                 std::find(flow_options->begin(), flow_options->end(), pure_opt_key) != flow_options->end();
             const wxString old_value = flow_variant ?
@@ -1819,7 +1821,7 @@ void UnsavedChangesDialog::update_tree(Preset::Type type, PresetCollection* pres
     }
 
     // Revert sort of searcher back
-    searcher.sort_options_by_label();
+    index.sort_options_by_label();
 }
 
 void UnsavedChangesDialog::on_dpi_changed(const wxRect& suggested_rect)
@@ -2272,8 +2274,9 @@ void DiffPresetDialog::update_bottom_info(wxString bottom_info)
 
 void DiffPresetDialog::update_tree()
 {
-    Search::OptionsSearcher& searcher = wxGetApp().sidebar().get_searcher();
-    searcher.sort_options_by_key();
+    // ADAPTED: batch-4 search refactor moved the index out of OptionsSearcher
+    Search::SettingsIndex& index = wxGetApp().sidebar().settings_index();
+    index.sort_options_by_key();
 
     m_tree->Clear();
     wxString bottom_info = "";
@@ -2361,7 +2364,7 @@ void DiffPresetDialog::update_tree()
             wxString left_val = get_string_value(opt_key, left_config);
             wxString right_val = get_string_value(opt_key, right_congig);
 
-            Search::Option option = searcher.get_option(opt_key, get_full_label(opt_key, left_config), type);
+            Search::Option option = index.get_option(opt_key, get_full_label(opt_key, left_config), type); // ADAPTED: final API
             if (option.opt_key() != opt_key) {
                 // temporary solution, just for testing
                 m_tree->Append(opt_key, type, "Undef category", "Undef group", opt_key, left_val, right_val, "undefined"); // ORCA: use low resolution compatible icon
@@ -2392,7 +2395,7 @@ void DiffPresetDialog::update_tree()
     }
 
     // Revert sort of searcher back
-    searcher.sort_options_by_label();
+    index.sort_options_by_label();
 }
 
 void DiffPresetDialog::on_dpi_changed(const wxRect&)

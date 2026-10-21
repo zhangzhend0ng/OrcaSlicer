@@ -7,21 +7,21 @@
 class ButtonProps
 {
 public:
-    static int ChoiceButtonGap(){return 10;};
-    static int WindowButtonGap(){return 10;};
+    static int ChoiceButtonGap() { return 10; };
+    static int WindowButtonGap() { return 10; };
 };
 
-enum class ButtonStyle{
+enum class ButtonStyle {
     Regular,
     Confirm,
     Alert,
     Disabled,
 };
 
-enum class ButtonType{
-    Compact  , // Font10  FullyRounded  For spaces with less areas
-    Window   , // Font12  FullyRounded  For regular buttons in windows and not related with parameter boxes
-    Choice   , // Font14  Semi-Rounded  For dialog/window choice buttons
+enum class ButtonType {
+    Compact,   // Font10  FullyRounded  For spaces with less areas
+    Window,    // Font12  FullyRounded  For regular buttons in windows and not related with parameter boxes
+    Choice,    // Font14  Semi-Rounded  For dialog/window choice buttons
     Parameter, // Font14  Semi-Rounded  For buttons that near parameter boxes
     Expanded , // Font14  Semi-Rounded  For full length buttons. ex. buttons in static box
 };
@@ -31,17 +31,18 @@ class Button : public StaticBox
     wxRect textSize;
     wxSize minSize; // set by outer
     wxSize paddingSize;
+    int m_icon_spacing = 5;
     ScalableBitmap active_icon;
     ScalableBitmap inactive_icon;
 
-    StateColor   text_color;
+    StateColor text_color;
 
     bool pressedDown = false;
     bool m_selected  = true;
     bool canFocus  = true;
     bool isCenter = true;
 
-    static const int buttonWidth = 200;
+    static const int buttonWidth  = 200;
     static const int buttonHeight = 50;
 
 public:
@@ -63,11 +64,13 @@ public:
     
     void SetPaddingSize(const wxSize& size);
 
+    void SetIconSpacing(int spacing);
+
     void SetStyle(const ButtonStyle style /*= ButtonStyle::Regular*/, const ButtonType type /*= ButtonType::None*/);
 
-    void SetTextColor(StateColor const &color);
+    void SetTextColor(StateColor const& color);
 
-    void SetTextColorNormal(wxColor const &color);
+    void SetTextColorNormal(wxColor const& color);
 
     void SetSelected(bool selected = true) { m_selected = selected; }
 
@@ -93,7 +96,7 @@ protected:
 private:
     bool m_has_style = false;
     ButtonStyle m_style;
-    ButtonType  m_type;
+    ButtonType m_type;
 
     void paintEvent(wxPaintEvent& evt);
 
@@ -104,8 +107,8 @@ private:
     // some useful events
     void mouseDown(wxMouseEvent& event);
     void mouseReleased(wxMouseEvent& event);
-    void mouseCaptureLost(wxMouseCaptureLostEvent &event);
-    void keyDownUp(wxKeyEvent &event);
+    void mouseCaptureLost(wxMouseCaptureLostEvent& event);
+    void keyDownUp(wxKeyEvent& event);
 
     void sendButtonEvent();
 

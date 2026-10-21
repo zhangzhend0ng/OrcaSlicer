@@ -2278,6 +2278,11 @@ void GUI_App::init_app_config()
         }
 #endif // _WIN32
     }
+    // Speed Dial opens on a bare Space from any page by default. Seed the flag so Preferences and the
+    // MainFrame shortcut read the same value; an existing config (true or false) is left untouched.
+    if (app_config->get("enable_speed_dial").empty())
+        app_config->set_bool("enable_speed_dial", true);
+
     MixedFilamentManager::set_auto_generate_enabled(app_config->get_bool("auto_generate_gradients"));
     set_logging_level(Slic3r::level_string_to_boost(app_config->get("log_severity_level")));
 
@@ -6572,6 +6577,22 @@ void GUI_App::save_mode(const /*ConfigOptionMode*/int mode)
                                  mode == comSimple ? "simple" :
                                  mode == comDevelop ? "develop" : "simple";
     app_config->set("user_mode", mode_str);
+    update_mode();
+}
+
+void GUI_App::set_mode(ConfigOptionMode mode)
+{
+    const bool was_developer = app_config->get_bool("developer_mode");
+    if (was_developer)
+        app_config->set_bool("developer_mode", false);
+    save_mode(mode);
+    if (was_developer)
+        app_config->save();
+}
+
+void GUI_App::enable_developer_mode()
+{
+    app_config->set_bool("developer_mode", true);
     update_mode();
 }
 
