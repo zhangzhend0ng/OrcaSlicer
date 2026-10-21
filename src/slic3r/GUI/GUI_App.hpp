@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include "ActionRegistry.hpp"
 #include "ImGuiWrapper.hpp"
 #include "ConfigWizard.hpp"
 #include "OpenGLManager.hpp"
@@ -106,6 +107,9 @@ class HMSQuery;
 class ModelMallDialog;
 class PingCodeBindDialog;
 class NetworkErrorDialog;
+class PluginsDialog;
+class SpeedDialWebDialog;
+class TerminalDialog;
 
 enum FileType
 {
@@ -606,6 +610,10 @@ private:
     bool            is_gateway_url(const wxString& url) const;
     std::shared_ptr<Gateway::GatewayService> gateway_service() const { return m_gateway_service; }
     bool            gateway_device_connected() const;
+    PluginsDialog* m_plugins_dlg{nullptr};
+    SpeedDialWebDialog* m_speed_dial_dialog{nullptr};
+    TerminalDialog* m_terminal_dlg{nullptr};
+    ActionRegistry  m_action_registry;
 
     void            switch_staff_pick(bool on);
     bool            check_privacy_update();
@@ -672,7 +680,10 @@ public:
     bool            is_localized() const { return m_wxLocale->GetLocale() != "English"; }
 
     void            open_preferences(size_t open_on_tab = 0, const std::string& highlight_option = std::string());
-
+    void            open_plugins_dialog(size_t open_on_tab = 0, const std::string& highlight_option = std::string());
+    void            open_terminal_dialog();
+    void            open_speed_dial();
+    ActionRegistry& action_registry() { return m_action_registry; }
     virtual bool OnExceptionInMainLoop() override;
     // Calls wxLaunchDefaultBrowser if user confirms in dialog.
     bool            open_browser_with_warning_dialog(const wxString& url, int flags = 0);
@@ -812,6 +823,9 @@ private:
     bool            on_init_network(bool try_backup = false);
     void            init_networking_callbacks();
     void            init_app_config();
+    // GUI-side subscriptions to plugin loader events (dialog refresh,
+    // network-agent registration, plate revalidation).
+    void            init_plugin_gui_wiring();
     void            remove_old_networking_plugins();
     //BBS set extra header for http request
     std::map<std::string, std::string> get_extra_header();

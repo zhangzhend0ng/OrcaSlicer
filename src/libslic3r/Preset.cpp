@@ -967,7 +967,7 @@ static std::vector<std::string> s_Preset_print_options {
      "initial_layer_infill_speed", "only_one_wall_top", 
      "timelapse_type",
      "wall_generator", "wall_transition_length", "wall_transition_filter_deviation", "wall_transition_angle",
-     "wall_distribution_count", "min_feature_size", "min_bead_width", "post_process", "min_length_factor",
+     "wall_distribution_count", "min_feature_size", "min_bead_width", "post_process", "slicing_pipeline_plugin", "plugins", "plugin_config_overrides", "min_length_factor",
      "small_perimeter_speed", "small_perimeter_threshold","bridge_angle","internal_bridge_angle", "filter_out_gap_fill", "travel_acceleration","first_layer_travel_acceleration","inner_wall_acceleration", "min_width_top_surface",
      "default_jerk", "outer_wall_jerk", "inner_wall_jerk", "infill_jerk", "top_surface_jerk", "initial_layer_jerk","travel_jerk","first_layer_travel_jerk","default_junction_deviation",
      "top_solid_infill_flow_ratio","bottom_solid_infill_flow_ratio","only_one_wall_first_layer", "print_flow_ratio", "seam_gap",
@@ -1029,7 +1029,8 @@ static std::vector<std::string> s_Preset_filament_options {
     "filament_long_retractions_when_cut","filament_retraction_distances_when_cut", "idle_temperature",
     "filament_tower_ironing_area", "filament_tower_interface_pre_extrusion_dist",
     "filament_tower_interface_pre_extrusion_length", "filament_tower_interface_print_temp",
-    "filament_flow_support"
+    "filament_flow_support",
+    "plugin_config_overrides"
     };
 
 static std::vector<std::string> s_Preset_machine_limits_options {
@@ -1064,7 +1065,8 @@ static std::vector<std::string> s_Preset_printer_options {
     "cooling_tube_length", "high_current_on_filament_swap", "parking_pos_retraction", "extra_loading_move", "purge_in_prime_tower", "enable_filament_ramming", "ramming_line_width_ratio", "enable_change_pressure_when_wiping", "ramming_pressure_advance_value", 
     "z_offset",
     "disable_m73", "preferred_orientation", "emit_machine_limits_to_gcode", "pellet_modded_printer", "support_multi_bed_types", "default_bed_type", "bed_mesh_min","bed_mesh_max","bed_mesh_probe_distance", "adaptive_bed_mesh_margin", "enable_long_retraction_when_cut","long_retractions_when_cut","retraction_distances_when_cut",
-    "printer_flow_support"
+    "printer_flow_support",
+    "plugin_config_overrides"
     };
 
 static std::vector<std::string> s_Preset_sla_print_options {

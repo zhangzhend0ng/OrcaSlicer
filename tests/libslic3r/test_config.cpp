@@ -8,9 +8,13 @@
 #include <algorithm>
 
 #include <cereal/types/polymorphic.hpp>
-#include <cereal/types/string.hpp> 
-#include <cereal/types/vector.hpp> 
+#include <cereal/types/string.hpp>
+#include <cereal/types/vector.hpp>
 #include <cereal/archives/binary.hpp>
+
+#include <boost/filesystem.hpp>
+#include <boost/nowide/fstream.hpp>
+#include <nlohmann/json.hpp>
 
 using namespace Slic3r;
 

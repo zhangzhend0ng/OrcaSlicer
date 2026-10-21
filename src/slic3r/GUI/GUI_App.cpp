@@ -18,6 +18,7 @@
 #include "slic3r/Utils/PresetUpdater.hpp"
 #include "slic3r/Config/Version.hpp"
 #include "libslic3r/MixedFilament.hpp"
+#include <slic3r/plugin/PythonPluginInterface.hpp>
 
 // Localization headers: include libslic3r version first so everything in this file
 // uses the slic3r/GUI version (the macros will take precedence over the functions).
@@ -84,6 +85,9 @@
 #include "libslic3r/miniz_extension.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Color.hpp"
+#include "slic3r/plugin/PluginManager.hpp"
+#include "slic3r/plugin/host/PluginHostUi.hpp"
+#include "slic3r/plugin/PythonInterpreter.hpp"
 
 #include "GUI.hpp"
 #include "GUI_Utils.hpp"
@@ -136,6 +140,10 @@
 #include "ModelMall.hpp"
 #include "HintNotification.hpp"
 #include "bury_cfg/bury_point.hpp"
+
+#include "PluginsDialog.hpp"
+#include "SpeedDialDialog.hpp"
+#include "TerminalDialog.hpp"
 //#ifdef WIN32
 //#include "BaseException.h"
 //#endif
@@ -1335,6 +1343,7 @@ void GUI_App::shutdown(bool isRecreate)
 
     if (m_is_recreating_gui) return;
     m_is_closing = true;
+    Slic3r::PluginManager::instance().set_shutting_down();
     BOOST_LOG_TRIVIAL(info) << "GUI_App::shutdown exit";
 }
 
@@ -2065,6 +2074,10 @@ GUI_App::~GUI_App()
     GUI_App::m_app_alive.store(false);
 
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": enter");
+
+    Slic3r::PluginManager::instance().shutdown();
+    Slic3r::PythonInterpreter::instance().shutdown();
+
     if (app_config != nullptr) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": destroy app_config");
         delete app_config;
@@ -2463,6 +2476,51 @@ class wxBoostLog : public wxLog
         wxLog::SetActiveTarget(t);
     }
 };
+// wx/app-level plugin wiring, kept in one place: subscriptions to plugin
+// loader events that drive GUI policy (plugins dialog refresh, plate
+// revalidation). The libslic3r dispatch hooks are NOT wired here --
+// PluginManager::initialize() installs those via plugin_hooks::install().
+// (Snapmaker port: printer-agent / network-plugin registration callbacks of
+// upstream OrcaSlicer are intentionally omitted.)
+void GUI_App::init_plugin_gui_wiring()
+{
+    PluginManager& plugin_mgr = PluginManager::instance();
+
+    auto refresh_plugins_dialog = [] {
+        if (!wxTheApp)
+            return;
+
+        GUI_App* app = &GUI::wxGetApp();
+        if (app->is_closing())
+            return;
+
+        app->CallAfter([app] {
+            if (!app->is_closing() && app->m_plugins_dlg)
+                app->m_plugins_dlg->update_plugin_dialog_ui();
+        });
+    };
+
+    plugin_mgr.subscribe_on_unload_callback(PluginHostUi::close_windows_for_plugin);
+    plugin_mgr.subscribe_on_load_callback([refresh_plugins_dialog](const std::string&) { refresh_plugins_dialog(); });
+    plugin_mgr.subscribe_on_unload_callback([refresh_plugins_dialog](const std::string&) { refresh_plugins_dialog(); });
+    plugin_mgr.subscribe_on_capability_load_callback(
+        [refresh_plugins_dialog](const PluginCapabilityId& capability) {
+            refresh_plugins_dialog();
+            // A newly loaded capability may satisfy a missing-plugin notification; re-validate the
+            // current plate (on the UI thread) so the notification clears once its plugin is available.
+            if (wxTheApp && !wxGetApp().is_closing())
+                wxGetApp().CallAfter([]() {
+                    if (Plater* plater = wxGetApp().plater())
+                        plater->revalidate_current_plate_if_plugins_missing();
+                });
+        });
+    plugin_mgr.subscribe_on_capability_unload_callback(
+        [refresh_plugins_dialog](const PluginCapabilityId&) {
+            refresh_plugins_dialog();
+        });
+}
+
+
 
 bool GUI_App::on_init_inner()
 {
@@ -2840,15 +2898,69 @@ bool GUI_App::on_init_inner()
             wxMessageBox("Force using legacy bambu networking plugin because debugger is attached! If the app terminates itself immediately, please delete installed plugin and try again!");
         }
     } */
+
     copy_network_if_available();
     profiler.mark("copy_network_if_available");
+
+    if (scrn) {
+        scrn->SetText(_L("Loading Plugins") + dots, 20);
+        wxYield();
+    }
     on_init_network();
     profiler.mark("on_init_network");
 
+    // Initialize plugins after network then register on_load callbacks so once the plugin loads finish, it gets registered automatically.
+    // initialize() also installs the libslic3r hooks (capability resolver,
+    // slicing-pipeline dispatcher) via plugin_hooks::install() -- no
+    // per-capability wiring belongs here.
+    PluginManager& plugin_mgr = PluginManager::instance();
+    plugin_mgr.initialize();
+
+    // Set cloud plugin directory from previous session so cloud-installed
+    // plugins are discovered even before the network agent is ready.
+    const std::string preset_folder = app_config->get("preset_folder");
+    if (!preset_folder.empty()) {
+        plugin_mgr.set_cloud_user(preset_folder);
+    }
+
+    plugin_mgr.discover_plugins(false, true);
+
+    init_plugin_gui_wiring();
+
+    // Subscribe to the plugin loader and enumerate current actions (UI thread, once).
+    m_action_registry.init();
+
+    for (const std::string& plugin_key : plugin_mgr.get_enabled_plugin_keys()) {
+        if (!plugin_mgr.is_plugin_loaded(plugin_key)) {
+            plugin_mgr.load_plugin(plugin_key, false);
+            BOOST_LOG_TRIVIAL(info) << "Auto-loading plugin on startup: " << plugin_key;
+        }
+    }
+
+
     if (m_agent && m_agent->is_user_login()) {
         enable_user_preset_folder(true);
+        plugin_mgr.set_cloud_user(m_agent->get_user_id());
+        // If there is a user logged in we do an immediate sync.
+        std::vector<std::string> not_found, unauthorized;
+        plugin_mgr.fetch_plugins_from_cloud(&not_found, &unauthorized);
+        if (plater()) {
+            for (const auto& uuid : not_found) {
+                plater()->get_notification_manager()->push_notification(
+                    NotificationType::CustomNotification,
+                    NotificationManager::NotificationLevel::RegularNotificationLevel,
+                    format(_L("Plugin %s is no longer available."), uuid));
+            }
+            for (const auto& uuid : unauthorized) {
+                plater()->get_notification_manager()->push_notification(
+                    NotificationType::CustomNotification,
+                    NotificationManager::NotificationLevel::RegularNotificationLevel,
+                    format(_L("Plugin %s access is unauthorized."), uuid));
+            }
+        }
     } else {
         enable_user_preset_folder(false);
+        plugin_mgr.set_cloud_user("");
     }
 
     // BBS if load user preset failed
@@ -4220,8 +4332,14 @@ void GUI_App::request_user_logout()
         GUI::wxGetApp().sidebar().load_ams_list({}, {});
         remove_user_presets();
         enable_user_preset_folder(false);
+        Slic3r::PluginManager::instance().unload_cloud_plugins();
+        Slic3r::PluginManager::instance().clear_cloud_plugin_metadata();
+        Slic3r::PluginManager::instance().set_cloud_user("");
         preset_bundle->load_user_presets(DEFAULT_USER_FOLDER_NAME, ForwardCompatibilitySubstitutionRule::Enable);
         mainframe->update_side_preset_ui();
+
+        if (m_plugins_dlg)
+            m_plugins_dlg->update_plugin_dialog_ui();
 
         GUI::wxGetApp().stop_sync_user_preset();
     }
@@ -4556,10 +4674,12 @@ void GUI_App::enable_user_preset_folder(bool enable)
         std::string user_id = m_agent->get_user_id();
         app_config->set("preset_folder", user_id);
         GUI::wxGetApp().preset_bundle->update_user_presets_directory(user_id);
+        PluginManager::instance().set_cloud_user(user_id);
     } else {
         BOOST_LOG_TRIVIAL(info) << "preset_folder: set to empty";
         app_config->set("preset_folder", "");
         GUI::wxGetApp().preset_bundle->update_user_presets_directory(DEFAULT_USER_FOLDER_NAME);
+        PluginManager::instance().set_cloud_user("");
     }
 }
 
@@ -4612,40 +4732,6 @@ struct UpdaterQuery
     std::string arch;
     std::string os_info;
 };
-
-std::string detect_updater_os()
-{
-#if defined(_WIN32)
-    return "win";
-#elif defined(__APPLE__)
-    return "macos";
-#elif defined(__linux__) || defined(__LINUX__)
-    return "linux";
-#else
-    return "unknown";
-#endif
-}
-
-std::string detect_updater_arch()
-{
-#if defined(__aarch64__) || defined(_M_ARM64)
-    return "arm64";
-#elif defined(__x86_64__) || defined(_M_X64)
-    return "x86_64";
-#elif defined(__i386__) || defined(_M_IX86)
-    return "i386";
-#else
-    std::string arch = wxPlatformInfo::Get().GetArchName().ToStdString();
-    boost::algorithm::to_lower(arch);
-    if (arch.find("aarch64") != std::string::npos || arch.find("arm64") != std::string::npos)
-        return "arm64";
-    if (arch.find("x86_64") != std::string::npos || arch.find("amd64") != std::string::npos)
-        return "x86_64";
-    if (arch.find("i686") != std::string::npos || arch.find("i386") != std::string::npos || arch.find("x86") != std::string::npos)
-        return "i386";
-    return "unknown";
-#endif
-}
 
 std::string detect_updater_os_info()
 {
@@ -6484,6 +6570,88 @@ void  GUI_App::show_ip_address_enter_dialog_handler(wxCommandEvent& evt)
 {
     wxString title = evt.GetString();
     show_modal_ip_address_enter_dialog(title);
+void GUI_App::open_plugins_dialog(size_t open_on_tab, const std::string& highlight_option)
+{
+    if (m_plugins_dlg) {
+        m_plugins_dlg->Show();
+        m_plugins_dlg->Raise();
+        return;
+    }
+
+    try {
+        m_plugins_dlg = new PluginsDialog(mainframe, wxID_ANY, _L("Plugins"));
+        m_plugins_dlg->set_open_terminal_dlg_fn();
+        m_plugins_dlg->Bind(wxEVT_DESTROY, [this](wxWindowDestroyEvent& event) {
+            if (event.GetEventObject() == m_plugins_dlg)
+                m_plugins_dlg = nullptr;
+            event.Skip();
+        });
+
+        m_plugins_dlg->Show();
+        m_plugins_dlg->Raise();
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "open_plugins_dialog failed: " << e.what();
+        if (m_plugins_dlg) {
+            m_plugins_dlg->Destroy();
+            m_plugins_dlg = nullptr;
+        }
+        wxMessageBox(wxString::Format(_L("Failed to open the Plugins dialog:\n%s"), from_u8(e.what())), _L("Plugins"),
+                     wxOK | wxICON_ERROR, mainframe);
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(error) << "open_plugins_dialog failed with a non-standard exception";
+        if (m_plugins_dlg) {
+            m_plugins_dlg->Destroy();
+            m_plugins_dlg = nullptr;
+        }
+        wxMessageBox(_L("Failed to open the Plugins dialog (unknown error)."), _L("Plugins"), wxOK | wxICON_ERROR, mainframe);
+    }
+}
+
+void GUI_App::open_terminal_dialog()
+{
+    // Reached from the plugins dialog's webview ("open_terminal" command), i.e. from
+    // inside the webview script-message callback, which GTK/macOS deliver synchronously
+    // (see ui_create_window in PluginHostUi.cpp). TerminalDialog hosts a webview of its
+    // own, so creating or presenting it on that stack is the same class as the Linux
+    // gtk_window_present crash — defer all window work to a clean main-loop iteration.
+    CallAfter([this]() {
+        if (m_terminal_dlg) {
+            // Re-front the existing window; guard Show() per #13657 (GTK re-enters
+            // layout when showing an already-visible window).
+            if (!m_terminal_dlg->IsShown())
+                m_terminal_dlg->Show();
+            m_terminal_dlg->Raise();
+            return;
+        }
+
+        m_terminal_dlg = new TerminalDialog(mainframe, wxID_ANY, _L("Plugin Terminal"),
+                                            wxDefaultPosition, wxSize(820, 600));
+        m_terminal_dlg->Bind(wxEVT_DESTROY, [this](wxWindowDestroyEvent& event) {
+            if (event.GetEventObject() == m_terminal_dlg)
+                m_terminal_dlg = nullptr;
+            event.Skip();
+        });
+
+        // Show() alone activates and fronts a freshly created window on every platform.
+        m_terminal_dlg->Show();
+    });
+}
+
+void GUI_App::open_speed_dial()
+{
+    if (!mainframe)
+        return;
+    if (!m_speed_dial_dialog) {
+        m_speed_dial_dialog = new SpeedDialWebDialog(mainframe);
+        m_speed_dial_dialog->Bind(wxEVT_DESTROY, [this](wxWindowDestroyEvent& event) {
+            if (event.GetEventObject() == m_speed_dial_dialog)
+                m_speed_dial_dialog = nullptr;
+            event.Skip();
+        });
+    }
+    m_speed_dial_dialog->request_show();
+}
+
 }
 
 void GUI_App::open_preferences(size_t open_on_tab, const std::string& highlight_option)

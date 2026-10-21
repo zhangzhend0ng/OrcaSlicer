@@ -2987,6 +2987,14 @@ void MainFrame::init_menubar_as_editor()
         },
         "", nullptr, []() { return true; }, this);
 
+    m_topbar->GetTopMenu()->AppendSeparator();
+    append_menu_item(
+        m_topbar->GetTopMenu(), wxID_ANY, _L("Plugins") + "	", "",
+        [this](wxCommandEvent &) {
+            wxGetApp().open_plugins_dialog();
+        },
+        "", nullptr, []() { return true; }, this);
+
     m_topbar->AddDropDownSubMenu(helpMenu, _L("Help"));
 
     // SoftFever calibrations
@@ -3101,7 +3109,13 @@ void MainFrame::init_menubar_as_editor()
         }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
-#else
+    fileMenu->AppendSeparator();
+    append_menu_item(
+        fileMenu, wxID_ANY, _L("Plugins"), "", [this](wxCommandEvent&) { wxGetApp().open_plugins_dialog(); }, "", nullptr,
+        []() { return true; }, this);
+
+    fileMenu->AppendSeparator();
+
     m_menubar->Append(fileMenu, wxString::Format("&%s", _L("File")));
     if (editMenu)
         m_menubar->Append(editMenu, wxString::Format("&%s", _L("Edit")));

@@ -264,6 +264,7 @@ void KBShortcutsDialog::fill_shortcuts()
             { "I", L("Zoom in") },
             { "O", L("Zoom out") },
             { L("Tab"), L("Switch between Prepare/Preview") },
+            { L("Space"), L("Open actions speed dial") },
 
         };
         m_full_shortcuts.push_back({ { _L("Plater"), "" }, plater_shortcuts });

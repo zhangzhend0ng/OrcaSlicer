@@ -692,6 +692,17 @@ void PrintConfigDef::init_common_params()
         def = this->add("preset_name", coString);
         def->set_default_value(new ConfigOptionString());
     }
+
+    def = this->add("plugin_config_overrides", coString);
+    def->label = L("Capabilities");
+    def->tooltip = L("Configuration for the plugin capabilities this preset uses, overriding the global "
+                     "Capabilities configuration. Stored as a raw JSON array and edited through the dialog "
+                     "behind the button, never typed in directly.");
+    // Never shown as a text field: GUIType::plugin_config renders a button that opens PluginsConfigDialog.
+    def->gui_type = ConfigOptionDef::GUIType::plugin_config;
+    def->mode = comAdvanced;
+    def->cli = ConfigOptionDef::nocli;
+    def->set_default_value(new ConfigOptionString(""));
 }
 
 void PrintConfigDef::init_fff_params()
@@ -4356,6 +4367,23 @@ void PrintConfigDef::init_fff_params()
     def->min = 0.;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.0));
+
+    def = this->add("plugins", coStrings);
+    def->label = L("Plugins Used");
+    def->tooltip = L("Plugin capabilities referenced by this preset, stored as name;uuid;capability.");
+    def->mode = comDevelop;
+    def->set_default_value(new ConfigOptionStrings());
+
+    def = this->add("slicing_pipeline_plugin", coStrings);
+    def->label = L("Slicing Pipeline Plugin");
+    def->tooltip = L("Python plugin(s) invoked at each slicing pipeline step to read and modify intermediate slicing data, "
+                   "including a final G-code post-processing step. Research/experimental.");
+    def->gui_type = ConfigOptionDef::GUIType::plugin_picker;
+    def->plugin_type = "slicing-pipeline";
+    def->full_width = true;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionStrings());
+
 
     def = this->add("mixed_color_layer_height_b", coFloat);
     def->label = L("Dithering cadence height B");

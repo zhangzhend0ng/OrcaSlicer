@@ -154,6 +154,45 @@ function pack_deps() {
     )
 }
 
+# --- Bundled Python runtime verification --------------------------------------
+# Relocation is handled at the source: deps/python3/python3.cmake stamps
+# libpython with an @rpath id and src/CMakeLists.txt gives the app a matching
+# rpath. This gate catches regressions that would otherwise only surface as
+# launch failures on end users' machines (the absolute deps path still exists
+# on the build host, so a plain run can pass while relocation is broken --
+# hence the otool checks). The x86_64 leg runs under Rosetta on arm64 hosts.
+function verify_python_runtime() {
+    local app="$1"
+    local pydir="$app/Contents/MacOS/python"
+    [ -d "$pydir" ] || return 0  # app doesn't bundle Python (e.g. profile validator)
+    # Version-agnostic interpreter name so a CPython version bump cannot
+    # silently skip the gate; if the dir exists the interpreter must too.
+    local pybin="$pydir/bin/python3"
+    if [ ! -x "$pybin" ]; then
+        echo "ERROR: bundled python/ present but no interpreter at $pybin" >&2
+        exit 1
+    fi
+    echo "  Verifying bundled Python runtime in $(basename "$app")..."
+    local bad
+    bad=$(otool -arch all -L "$pybin" "$app/Contents/MacOS/Snapmaker_Orca" | grep "libpython" | grep -v "@rpath/" || true)
+    if [ -n "$bad" ]; then
+        echo "ERROR: a bundled binary references libpython by absolute path (relocation regression):" >&2
+        echo "$bad" >&2
+        exit 1
+    fi
+    # otool -L shows load commands only; assert the consumer rpath separately.
+    # Its loss is masked on the build host by CMake's absolute build-tree rpath.
+    if ! otool -arch all -l "$app/Contents/MacOS/Snapmaker_Orca" | grep -q "path @executable_path/python/lib "; then
+        echo "ERROR: Snapmaker_Orca lacks the @executable_path/python/lib rpath (relocation regression)" >&2
+        exit 1
+    fi
+    if ! "$pybin" -c "import ssl"; then
+        echo "ERROR: bundled Python failed to start (libpython relocation broken," >&2
+        echo "       or missing Rosetta 2 for the x86_64 leg?)" >&2
+        exit 1
+    fi
+}
+
 function build_slicer() {
     echo "Staging snapmaker_connect..."
     python3 "${PROJECT_DIR}/scripts/packaging/stage_connect_bundle.py" \
@@ -250,6 +289,7 @@ function build_slicer() {
             cp -f "${LIBSENTRY}" "${APP_FRAMEWORKS_DIR}/libsentry.dylib"
             # Sign libsentry.dylib
             codesign --force --sign - "${APP_FRAMEWORKS_DIR}/libsentry.dylib" 2>/dev/null || true
+            verify_python_runtime "./Snapmaker Orca.app"
             
             # Update rpath in Snapmaker_Orca to use @executable_path relative path
             if [ -f "${EXECUTABLE}" ]; then
@@ -257,6 +297,7 @@ function build_slicer() {
                 install_name_tool -change "@rpath/libsentry.dylib" "@executable_path/../Frameworks/libsentry.dylib" "${EXECUTABLE}" 2>/dev/null || true
                 # Re-sign the executable after modification
                 codesign --force --sign - "${EXECUTABLE}" 2>/dev/null || true
+                verify_python_runtime "./Snapmaker_Orca_profile_validator.app"
             fi
         else
             echo "Warning: libsentry.dylib not found at ${LIBSENTRY}"
@@ -379,6 +420,7 @@ function build_universal() {
         codesign --force --sign - "${UNIVERSAL_APP}/${BINARY_PATH}" 2>/dev/null || true
     fi
     
+    verify_python_runtime "$UNIVERSAL_APP"
     # Create universal binary for profile validator if it exists
     if [ -f "$PROJECT_DIR/build/arm64/Snapmaker_Orca/Snapmaker_Orca_profile_validator.app/Contents/MacOS/Snapmaker_Orca_profile_validator" ] && \
        [ -f "$PROJECT_DIR/build/x86_64/Snapmaker_Orca/Snapmaker_Orca_profile_validator.app/Contents/MacOS/Snapmaker_Orca_profile_validator" ]; then

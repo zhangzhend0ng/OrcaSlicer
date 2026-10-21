@@ -370,6 +370,7 @@ endif ()
 
 include(OCCT/OCCT.cmake)
 include(OpenCV/OpenCV.cmake)
+include(python3/python3.cmake)
 
 set(_dep_list
     dep_Boost
@@ -391,6 +392,7 @@ set(_dep_list
     ${ZLIB_PKG}
     ${EXPAT_PKG}
     dep_libnoise
+    dep_python3
     )
 
 if (MSVC)
