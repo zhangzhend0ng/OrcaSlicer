@@ -24,6 +24,8 @@
 #include "XCAFDoc_DocumentTool.hxx"
 #include "XCAFDoc_ShapeTool.hxx"
 #include "XCAFApp_Application.hxx"
+#include "NCollection_Sequence.hxx"
+#include "TDF_Label.hxx"
 #include "TopoDS_Solid.hxx"
 #include "TopoDS_Compound.hxx"
 #include "TopoDS_Builder.hxx"
@@ -187,9 +189,9 @@ static void getNamedSolids(const TopLoc_Location& location,
     std::string fullName{name};
 
     TopLoc_Location localLocation = location * shapeTool->GetLocation(label);
-    TDF_LabelSequence components;
+    NCollection_Sequence<TDF_Label> components;
     if (shapeTool->GetComponents(referredLabel, components)) {
-        for (Standard_Integer compIndex = 1; compIndex <= components.Length(); ++compIndex) {
+        for (int compIndex = 1; compIndex <= components.Length(); ++compIndex) {
             getNamedSolids(localLocation, fullName, id, shapeTool, components.Value(compIndex), namedSolids, isSplitCompound);
         }
     } else {
@@ -197,7 +199,7 @@ static void getNamedSolids(const TopLoc_Location& location,
         TopExp_Explorer explorer;
         shapeTool->GetShape(referredLabel, shape);
         TopAbs_ShapeEnum shape_type = shape.ShapeType();
-        BRepBuilderAPI_Transform transform(shape, localLocation, Standard_True);
+        BRepBuilderAPI_Transform transform(shape, localLocation, true);
         int                      i = 0;
         switch (shape_type) {
         case TopAbs_COMPOUND:
@@ -261,14 +263,14 @@ bool load_step(const char *path, Model *model, bool& is_cancel,
         return false;
     }
     Handle(XCAFDoc_ShapeTool) shapeTool = XCAFDoc_DocumentTool::ShapeTool(document->Main());
-    TDF_LabelSequence topLevelShapes;
+    NCollection_Sequence<TDF_Label> topLevelShapes;
     shapeTool->GetFreeShapes(topLevelShapes);
 
     unsigned int id{1};
-    Standard_Integer topShapeLength = topLevelShapes.Length() + 1;
+    int topShapeLength = topLevelShapes.Length() + 1;
     auto stage_unit2 = topShapeLength / LOAD_STEP_STAGE_UNIT_NUM + 1;
 
-    for (Standard_Integer iLabel = 1; iLabel < topShapeLength; ++iLabel) {
+    for (int iLabel = 1; iLabel < topShapeLength; ++iLabel) {
         if (stepFn) {
             if ((iLabel % stage_unit2) == 0) {
                 stepFn(LOAD_STEP_STAGE_GET_SOLID, iLabel, topShapeLength, cb_cancel);
@@ -312,10 +314,10 @@ bool load_step(const char *path, Model *model, bool& is_cancel,
             std::vector<Vec3f> points;
             points.reserve(aNbNodes);
             // BBS: count faces missing triangulation
-            Standard_Integer aNbFacesNoTri = 0;
+            int aNbFacesNoTri = 0;
             // BBS: fill temporary triangulation
-            Standard_Integer aNodeOffset    = 0;
-            Standard_Integer aTriangleOffet = 0;
+            int aNodeOffset    = 0;
+            int aTriangleOffet = 0;
             for (TopExp_Explorer anExpSF(namedSolids[i].solid, TopAbs_FACE); anExpSF.More(); anExpSF.Next()) {
                 const TopoDS_Shape &aFace = anExpSF.Current();
                 TopLoc_Location     aLoc;
@@ -326,15 +328,15 @@ bool load_step(const char *path, Model *model, bool& is_cancel,
                 }
                 // BBS: copy nodes
                 gp_Trsf aTrsf = aLoc.Transformation();
-                for (Standard_Integer aNodeIter = 1; aNodeIter <= aTriangulation->NbNodes(); ++aNodeIter) {
+                for (int aNodeIter = 1; aNodeIter <= aTriangulation->NbNodes(); ++aNodeIter) {
                     gp_Pnt aPnt = aTriangulation->Node(aNodeIter);
                     aPnt.Transform(aTrsf);
                     points.emplace_back(std::move(Vec3f(aPnt.X(), aPnt.Y(), aPnt.Z())));
                 }
                 // BBS: copy triangles
                 const TopAbs_Orientation anOrientation = anExpSF.Current().Orientation();
-                Standard_Integer anId[3] = {};
-                for (Standard_Integer aTriIter = 1; aTriIter <= aTriangulation->NbTriangles(); ++aTriIter) {
+                int anId[3] = {};
+                for (int aTriIter = 1; aTriIter <= aTriangulation->NbTriangles(); ++aTriIter) {
                     Poly_Triangle aTri = aTriangulation->Triangle(aTriIter);
 
                     aTri.Get(anId[0], anId[1], anId[2]);
@@ -443,11 +445,11 @@ bool Step::load()
         return false;
     }
     m_shape_tool = XCAFDoc_DocumentTool::ShapeTool(m_doc->Main());
-    TDF_LabelSequence topLevelShapes;
+    NCollection_Sequence<TDF_Label> topLevelShapes;
     m_shape_tool->GetFreeShapes(topLevelShapes);
     unsigned int id{ 1 };
-    Standard_Integer topShapeLength = topLevelShapes.Length() + 1;
-    for (Standard_Integer iLabel = 1; iLabel < topShapeLength; ++iLabel) {
+    int topShapeLength = topLevelShapes.Length() + 1;
+    for (int iLabel = 1; iLabel < topShapeLength; ++iLabel) {
         getNamedSolids(TopLoc_Location{}, "", id, m_shape_tool, topLevelShapes.Value(iLabel), m_name_solids);
     }
 

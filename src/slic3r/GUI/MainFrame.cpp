@@ -3109,6 +3109,7 @@ void MainFrame::init_menubar_as_editor()
         }, "", nullptr,
         [this]() {return m_plater->is_view3D_shown();; }, this);
 
+#else
     fileMenu->AppendSeparator();
     append_menu_item(
         fileMenu, wxID_ANY, _L("Plugins"), "", [this](wxCommandEvent&) { wxGetApp().open_plugins_dialog(); }, "", nullptr,

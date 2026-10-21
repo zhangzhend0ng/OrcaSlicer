@@ -204,6 +204,54 @@ static wxSize GetBmpSize(wxBitmap & bmp)
 #endif
 }
 
+static void _DrawSplitItem(const wxWindow* w, wxDC& dc, wxString split_text, wxPoint start_pt, int item_width, int item_height)
+{
+    // save dc
+    auto pre_clr = dc.GetTextForeground();
+    auto pre_pen = dc.GetPen();
+    dc.SetTextForeground(wxColour(144, 144, 144));
+    dc.SetPen(wxColour(144, 144, 144));
+
+    // miner font
+    auto font = w->GetFont();
+    font.SetPointSize(font.GetPointSize() - 1);
+    dc.SetFont(font);
+
+    int spacing = w->FromDIP(8);
+    int line_y = start_pt.y + (item_height) / 2;
+    if (!split_text.empty())// Paiting: spacing + line + spacing + text + spacing + line + spacing
+    {
+        int max_content_width = item_width - start_pt.x - 4 * spacing;
+        wxSize tSize = dc.GetMultiLineTextExtent(split_text);
+        if (tSize.x > max_content_width)
+        {
+            split_text = wxControl::Ellipsize(split_text, dc, wxELLIPSIZE_END, max_content_width);
+            tSize = dc.GetMultiLineTextExtent(split_text);
+        }
+
+        int line_width = (item_width - start_pt.x - tSize.x - 4 * spacing) / 2;
+        dc.DrawLine(start_pt.x + spacing, line_y, start_pt.x + line_width + spacing, line_y);// draw left line
+        dc.DrawLine(start_pt.x + tSize.x + line_width + 3 * spacing, line_y, start_pt.x + tSize.x + 2 * line_width + 3 * spacing, line_y);// draw right line
+
+        start_pt.x += (line_width + 2 * spacing);
+        start_pt.y += (item_height - tSize.y) / 2;
+
+        dc.SetFont(font);
+        dc.DrawText(split_text, start_pt);
+    }
+    else// Paiting: spacing + line + spacing
+    {
+        int line_y = start_pt.y + (item_height) / 2;
+        int line_width = item_width - start_pt.x - 2 * spacing;
+        dc.DrawLine(start_pt.x + spacing, line_y, start_pt.x + spacing + line_width, line_y);// draw line
+    }
+
+    // restore dc
+    dc.SetTextForeground(pre_clr);
+    dc.SetPen(pre_pen);
+    dc.SetFont(w->GetFont());
+}
+
 /*
  * Here we do the actual rendering. I put it in a separate
  * method so that it can work no matter what type of DC
@@ -227,7 +275,7 @@ void DropDown::render(wxDC &dc)
 
     // draw hover rectangle
     wxRect rcContent = {{0, offset.y}, rowSize};
-    if (hover_item >= 0 && (states & StateColor::Hovered)) {
+    if (hover_item >= 0 && (states & StateColor::Hovered) && !(style_of(hover_item) & DD_ITEM_STYLE_SPLIT_ITEM)) {
         rcContent.y += rowSize.y * hover_item;
         if (rcContent.GetBottom() > 0 && rcContent.y < size.y) {
             if (selection == hover_item)
@@ -292,6 +340,16 @@ void DropDown::render(wxDC &dc)
         }
         if (rcContent.y > size.y) break;
         wxPoint pt   = rcContent.GetLeftTop();
+
+        if (style_of(i) & DD_ITEM_STYLE_SPLIT_ITEM) {
+            wxPoint start_pt = {0, pt.y};
+            int item_width  = GetSize().GetWidth();
+            int item_height = rowSize.GetHeight();
+            _DrawSplitItem(this, dc, texts[i], start_pt, item_width, item_height);
+            rcContent.y += rowSize.y;
+            continue;
+        }
+
         auto & icon = icons[i];
         auto size2 = GetBmpSize(icon);
         if (iconSize.x > 0) {
@@ -519,6 +577,7 @@ void DropDown::mouseMove(wxMouseEvent &event)
     if (!pressedDown || hover_item >= 0) {
         int hover = (pt.y - offset.y) / rowSize.y;
         if (hover >= (int) texts.size()) hover = -1;
+        if (hover >= 0 && (style_of(hover) & (DD_ITEM_STYLE_SPLIT_ITEM | DD_ITEM_STYLE_DISABLED))) hover = -1;
         if (hover == hover_item) return;
         hover_item = hover;
         if (hover >= 0) SetToolTip(tips[hover]);
@@ -542,6 +601,7 @@ void DropDown::mouseWheelMoved(wxMouseEvent &event)
     }
     int hover = (event.GetPosition().y - offset.y) / rowSize.y;
     if (hover >= (int) texts.size()) hover = -1;
+    if (hover >= 0 && (style_of(hover) & (DD_ITEM_STYLE_SPLIT_ITEM | DD_ITEM_STYLE_DISABLED))) hover = -1;
     if (hover != hover_item) {
         hover_item = hover;
         if (hover >= 0) SetToolTip(tips[hover]);

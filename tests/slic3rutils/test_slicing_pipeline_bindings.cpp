@@ -222,11 +222,11 @@ static void build_nested_perimeters(TestLayerRegion& region) {
     using namespace Slic3r;
     ExtrusionPath pathA(erExternalPerimeter);        // -> "Outer wall"
     pathA.mm3_per_mm = 0.05; pathA.width = 0.45f; pathA.height = 0.20f;
-    pathA.polyline.points = { Point3(0, 0, 0), Point3(10, 0, 0), Point3(10, 10, 0) };
+    pathA.polyline.points = { Point(0, 0), Point(10, 0), Point(10, 10) };
 
     ExtrusionPath pathB(erInternalInfill);           // -> "Sparse infill"
     pathB.mm3_per_mm = 0.03; pathB.width = 0.40f; pathB.height = 0.20f;
-    pathB.polyline.points = { Point3(1, 1, 0), Point3(2, 1, 0), Point3(2, 2, 0) };
+    pathB.polyline.points = { Point(1, 1), Point(2, 1), Point(2, 2) };
 
     ExtrusionEntityCollection inner;
     inner.append(ExtrusionLoop(pathA));              // clone_move
@@ -419,11 +419,11 @@ static Slic3r::ExtrusionEntityCollection build_nested_collection() {
     using namespace Slic3r;
     ExtrusionPath pathA(erExternalPerimeter);        // -> "Outer wall"
     pathA.mm3_per_mm = 0.05; pathA.width = 0.45f; pathA.height = 0.20f;
-    pathA.polyline.points = { Point3(0, 0, 0), Point3(10, 0, 0), Point3(10, 10, 0) };
+    pathA.polyline.points = { Point(0, 0), Point(10, 0), Point(10, 10) };
 
     ExtrusionPath pathB(erInternalInfill);           // -> "Sparse infill"
     pathB.mm3_per_mm = 0.03; pathB.width = 0.40f; pathB.height = 0.20f;
-    pathB.polyline.points = { Point3(1, 1, 0), Point3(2, 1, 0), Point3(2, 2, 0) };
+    pathB.polyline.points = { Point(1, 1), Point(2, 1), Point(2, 2) };
 
     ExtrusionEntityCollection inner;
     inner.append(ExtrusionLoop(pathA));

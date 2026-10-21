@@ -538,11 +538,9 @@ target_link_libraries(libslic3r PUBLIC nlohmann_json)
 find_package(JPEG REQUIRED)
 
 set(OCCT_LIBS
-    TKXDESTEP
-    TKSTEP
-    TKSTEP209
-    TKSTEPAttr
-    TKSTEPBase
+    # OCCT 8 merged the STEP toolkits into TKDESTEP/TKDE (upstream 78a4f2867c)
+    TKDESTEP
+    TKDE
     TKXCAF
     TKXSBase
     TKVCAF

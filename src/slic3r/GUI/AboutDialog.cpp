@@ -311,7 +311,7 @@ AboutDialog::AboutDialog()
                     find_txt += text_list[i][o];
                     count_txt += text_list[i][o];
                 } else {
-                    find_txt += std::string("\n") + text_list[i][o];
+                    find_txt += wxString("\n") + text_list[i][o];
                     count_txt = text_list[i][o];
                 }
             }

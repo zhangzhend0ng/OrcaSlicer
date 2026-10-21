@@ -14,6 +14,7 @@ class ComboBox : public wxWindowWithItems<TextInput, wxItemContainer>
     std::vector<wxBitmap>         icons;
     std::vector<void *>           datas;
     std::vector<wxClientDataType> types;
+    std::vector<int>              styles;
 
     DropDown               drop;
     bool     drop_down = false;
@@ -37,6 +38,8 @@ public:
     int Append(const wxString &item, const wxBitmap &bitmap = wxNullBitmap);
 
     int Append(const wxString &item, const wxBitmap &bitmap, void *clientData);
+
+    int Append(const wxString &item, const wxBitmap &bitmap, int item_style);
 
     unsigned int GetCount() const override;
 

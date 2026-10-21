@@ -341,6 +341,8 @@ private:
 
 public:
     // device dialog
+    // ported plugin code guards UI work behind is_closing() (upstream S API)
+    bool is_closing() const { return m_is_closing; }
     WebDeviceDialog* web_device_dialog{ nullptr };
     WebPreprintDialog* web_preprint_dialog{ nullptr };
 

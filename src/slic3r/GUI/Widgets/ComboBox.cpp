@@ -41,6 +41,7 @@ ComboBox::ComboBox(wxWindow *parent,
                    long            style)
     : drop(texts, tips, icons)
 {
+    drop.SetItemStyles(&styles);
     if (style & wxCB_READONLY)
         style |= wxRIGHT;
     text_off = style & CB_NO_TEXT;
@@ -160,6 +161,19 @@ int ComboBox::Append(const wxString &item,
     icons.push_back(bitmap);
     datas.push_back(clientData);
     types.push_back(wxClientData_None);
+    styles.push_back(0);
+    drop.Invalidate();
+    return texts.size() - 1;
+}
+
+int ComboBox::Append(const wxString &item, const wxBitmap &bitmap, int item_style)
+{
+    texts.push_back(item);
+    tips.push_back(wxString{});
+    icons.push_back(bitmap);
+    datas.push_back(nullptr);
+    types.push_back(wxClientData_None);
+    styles.push_back(item_style);
     drop.Invalidate();
     return texts.size() - 1;
 }
@@ -172,6 +186,7 @@ void ComboBox::DoClear()
     icons.clear();
     datas.clear();
     types.clear();
+    styles.clear();
     drop.Invalidate(true);
 }
 
@@ -183,6 +198,7 @@ void ComboBox::DoDeleteOneItem(unsigned int pos)
     icons.erase(icons.begin() + pos);
     datas.erase(datas.begin() + pos);
     types.erase(types.begin() + pos);
+    styles.erase(styles.begin() + pos);
     drop.Invalidate(true);
 }
 
@@ -234,6 +250,7 @@ int ComboBox::DoInsertItems(const wxArrayStringsAdapter &items,
         icons.insert(icons.begin() + pos, wxNullBitmap);
         datas.insert(datas.begin() + pos, clientData ? clientData[i] : NULL);
         types.insert(types.begin() + pos, type);
+        styles.insert(styles.begin() + pos, 0);
         ++pos;
     }
     drop.Invalidate(true);
@@ -268,6 +285,8 @@ void ComboBox::mouseWheelMoved(wxMouseEvent &event)
     if (drop_down) return;
     auto delta = event.GetWheelRotation() < 0 ? 1 : -1;
     unsigned int n = GetSelection() + delta;
+    while (n < GetCount() && n < styles.size() && (styles[n] & (DD_ITEM_STYLE_SPLIT_ITEM | DD_ITEM_STYLE_DISABLED)))
+        n += delta > 0 ? 1 : -1;
     if (n < GetCount()) {
         SetSelection((int) n);
         sendComboBoxEvent();

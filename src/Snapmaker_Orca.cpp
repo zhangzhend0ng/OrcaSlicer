@@ -3,9 +3,12 @@
     #define _WIN32_WINNT 0x0502
     // The standard Windows includes.
     #define WIN32_LEAN_AND_MEAN
+    #ifndef NOMINMAX
     #define NOMINMAX
+    #endif
     #include <Windows.h>
     #include <wchar.h>
+    #include <commctrl.h>
     #ifdef SLIC3R_GUI
     extern "C"
     {

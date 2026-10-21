@@ -364,12 +364,14 @@ public:
     //BBS
     static int TOOLBAR_WINDOW_FLAGS;
 
+    // used by PluginManager to guard CallAfter notifications (upstream S keeps it public)
+    bool display_initialized() const;
+
 private:
     void init_font(bool compress);
     void init_input();
     void init_style();
     void render_draw_data(ImDrawData *draw_data);
-    bool display_initialized() const;
     void destroy_font();
     std::vector<unsigned char> load_svg(const std::string& bitmap_name, unsigned target_width, unsigned target_height, unsigned *outwidth, unsigned *outheight);
 

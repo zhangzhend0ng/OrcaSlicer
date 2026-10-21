@@ -21,6 +21,8 @@
 #include <CGAL/Polygon_mesh_processing/remesh.h>
 #include <CGAL/Polygon_mesh_processing/polygon_soup_to_polygon_mesh.h>
 #include <CGAL/Polygon_mesh_processing/orientation.h>
+#include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
+#include <CGAL/boost/graph/border.h>
 // BBS: for segment
 #include <CGAL/mesh_segmentation.h>
 #include <CGAL/property_map.h>
@@ -332,7 +334,7 @@ void segment(CGALMesh& src, std::vector<CGALMesh>& dst, double smoothing_alpha =
         typedef boost::graph_traits<_EpicMesh>::halfedge_descriptor      halfedge_descriptor;
         typedef boost::graph_traits<_EpicMesh>::vertex_descriptor        vertex_descriptor;
         std::vector<halfedge_descriptor> border_cycles;
-        CGAL::Polygon_mesh_processing::extract_boundary_cycles(out, std::back_inserter(border_cycles));
+        CGAL::extract_boundary_cycles(out, std::back_inserter(border_cycles));
         for (halfedge_descriptor h : border_cycles)
         {
             std::vector<face_descriptor>  patch_facets;
@@ -343,7 +345,7 @@ void segment(CGALMesh& src, std::vector<CGALMesh>& dst, double smoothing_alpha =
             std::cout << "* Number of facets in constructed patch: " << patch_facets.size() << std::endl;
             std::cout << "  Number of vertices in constructed patch: " << patch_vertices.size() << std::endl;
 #else
-            CGAL::Polygon_mesh_processing::triangulate_hole(out, h, std::back_inserter(patch_facets));
+            CGAL::Polygon_mesh_processing::triangulate_hole(out, h, CGAL::parameters::default_values().face_output_iterator(std::back_inserter(patch_facets)));
 #endif
         }
 

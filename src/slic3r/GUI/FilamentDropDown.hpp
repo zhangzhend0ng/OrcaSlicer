@@ -20,7 +20,8 @@
 #include "Widgets/PopupWindow.hpp"
 #include "Widgets/DropDown.hpp"
 
-constexpr int DD_ITEM_STYLE_DISABLED   = 0x0002;
+// DD_ITEM_STYLE_DISABLED (0x0002) comes from Widgets/DropDown.hpp; DIMMED is
+// specific to the filament popup's allow-listed presets.
 constexpr int DD_ITEM_STYLE_DIMMED     = 0x0004;
 
 /** @brief Draws the grouped, two-level filament preset popup. */

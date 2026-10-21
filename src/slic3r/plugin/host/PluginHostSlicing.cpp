@@ -169,13 +169,14 @@ void host_bindings::register_slicing(py::module_& host)
     py::class_<ExtrusionPath, ExtrusionEntity, std::unique_ptr<ExtrusionPath, py::nodelete>>(host, "ExtrusionPath")
         .def("points", [](py::object self) {
             const ExtrusionPath& p = self.cast<const ExtrusionPath&>();
-            const Points3& pts = p.polyline.points;
+            // The Snapmaker base keeps extrusion polylines 2D (scaled XY); upstream S exposes (N,3).
+            const Points& pts = p.polyline.points;
             return with_numpy([&] {
-                return py::object(make_readonly_rows<coord_t, 3>(
+                return py::object(make_readonly_rows<coord_t, 2>(
                     self, pts.empty() ? nullptr : pts.front().data(), (py::ssize_t) pts.size()));
             });
-        }, "Path vertices as a read-only int64 (N,3) numpy view in scaled coords "
-           "(the polyline is natively 3D on this branch). Requires numpy.")
+        }, "Path vertices as a read-only int64 (N,2) numpy view in scaled XY coords "
+           "(polylines are 2D on this fork; upstream S reports (N,3)). Requires numpy.")
         .def_readonly("width", &ExtrusionPath::width)
         .def_readonly("height", &ExtrusionPath::height)
         .def_readonly("mm3_per_mm", &ExtrusionPath::mm3_per_mm);

@@ -239,6 +239,13 @@ if (SLIC3R_GUI)
 
     include(${wxWidgets_USE_FILE})
 
+    # Module-mode wx discovery does not add the vendored WebP libs that wx 3.3's
+    # wxWEBPHandler links against; config-mode discovery (upstream mcp) gets them
+    # via the imported targets. FindwxWidgets returns full paths, so match that.
+    if (WIN32 AND wxWidgets_LIB_DIR)
+        list(APPEND wxWidgets_LIBRARIES "${wxWidgets_LIB_DIR}/wxwebp.lib" "${wxWidgets_LIB_DIR}/wxwebpdemux.lib" "${wxWidgets_LIB_DIR}/wxsharpyuv.lib")
+    endif ()
+
     find_package(JPEG QUIET)
 
     string(REGEX MATCH "wxpng" WX_PNG_BUILTIN ${wxWidgets_LIBRARIES})

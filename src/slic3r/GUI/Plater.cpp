@@ -10142,8 +10142,7 @@ struct Plater::priv
     bool m_ignore_event{false};
     bool m_slice_all{false};
     bool m_is_slicing {false};
-    // Missing-plugin set signatures (sorted full refs joined by '
-'), one per notification. They
+    // Missing-plugin set signatures (sorted full refs joined by newline), one per notification. They
     // gate plugin-load re-validation and avoid needlessly recreating the notification when the set
     // is unchanged. Whether missing plugins block slicing is derived directly from PluginResolver
     // (has_missing_plugins()), not cached here.
@@ -18030,7 +18029,7 @@ void Plater::import_model_id(wxString download_info)
         /* load project */
         // Orca: If download is a zip file, treat it as if file has been drag and dropped on the plater
         if (target_path.extension() == ".zip")
-            this->load_files(wxArrayString(1, target_path.string()));
+            { wxArrayString arr; arr.Add(from_path(target_path)); this->load_files(arr); }
         else
             this->load_project(target_path.wstring());
         /*BBS set project info after load project, project info is reset in load project */

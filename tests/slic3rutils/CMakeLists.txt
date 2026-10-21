@@ -34,15 +34,34 @@ else ()
     find_package(wxWidgets 3.1 REQUIRED COMPONENTS base core adv html gl aui net media webview)
 endif ()
 include(${wxWidgets_USE_FILE})
+# Vendored WebP support libs required by wx 3.3's wxWEBPHandler (see src/CMakeLists.txt)
+if (WIN32 AND wxWidgets_LIB_DIR)
+    list(APPEND wxWidgets_LIBRARIES "${wxWidgets_LIB_DIR}/wxwebp.lib" "${wxWidgets_LIB_DIR}/wxwebpdemux.lib" "${wxWidgets_LIB_DIR}/wxsharpyuv.lib")
+endif ()
 
 if(UNIX AND NOT APPLE)
     target_link_options(${_TEST_NAME}_tests PRIVATE "-Wl,--no-as-needed")
 endif()
+# libslic3r_gui's BitmapCache.obj already compiles the nanoSVG rasterizer; the shared
+# test_nanosvg_impl TU would collide with it at link time (mirrors upstream).
+set(_slic3rutils_link_libs "${TEST_LINK_LIBS}")
+list(REMOVE_ITEM _slic3rutils_link_libs test_nanosvg_impl)
 if(TARGET libslic3r_gui)
-    target_link_libraries(${_TEST_NAME}_tests PRIVATE libslic3r_gui ${TEST_LINK_LIBS} pybind11::embed)
+    target_link_libraries(${_TEST_NAME}_tests PRIVATE libslic3r_gui ${_slic3rutils_link_libs} pybind11::embed)
 else()
-    target_link_libraries(${_TEST_NAME}_tests PRIVATE ${TEST_LINK_LIBS})
+    target_link_libraries(${_TEST_NAME}_tests PRIVATE ${_slic3rutils_link_libs})
 endif()
+# libslic3r_gui references symbols implemented in the app DLL's private TUs
+# (common_func, bury_cfg, SentryWrapper, BaseException); those symbols are not
+# exported from the DLL, so compile the defining sources straight into the test
+# (mirrors upstream).
+target_sources(${_TEST_NAME}_tests PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/common_func/common_func.cpp
+    ${PROJECT_SOURCE_DIR}/src/bury_cfg/bury_point.cpp
+    ${PROJECT_SOURCE_DIR}/src/sentry_wrapper/SentryWrapper.cpp
+    ${PROJECT_SOURCE_DIR}/src/dev-utils/BaseException.cpp
+    ${PROJECT_SOURCE_DIR}/src/dev-utils/StackWalker.cpp
+)
 if (MSVC)
     target_link_libraries(${_TEST_NAME}_tests PRIVATE Setupapi.lib)
 endif ()

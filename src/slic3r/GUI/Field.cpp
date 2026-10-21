@@ -27,6 +27,7 @@
 // BBS
 #include "Notebook.hpp"
 #include "Widgets/CheckBox.hpp"
+#include "Widgets/DropDown.hpp"
 #include "Widgets/TextInput.hpp"
 #include "Widgets/SpinInput.hpp"
 #include "Widgets/ComboBox.hpp"

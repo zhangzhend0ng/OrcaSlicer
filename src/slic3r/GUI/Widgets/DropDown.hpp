@@ -11,6 +11,9 @@
 #define DD_NO_TEXT          0x0002
 #define DD_STYLE_MASK       0x0003
 
+#define DD_ITEM_STYLE_SPLIT_ITEM  0x0001 // ----text----, text with horizontal line arounds
+#define DD_ITEM_STYLE_DISABLED    0x0002
+
 wxDECLARE_EVENT(EVT_DISMISS, wxCommandEvent);
 
 class DropDown : public PopupWindow
@@ -18,6 +21,9 @@ class DropDown : public PopupWindow
     std::vector<wxString> &       texts;
     std::vector<wxString> &       tips;
     std::vector<wxBitmap> &     icons;
+    // optional per-row item styles (DD_ITEM_STYLE_*), borrowed from the owner
+    // (ComboBox); rows without an entry are unstyled
+    std::vector<int> *            item_styles = nullptr;
     bool                          need_sync  = false;
     int                         selection = -1;
     int                         hover_item = -1;
@@ -82,7 +88,10 @@ public:
     void SetUseContentWidth(bool use, bool limit_max_content_width = false);
 
     void SetAlignIcon(bool align);
-    
+
+    void SetItemStyles(std::vector<int> * styles) { item_styles = styles; }
+    int  style_of(int n) const { return (item_styles && n >= 0 && (size_t) n < item_styles->size()) ? (*item_styles)[n] : 0; }
+
 public:
     void Rescale();
 

@@ -435,7 +435,9 @@ public:
         wxGetApp().UpdateFrameDarkUI(this);
     }
 
-    void SetText(const wxString& text)
+    // The extra progress argument mirrors upstream S SplashScreen::SetText(text, progress);
+    // the fork splash has no progress bar, so the value is accepted and ignored.
+    void SetText(const wxString& text, int /*progress*/ = -1)
     {
         set_bitmap(m_main_bitmap);
         if (!text.empty()) {
@@ -4174,8 +4176,10 @@ void GUI_App::force_colors_update()
 #ifdef _MSW_DARK_MODE
 #ifdef __WINDOWS__
     NppDarkMode::SetDarkMode(dark_mode());
+#if wxVERSION_NUMBER < 3300
     if (WXHWND wxHWND = wxToolTip::GetToolTipCtrl())
         NppDarkMode::SetDarkExplorerTheme((HWND)wxHWND);
+#endif
     NppDarkMode::SetDarkTitleBar(mainframe->GetHWND());
 
 
@@ -6652,8 +6656,6 @@ void  GUI_App::show_ip_address_enter_dialog_handler(wxCommandEvent& evt)
 {
     wxString title = evt.GetString();
     show_modal_ip_address_enter_dialog(title);
-}
-
 }
 
 void GUI_App::open_preferences(size_t open_on_tab, const std::string& highlight_option)

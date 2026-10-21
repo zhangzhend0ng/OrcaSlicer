@@ -217,6 +217,11 @@ public:
     bool                is_user() const { return ! this->is_default && ! this->is_system && ! this->is_project_embedded; }
     //bool                is_user() const { return ! this->is_default && ! this->is_system; }
 
+    // Orca: bundle tracking (upstream S API surface used by the plugin host). This fork has no
+    // preset-bundle import path, so bundle_id stays empty and is_from_bundle() is always false.
+    std::string         bundle_id;
+    bool                is_from_bundle() const { return ! bundle_id.empty(); }
+
     // Name of the preset, usually derived form the file name.
     std::string         name;
     // File name of the preset. This could be a Print / Filament / Printer preset,

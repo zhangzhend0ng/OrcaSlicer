@@ -57,6 +57,8 @@ using PointsAllocator = tbb::scalable_allocator<BaseType>;
 using Points         = std::vector<Point, PointsAllocator<Point>>;
 using PointPtrs      = std::vector<Point*>;
 using PointConstPtrs = std::vector<const Point*>;
+// Orca: named 3D lattice point (upstream S API used by the plugin host bindings)
+using Point3         = Vec3crd;
 using Points3        = std::vector<Vec3crd>;
 using Pointfs        = std::vector<Vec2d>;
 using Vec2ds         = std::vector<Vec2d>;
