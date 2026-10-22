@@ -144,6 +144,8 @@
 #include "PluginsDialog.hpp"
 #include "SpeedDialDialog.hpp"
 #include "TerminalDialog.hpp"
+#include "slic3r/GUI/TextureLibrary.hpp"
+#include "slic3r/plugin/host/PluginResourceTextures.hpp"
 //#ifdef WIN32
 //#include "BaseException.h"
 //#endif
@@ -2536,6 +2538,37 @@ void GUI_App::init_plugin_gui_wiring()
         [refresh_plugins_dialog](const PluginCapabilityId&) {
             refresh_plugins_dialog();
         });
+    plugin_mgr.subscribe_on_load_callback([](const std::string& plugin_key) {
+        if (wxTheApp == nullptr || wxGetApp().is_closing())
+            return;
+        PluginResourceTextures::instance().on_plugin_register(plugin_key);
+        Slic3r::GUI::bump_texture_library_generation();
+    });
+    plugin_mgr.subscribe_on_unload_callback([](const std::string& plugin_key) {
+        if (wxTheApp == nullptr || wxGetApp().is_closing())
+            return;
+        PluginResourceTextures::instance().on_plugin_deregister(plugin_key);
+        Slic3r::GUI::bump_texture_library_generation();
+    });
+    plugin_mgr.subscribe_on_capability_load_callback([](const PluginCapabilityId& capability) {
+        if (capability.type != PluginCapabilityType::ResourceTexture)
+            return;
+        if (wxTheApp == nullptr || wxGetApp().is_closing())
+            return;
+        PluginResourceTextures::instance().on_cap_register(capability);
+        Slic3r::GUI::bump_texture_library_generation();
+    });
+    plugin_mgr.subscribe_on_capability_unload_callback([](const PluginCapabilityId& capability) {
+        if (capability.type != PluginCapabilityType::ResourceTexture)
+            return;
+        if (wxTheApp == nullptr || wxGetApp().is_closing())
+            return;
+        PluginResourceTextures::instance().on_cap_deregister(capability);
+        Slic3r::GUI::bump_texture_library_generation();
+    });
+    // Packs already loaded before this wiring, or in tests where no callback fires.
+    PluginResourceTextures::instance().initial_sweep();
+    Slic3r::GUI::bump_texture_library_generation();
 }
 
 void GUI_App::open_plugins_dialog(size_t open_on_tab, const std::string& highlight_option)

@@ -300,6 +300,8 @@ set(lisbslic3r_sources
     ModelArrange.hpp
     Model.cpp
     Model.hpp
+    TextureDisplacement.cpp
+    TextureDisplacement.hpp
     MTUtils.hpp
     MultiMaterialSegmentation.cpp
     MultiMaterialSegmentation.hpp
