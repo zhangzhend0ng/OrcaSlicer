@@ -40,6 +40,10 @@ public:
         const std::string& get_vendor() const;
         const std::string& get_renderer() const;
 
+        // False until a GL context has been made current and queried; the getters above detect
+        // on first use, which needs a current context.
+        bool is_detected() const { return m_detected; }
+
         bool is_mesa() const;
 
         int get_max_tex_size() const;

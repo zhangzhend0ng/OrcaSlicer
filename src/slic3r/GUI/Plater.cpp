@@ -20790,6 +20790,25 @@ void Plater::export_core_3mf()
     export_3mf(path_u8, SaveStrategy::Silence);
 }
 
+bool Plater::export_3mf_copy(const boost::filesystem::path& output_path)
+{
+    // Upstream de5f2cb3b9 also restores emboss SVG archive paths around the export; this fork's
+    // ModelVolume has no svg_file, so there is nothing to restore.
+
+    // With no design info, export_3mf() writes the signed-in account's user id as the designer;
+    // an empty one keeps it out. export_3mf() drops design info without a designer name itself,
+    // and the guard puts the original back for the failure paths.
+    const std::shared_ptr<ModelDesignInfo> design_info = p->model.design_info;
+    if (design_info == nullptr)
+        p->model.design_info = std::make_shared<ModelDesignInfo>();
+    ScopeGuard restore_design_info([&model = p->model, design_info]() { model.design_info = design_info; });
+
+    // The project save's layout, plus Silence so the project file name stays as it is. Unlike a
+    // save it never adds FullPathSources: a copy is for sharing, and those are paths on this
+    // machine.
+    return export_3mf(output_path, SaveStrategy::SplitModel | SaveStrategy::ShareMesh | SaveStrategy::Silence) == 0;
+}
+
 // Following lambda generates a combined mesh for export with normals pointing outwards.
 TriangleMesh Plater::combine_mesh_fff(const ModelObject& mo, int instance_id, std::function<void(const std::string&)> notify_func)
 {

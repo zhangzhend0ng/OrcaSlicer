@@ -527,6 +527,9 @@ public:
     //BBS add extra param for exporting 3mf silence
     // BBS: backup
     int export_3mf(const boost::filesystem::path& output_path = boost::filesystem::path(), SaveStrategy strategy = SaveStrategy::Default, int export_plate_idx = -1, Export3mfProgressFn proFn = nullptr);
+    // Write the project to output_path as a copy: the project's file name, dirty state and model stay
+    // as they are, and the signed-in account is not added as the designer. False when the write fails.
+    bool export_3mf_copy(const boost::filesystem::path& output_path);
 
     //BBS
     void publish_project();

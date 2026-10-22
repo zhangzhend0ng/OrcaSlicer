@@ -343,6 +343,8 @@ public:
     // device dialog
     // ported plugin code guards UI work behind is_closing() (upstream S API)
     bool is_closing() const { return m_is_closing; }
+    // Version that wrote the app config before this run; empty when there was no app config.
+    const boost::optional<Semver>& last_config_version() const { return m_last_config_version; }
     WebDeviceDialog* web_device_dialog{ nullptr };
     WebPreprintDialog* web_preprint_dialog{ nullptr };
 
