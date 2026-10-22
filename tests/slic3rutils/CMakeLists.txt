@@ -9,6 +9,7 @@ add_executable(${_TEST_NAME}_tests
     ${_TEST_NAME}_tests_main.cpp
     SnapLogClient_test.cpp
     test_action_source.cpp
+    test_file_url.cpp
     test_plugin_host_api.cpp
     test_plugin_capability_config.cpp
     test_plugin_config.cpp

@@ -10,6 +10,11 @@
 #include <cstdarg>
 #include <stdio.h>
 #include <filesystem>
+#include <algorithm>
+#include <string>
+#include <vector>
+
+#include <boost/algorithm/string/case_conv.hpp>
 
 #include "format.hpp"
 #include "Platform.hpp"
@@ -995,6 +1000,40 @@ bool is_json_file(const std::string& path)
 bool is_img_file(const std::string &path)
 {
 	return boost::iends_with(path, ".png") || boost::iends_with(path, ".svg");
+}
+
+bool is_absolute_path_within_root(const boost::filesystem::path &path, const boost::filesystem::path &root)
+{
+	if (path.empty() || root.empty() || !path.is_absolute() || !root.is_absolute())
+		return false;
+	boost::system::error_code ec;
+	const boost::filesystem::path canon_path = boost::filesystem::weakly_canonical(path, ec);
+	if (ec)
+		return false;
+	const boost::filesystem::path canon_root = boost::filesystem::weakly_canonical(root, ec);
+	if (ec)
+		return false;
+	// Strictly inside: the canonicalized path must be a proper descendant of the canonical root,
+	// so the root itself, siblings sharing its name as a prefix, lexical "../" escapes and
+	// symlinks resolving outside are all rejected.
+	const boost::filesystem::path rel = canon_path.lexically_relative(canon_root);
+	return !rel.empty() && rel != "." && rel != ".." && *rel.begin() != "..";
+}
+
+bool is_safe_to_open_file_name(const std::string &file_name)
+{
+	// Formats that cannot carry macros or scripts. Legacy and OpenDocument office files, HTML and SVG are left out on purpose.
+	static const std::vector<std::string> safe_extensions = {
+		"jpg", "jpeg", "jfif", "pjpeg", "pjp", "png", "gif", "bmp", "webp", "tif", "tiff",
+		"pdf", "txt", "md", "csv", "docx", "xlsx", "pptx",
+		"stl", "obj", "3mf", "amf", "ply", "step", "stp", "iges", "igs", "dxf",
+		"mp4", "mov", "webm"};
+	// The name must end in the extension itself: Windows drops trailing dots and spaces and reads ':' as a stream separator.
+	const size_t dot = file_name.find_last_of('.');
+	if (dot == std::string::npos || file_name.find_first_of("/\\:") != std::string::npos)
+		return false;
+	const std::string extension = boost::algorithm::to_lower_copy(file_name.substr(dot + 1));
+	return std::find(safe_extensions.begin(), safe_extensions.end(), extension) != safe_extensions.end();
 }
 
 bool is_gallery_file(const boost::filesystem::directory_entry& dir_entry, char const* type)
