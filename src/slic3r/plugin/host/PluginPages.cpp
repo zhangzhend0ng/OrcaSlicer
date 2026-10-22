@@ -1,14 +1,10 @@
 #include "PluginPages.hpp"
-
-#include "slic3r/GUI/GUI.hpp"
+// ADAPTED: GUI.hpp/AppConfig.hpp/WebView*.hpp/Button.hpp/Utils.hpp/algorithm includes not
+// carried - their consumers moved to the WebPanel base, and the fork has no max-pages dropdown.
 #include "slic3r/GUI/Notebook.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/Widgets/WebView.hpp"
-#include "slic3r/GUI/Widgets/WebViewHostDialog.hpp"
 #include "slic3r/GUI/wxExtensions.hpp"
 #include "slic3r/plugin/PluginManager.hpp"
-
-#include <libslic3r/Utils.hpp>
 
 #include <boost/filesystem/path.hpp>
 #include <boost/log/trivial.hpp>
@@ -61,27 +57,11 @@ constexpr char PLUGIN_PAGE_BRIDGE_JS[] = R"JS(
 } // namespace
 
 PluginPage::PluginPage(wxWindow* parent, std::shared_ptr<PagesPluginCapability> capability)
-    : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize)
+    : GUI::WebPanel(parent, PLUGIN_PAGE_BRIDGE_JS)
     , m_cap(std::move(capability))
     , m_lifetime(std::make_shared<std::atomic<PluginPage*>>(this))
 {
-    auto* topsizer = new wxBoxSizer(wxVERTICAL);
-    SetSizer(topsizer);
-
-    m_browser = WebView::CreateWebView(this, bootstrap_url());
-    if (m_browser == nullptr) {
-        wxLogError("Could not initialize plugin page web view");
-        return;
-    }
-
-    topsizer->Add(m_browser, wxSizerFlags().Expand().Proportion(1));
-    m_browser->Bind(wxEVT_WEBVIEW_LOADED, &PluginPage::on_bootstrap_event, this);
-    m_browser->Bind(wxEVT_WEBVIEW_ERROR, &PluginPage::on_bootstrap_event, this);
-    m_browser->Bind(wxEVT_WEBVIEW_NEWWINDOW, &PluginPage::on_new_window, this);
-    m_browser->Bind(wxEVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, &PluginPage::on_script_message, this);
-    m_browser->AddUserScript(wxString::FromUTF8(GUI::WebViewHostDialog::theme_user_script()));
-    m_browser->AddUserScript(wxString::FromUTF8(GUI::WebViewHostDialog::plugin_defaults_user_script()));
-    m_browser->AddUserScript(PLUGIN_PAGE_BRIDGE_JS);
+    browser()->Bind(wxEVT_WEBVIEW_NEWWINDOW, &PluginPage::on_new_window, this);
 
     const std::shared_ptr<std::atomic<PluginPage*>> lifetime = m_lifetime;
     m_cap->set_message_sender([lifetime](const std::string& message) {
@@ -112,61 +92,37 @@ void PluginPage::detach_capability()
     m_cap.reset();
 }
 
-wxString PluginPage::web_base_url() const
+std::optional<std::string> PluginPage::page_html()
 {
-    const auto path = (boost::filesystem::path(resources_dir()) / "web").make_preferred().string();
-    return wxString("file://") + GUI::from_u8(path) + "/";
-}
+    if (m_cap == nullptr)
+        return std::nullopt;
 
-wxString PluginPage::bootstrap_url() const
-{
-    const auto path = (boost::filesystem::path(resources_dir()) / "web/dialog/PluginWebDialog/blank.html").make_preferred().string();
-    return wxString("file://") + GUI::from_u8(path);
-}
-
-void PluginPage::on_bootstrap_event(wxWebViewEvent& event)
-{
-    load_plugin_content();
-    event.Skip();
-}
-
-void PluginPage::load_plugin_content()
-{
-    if (m_content_loaded || m_browser == nullptr || m_cap == nullptr)
-        return;
-
-    m_content_loaded = true;
     try {
-        m_browser->SetPage(wxString::FromUTF8(m_cap->get_ui()), web_base_url());
+        return m_cap->get_ui();
     } catch (const std::exception& error) {
         BOOST_LOG_TRIVIAL(error) << "Failed to load plugin page '" << m_cap->name() << "': " << error.what();
-        detach_capability();
     } catch (...) {
         BOOST_LOG_TRIVIAL(error) << "Failed to load plugin page '" << m_cap->name() << "'";
-        detach_capability();
     }
+    detach_capability();
+    return std::nullopt;
 }
 
 void PluginPage::on_new_window(wxWebViewEvent& event)
 {
     const wxString url = event.GetURL();
-    if (!url.empty() && m_browser != nullptr)
-        m_browser->LoadURL(url);
+    if (!url.empty())
+        browser()->LoadURL(url);
     event.Veto();
 }
 
-void PluginPage::on_script_message(wxWebViewEvent& event)
+bool PluginPage::on_page_message(const std::string& kind, const nlohmann::json& data)
 {
+    if (kind != "message")
+        return false;
     if (!m_cap)
-        return;
+        return true;
 
-    const wxString payload = event.GetString();
-    nlohmann::json root    = nlohmann::json::parse(payload.utf8_string(), nullptr, false);
-    if (root.is_discarded() || root.value("channel", std::string()) != "orca" ||
-        root.value("kind", std::string()) != "message")
-        return;
-
-    const nlohmann::json data = root.contains("data") ? root["data"] : nlohmann::json();
     try {
         m_cap->on_message(data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
     } catch (const std::exception& error) {
@@ -174,24 +130,16 @@ void PluginPage::on_script_message(wxWebViewEvent& event)
     } catch (...) {
         BOOST_LOG_TRIVIAL(error) << "Plugin page message handler failed for '" << m_cap->name() << "'";
     }
+    return true;
 }
 
 void PluginPage::push_message(const std::string& message)
 {
-    if (m_browser == nullptr)
-        return;
-
-    nlohmann::json data = nlohmann::json::parse(message, nullptr, false);
-    if (data.is_discarded())
-        data = message;
-
-    const wxString script = wxString("(function dispatch(payload, attempts) {\n") +
-                            wxString("  if (typeof window.__orcaDispatch === 'function') { window.__orcaDispatch(payload); return; }\n") +
-                            wxString("  if (attempts < 100) window.setTimeout(function() { dispatch(payload, attempts + 1); }, 25);\n") +
-                            wxString("})({data: ") +
-                            wxString::FromUTF8(data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace)) +
-                            wxString("}, 0);");
-    WebView::RunScript(m_browser, script);
+    // PagesPluginCapability::post_message() already dumps JSON, so accept it as-is; only a
+    // non-JSON payload needs wrapping as a string literal.
+    post_to_page(nlohmann::json::accept(message)
+                     ? message
+                     : nlohmann::json(message).dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
 }
 
 PluginPages::~PluginPages()
@@ -255,10 +203,6 @@ void PluginPages::on_cap_register(const PluginCapabilityId& id)
     }
 
     auto* page = new PluginPage(m_parent, std::move(capability));
-    if (!page->is_valid()) {
-        page->Destroy();
-        return;
-    }
 
     const wxString title = wxString::FromUTF8(id.name);
 
@@ -281,7 +225,9 @@ void PluginPages::on_cap_register(const PluginCapabilityId& id)
     }
 
     page->set_icon_image_id(image_id);
-    if (!m_parent->AddPage(page, title, false, image_id)) {
+    // ADAPTED: name-based insert so the tab picker (ActionRegistry) can address the page by its
+    // upstream page_tab_id; the fork keeps the wxImageList icon id alongside the name.
+    if (!m_parent->InsertPage(m_parent->GetPageCount(), page_tab_id(id), page, title, image_id)) {
         if (image_id != wxBookCtrlBase::NO_IMAGE && m_image_list && image_id == m_image_list->GetImageCount() - 1)
             m_image_list->Remove(image_id);
         page->Destroy();
@@ -294,6 +240,20 @@ void PluginPages::on_cap_register(const PluginCapabilityId& id)
 void PluginPages::on_cap_deregister(const PluginCapabilityId& id)
 {
     remove_page(id);
+}
+
+wxString PluginPages::page_tab_id(const PluginCapabilityId& id)
+{
+    return wxString::FromUTF8("plugin." + id.plugin_key + "." + id.name);
+}
+
+void PluginPages::select_page(const PluginCapabilityId& id)
+{
+    if (m_parent == nullptr || m_pages.find(id) == m_pages.end())
+        return;
+    // ADAPTED: upstream swaps the page into a visible slot first (overflow menu); the fork
+    // has no overflow, so select the page's tab by name directly.
+    m_parent->SelectPageByName(page_tab_id(id));
 }
 
 void PluginPages::on_plugin_register(const std::string& plugin_key)

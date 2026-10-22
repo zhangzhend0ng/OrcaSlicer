@@ -978,8 +978,9 @@ nlohmann::json ActionRegistry::tab_options() const
         return out;
     // English labels of the built-in pages whose id is not already their English name, so the tab
     // picker can be searched in English in any UI language.
+    // TRIM: TAB_ID_MONITOR_WEB ("Device (Web)") dropped - the fork has no web device tab.
     static const std::unordered_map<std::string, const char*> english_labels{
-        {TAB_ID_MONITOR, L("Device")}, {TAB_ID_MONITOR_WEB, L("Device (Web)")}, {TAB_ID_MULTI_DEVICE, L("Multi-device")}};
+        {TAB_ID_MONITOR, L("Device")}, {TAB_ID_MULTI_DEVICE, L("Multi-device")}};
 
     Notebook* notebook = mf->m_tabpanel;
     for (size_t i = 0; i < notebook->GetPageCount(); ++i) {

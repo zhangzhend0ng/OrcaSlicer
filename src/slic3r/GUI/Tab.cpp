@@ -682,12 +682,15 @@ Slic3r::GUI::PageShp Tab::add_options_page(const wxString& title, const std::str
 // Names of categories is save in English always. We translate them only for UI.
 // But category "Extruder n" can't be translated regularly (using _()), so
 // just for this category we should splite the title and translate "Extruder" word separately
-wxString Tab::translate_category(const wxString& title, Preset::Type preset_type)
+wxString Tab::translate_category(const wxString& title, Preset::Type preset_type, bool translate)
 {
-    if (preset_type == Preset::TYPE_PRINTER && title.Contains("Extruder ")) {
-        return _("Extruder") + title.SubString(8, title.Last());
+    // ADAPTED: upstream-final additionally renames dual-extruder pages for BBL vendors; the
+    // fork's simpler naming stays, with translation made optional for English search aliases.
+    const auto tr = [translate](const wxString& s) { return translate ? _(s) : s; };
+    if (preset_type == Preset::Type::TYPE_PRINTER && title.Contains("Extruder ")) {
+        return tr(L("Extruder")) + title.SubString(8, title.Last());
     }
-    return _(title);
+    return tr(title);
 }
 
 void Tab::OnActivate()

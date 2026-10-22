@@ -373,7 +373,9 @@ public:
 	void		on_roll_back_value(const bool to_sys = false);
 
 	PageShp		add_options_page(const wxString& title, const std::string& icon, bool is_extruder_pages = false);
-	static wxString translate_category(const wxString& title, Preset::Type preset_type);
+	// With `translate` false the same name is returned untranslated, i.e. as an English UI
+	// displays it (English search aliases for the Speed Dial).
+	static wxString translate_category(const wxString& title, Preset::Type preset_type, bool translate = true);
 
 	virtual void	OnActivate();
 	virtual void	on_preset_loaded() {}
