@@ -1,11 +1,30 @@
 #include "PluginHostBindings.hpp"
+#include "PluginHostUi.hpp"
 #include "slic3r/plugin/PluginBindingUtils.hpp"
 
+#include <pybind11/pytypes.h>
+#include <pybind11/cast.h>
+#include <pybind11/pybind11.h>
+
+#include <cstddef>
 #include <libslic3r/Preset.hpp>
 #include <libslic3r/PresetBundle.hpp>
+#include <libslic3r/Utils.hpp>
+
+#include <memory>
+
+#include <slic3r/GUI/GUI.hpp>
+#include <slic3r/GUI/GUI_App.hpp>
+#include <slic3r/GUI/MainFrame.hpp>
+#include <slic3r/GUI/Plater.hpp>
+#include <slic3r/GUI/Tab.hpp>
 
 #include <pybind11/stl.h>
 
+#include <algorithm>
+#include <boost/filesystem/operations.hpp>
+#include <boost/filesystem/path.hpp>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -32,10 +51,106 @@ PresetCollection& printer_presets(PresetBundle& bundle)
     return static_cast<PresetCollection&>(bundle.printers);
 }
 
+// Upstream 6e42a9b0ae backs orca.host.preset.bundles with per-bundle metadata directories under the
+// active user. The Snapmaker fork's preset engine has no per-bundle metadata; its reloadable local
+// unit is a user preset folder under <data_dir>/user (the startup path PresetBundle::
+// load_user_presets()), so bundle ids here are user folder names.
+bool is_single_path_component(const std::string& value)
+{
+    const boost::filesystem::path path(value);
+    return !value.empty() && value != "." && value != ".." && value.find_first_of("/\\") == std::string::npos &&
+           !path.has_root_name() && !path.has_root_directory();
+}
+
+bool looks_like_user_preset_folder(const boost::filesystem::path& folder)
+{
+    for (const char* directory : { PRESET_PRINT_NAME, PRESET_FILAMENT_NAME, PRESET_PRINTER_NAME })
+        if (boost::filesystem::is_directory(folder / directory))
+            return true;
+    return false;
+}
+
+void reload_local_bundle(const std::string& bundle_id)
+{
+    bool        reloaded = false;
+    std::string error;
+    PluginHostUi::run_on_ui_thread([&] {
+        GUI::GUI_App& app = GUI::wxGetApp();
+        if (app.is_closing())
+            throw std::runtime_error("OrcaSlicer is closing");
+        if (app.preset_bundle == nullptr)
+            throw std::runtime_error("Preset bundle is not available");
+        if (app.app_config == nullptr)
+            throw std::runtime_error("Application configuration is not available");
+        if (app.mainframe == nullptr)
+            throw std::runtime_error("OrcaSlicer main window is not available");
+
+        if (!is_single_path_component(bundle_id)) {
+            error = "Local bundle id must be a single path component";
+            return;
+        }
+        if (!boost::filesystem::is_directory(boost::filesystem::path(data_dir()) / PRESET_USER_DIR / bundle_id)) {
+            error = "Local bundle directory does not exist";
+            return;
+        }
+        try {
+            // The fork's engine reload: same path startup uses, selections preserved by load_user_presets.
+            app.preset_bundle->load_user_presets(bundle_id, ForwardCompatibilitySubstitutionRule::Enable);
+            reloaded = true;
+        } catch (const std::exception& exception) {
+            error = exception.what();
+            return;
+        }
+
+        app.mainframe->update_side_preset_ui();
+        for (GUI::Tab* tab : app.tabs_list) {
+            tab->reload_config();
+            tab->update_changed_ui();
+        }
+        if (GUI::Plater* plater = app.plater())
+            plater->sidebar().update_all_preset_comboboxes();
+    });
+    if (!reloaded)
+        throw std::runtime_error(error.empty() ? "Local bundle was not reloaded" : error);
+}
+
+std::vector<std::string> list_bundle_ids()
+{
+    std::vector<std::string> ids;
+    PluginHostUi::run_on_ui_thread([&] {
+        GUI::GUI_App& app = GUI::wxGetApp();
+        if (app.is_closing())
+            throw std::runtime_error("OrcaSlicer is closing");
+        if (app.preset_bundle == nullptr)
+            throw std::runtime_error("Preset bundle is not available");
+        if (app.app_config == nullptr)
+            throw std::runtime_error("Application configuration is not available");
+
+        const boost::filesystem::path user_dir = boost::filesystem::path(data_dir()) / PRESET_USER_DIR;
+        if (!boost::filesystem::is_directory(user_dir))
+            return;
+        for (const auto& entry : boost::filesystem::directory_iterator(user_dir))
+            if (entry.path().filename() != "." && entry.path().filename() != ".." && looks_like_user_preset_folder(entry.path()))
+                ids.push_back(entry.path().filename().string());
+    });
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    return ids;
+}
+
 } // namespace
 
 void host_bindings::register_presets(py::module_& host)
 {
+    auto preset = host.def_submodule("preset", "Preset operations");
+    auto bundles = preset.def_submodule("bundles", "Local preset bundle operations");
+    bundles.def("reload_local", &reload_local_bundle, py::arg("bundle_id"),
+                "Reload one user preset folder under <data_dir>/user from disk (this build's local preset "
+                "bundle unit); preset selections are preserved. Valid ids come from list_ids().");
+    bundles.def("list_ids", &list_bundle_ids,
+                "IDs of user preset folders under <data_dir>/user that reload_local() accepts, "
+                "including folders created after startup.");
+
     py::enum_<Preset::Type>(host, "PresetType")
         .value("Invalid", Preset::TYPE_INVALID)
         .value("Print", Preset::TYPE_PRINT)
