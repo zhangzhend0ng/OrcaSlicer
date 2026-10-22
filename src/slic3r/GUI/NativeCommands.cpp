@@ -606,8 +606,11 @@ std::vector<NativeCommand> build_command_catalog()
         wxGetApp().open_plugins_dialog();
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
-    // TRIM: refresh_plugins / install_plugin (plugin hub) / install_local_plugin excised
-    // (fork GUI_App has only open_plugins_dialog).
+    // TRIM: refresh_plugins / install_plugin (plugin hub) / install_local_plugin excised from
+    // this catalog (fork GUI_App has only open_plugins_dialog). Not a functional gap: the
+    // Plugins dialog routes these commands through its own webview dispatcher
+    // (PluginsDialog::handle_web_command -> refresh_plugins() / install_plugin_from_file());
+    // only the cloud plugin-hub entry point (install_plugin) has no fork equivalent.
 
     return out;
 }
