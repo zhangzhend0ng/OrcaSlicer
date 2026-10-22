@@ -1145,13 +1145,10 @@ class ConfigCapability(orca.PythonPluginBase):
 
     // A host call arrives without the GIL; the call takes it before its audit scope.
     // (TRIM: upstream also drives a printer-agent capability here; that type is trimmed on
-    // this fork, so the audit-scope behavior is exercised through the config capability alone.
-    // ADAPTED: the py::gil_scoped_release variant segfaults on this fork's per-commit
-    // trampoline/interpreter state — the no-GIL capability-call semantics arrive with
-    // upstream 64d04a75f3 (deferred to the batch-5 decision) — so the audit-scope behavior
-    // is exercised with the GIL held, which exercises the same trampoline path.)
+    // this fork, so the audit-scope behavior is exercised through the config capability alone.)
     nlohmann::json config;
     {
+        py::gil_scoped_release released;
         config = config_cap->get_default_config();
     }
     CHECK(config == nlohmann::json{{"finalized_during_call", 0}});

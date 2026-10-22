@@ -351,6 +351,7 @@ public:
     //get the plate's name
     std::string get_plate_name() const { return m_name; }
     void generate_plate_name_texture();
+    void invalidate_plate_name_texture(); // upstream: rename invalidates the cached name texture
     //set the plate's name
     void set_plate_name(const std::string& name);
 

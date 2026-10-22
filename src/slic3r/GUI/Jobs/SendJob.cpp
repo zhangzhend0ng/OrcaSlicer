@@ -1,4 +1,5 @@
 #include "SendJob.hpp"
+#include "libslic3r/LifecycleEvents.hpp"
 #include "libslic3r/MTUtils.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -117,6 +118,42 @@ void SendJob::process(Ctl &ctl)
 
     ctl.call_on_main_thread([this] { prepare(); }).wait();
     ctl.update_status(0, msg);
+
+    // In check mode (InputIpAddressDialog / lan-mode send) verify the connection with a dummy
+    // "verify_job" upload and fire the caller's success/fail callback; when not continuing, stop
+    // here. Cloud sends skip this.
+    if (m_is_check_mode) {
+        PrintParams verify_params;
+        verify_params.dev_ip           = m_dev_ip;
+        verify_params.username         = "bblp";
+        verify_params.password         = m_access_code;
+        verify_params.use_ssl_for_ftp  = m_local_use_ssl_for_ftp;
+        verify_params.use_ssl_for_mqtt = m_local_use_ssl_for_mqtt; // ADAPTED: fork field name
+        verify_params.dev_id           = m_dev_id;
+        verify_params.project_name     = "verify_job";
+        verify_params.filename         = job_data._temp_path.string();
+        verify_params.connection_type  = this->connection_type;
+
+        int verify_result = m_agent->start_send_gcode_to_sdcard(verify_params, nullptr, nullptr, nullptr); // ADAPTED: fork member agent
+        if (verify_result != 0) {
+            BOOST_LOG_TRIVIAL(error) << "send_job: access code / ip verification failed, result = " << verify_result;
+            if (m_enter_ip_address_fun_fail) m_enter_ip_address_fun_fail(verify_result);
+            m_job_finished = true;
+            return;
+        } else if (!m_check_and_continue) {
+            if (m_enter_ip_address_fun_success) m_enter_ip_address_fun_success();
+            m_job_finished = true;
+            return;
+        }
+    }
+
+    LifecycleEventContext start_ctx;
+    start_ctx.name = m_project_name;
+    start_ctx.device_id = m_dev_id;
+    start_ctx.source = "send_job";
+    fire_lifecycle_event(LifecycleEvent::SendJobStarted, start_ctx);
+    m_lifecycle_started = true;
+
     int total_plate_num = m_plater->get_partplate_list().get_plate_count();
 
     PartPlate* plate = m_plater->get_partplate_list().get_plate(job_data.plate_idx);
@@ -368,6 +405,19 @@ void SendJob::finalize(bool canceled, std::exception_ptr &eptr)
         eptr = nullptr;
     } catch (...) {
         eptr = std::current_exception();
+    }
+
+    if (m_lifecycle_started && !m_lifecycle_finished) {
+        LifecycleEventContext finish_ctx;
+        finish_ctx.name = m_project_name;
+        finish_ctx.device_id = m_dev_id;
+        finish_ctx.source = "send_job";
+        finish_ctx.code = canceled ? LifecycleEvtCode::Warn :
+            (eptr ? LifecycleEvtCode::Error : (m_job_finished ? LifecycleEvtCode::Ok : LifecycleEvtCode::Error));
+        finish_ctx.msg = canceled ? "cancelled" : (eptr ? "exception" :
+            (m_job_finished ? "" : "failed"));
+        fire_lifecycle_event(LifecycleEvent::SendJobFinished, finish_ctx);
+        m_lifecycle_finished = true;
     }
 
     if (canceled || eptr)

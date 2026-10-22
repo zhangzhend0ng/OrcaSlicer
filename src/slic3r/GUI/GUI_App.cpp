@@ -1895,6 +1895,8 @@ void GUI_App::init_networking_callbacks()
                     if (!is_enable_multi_machine()) {
                         GUI::wxGetApp().sidebar().load_ams_list(obj->dev_id, obj);
                     }
+
+                    obj->set_online_state(true);
                 }
                 });
             });
@@ -1934,6 +1936,9 @@ void GUI_App::init_networking_callbacks()
                                 event.SetInt(0);
                                 event.SetString(obj->dev_id);
                                 GUI::wxGetApp().sidebar().load_ams_list(obj->dev_id, obj);
+
+
+                                obj->set_online_state(true);
                             } else if (state == ConnectStatus::ConnectStatusFailed) {
                                 // Orca: avoid showing same error message multiple times until next connection attempt.
                                 const auto already_disconnected = m_device_manager->selected_machine.empty();
@@ -1951,10 +1956,14 @@ void GUI_App::init_networking_callbacks()
                                     }
                                 }
                                 event.SetInt(-1);
+
+                                obj->set_online_state(false);
                             } else if (state == ConnectStatus::ConnectStatusLost) {
                                 m_device_manager->set_selected_machine("", true);
                                 event.SetInt(-1);
                                 BOOST_LOG_TRIVIAL(info) << "set_on_local_connect_fn: state = lost";
+
+                                obj->set_online_state(false);
                             } else {
                                 event.SetInt(-1);
                                 BOOST_LOG_TRIVIAL(info) << "set_on_local_connect_fn: state = " << state;

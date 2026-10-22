@@ -10,6 +10,7 @@
 
 #include "PythonPluginInterface.hpp"
 #include "PythonInterpreter.hpp"
+#include "libslic3r/LifecycleEvents.hpp"
 #include "PluginFsUtils.hpp"
 #include "PluginAuditManager.hpp"
 
@@ -97,9 +98,9 @@ public:
     // mistake), both fall back to the base's empty object rather than writing `"cap_config": null`.
     nlohmann::json get_default_config() const override
     {
+        pybind11::gil_scoped_acquire gil;
         ORCA_PY_AUDIT_SCOPE();
         try {
-            pybind11::gil_scoped_acquire gil;
             pybind11::function override = pybind11::get_override(static_cast<const Base*>(this), "get_default_config");
             if (!override)
                 return Base::get_default_config();
@@ -131,6 +132,11 @@ public:
     void on_cancelled() override
     {
         ORCA_PY_OVERRIDE_AUDITED([] {}, PYBIND11_OVERRIDE, void, Base, on_cancelled);
+    }
+
+    void on_lifecycle_event(LifecycleEvent event, const LifecycleEventContext& ctx) override
+    {
+        ORCA_PY_OVERRIDE_AUDITED([] {}, PYBIND11_OVERRIDE, void, Base, on_lifecycle_event, event, ctx);
     }
 };
 
