@@ -548,7 +548,7 @@ public:
     static long long m_active_file_size;
 
 
-    static std::unordered_map<std::string, int> m_tab_map; // for switching tab
+    static std::unordered_map<std::string, wxString> m_tab_map; // ADAPTED: name-based tab ids (upstream string tabs)
 
 private:
     static std::unordered_set<std::string> m_machine_find_cmd_list;     // Machine find commands

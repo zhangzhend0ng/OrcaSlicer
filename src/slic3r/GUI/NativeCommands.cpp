@@ -58,7 +58,7 @@ void ensure_3d_view(Plater* plater)
     if (plater && !plater->is_view3D_shown()) {
         plater->select_view_3D("3D");
         if (MainFrame* mf = wxGetApp().mainframe; mf)
-            mf->select_tab(size_t(MainFrame::tp3DEditor)); // ADAPTED: fork selects tabs by index
+            mf->select_tab(TAB_ID_PREPARE);
     }
 }
 
@@ -176,7 +176,7 @@ std::vector<NativeCommand> build_command_catalog()
             plater->reslice();
             plater->select_view_3D("Preview", false);
             if (MainFrame* mf = wxGetApp().mainframe; mf)
-                mf->select_tab(size_t(MainFrame::tpPreview)); // ADAPTED: fork selects tabs by index
+                mf->select_tab(TAB_ID_PREVIEW);
         }
         return AppActionRunResult{AppActionRunResult::Level::Success};
     });
@@ -188,7 +188,7 @@ std::vector<NativeCommand> build_command_catalog()
             if (plater) {
                 plater->select_view_3D("Preview", false);
                 if (MainFrame* mf = wxGetApp().mainframe; mf)
-                    mf->select_tab(size_t(MainFrame::tpPreview)); // ADAPTED: fork selects tabs by index
+                    mf->select_tab(TAB_ID_PREVIEW);
                 go_to_layer(plater, param);
             }
             return AppActionRunResult{AppActionRunResult::Level::Success};

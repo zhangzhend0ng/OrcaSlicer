@@ -189,11 +189,11 @@ MonitorPanel::~MonitorPanel()
 
     //m_status_add_machine_panel = new AddMachinePanel(m_tabpanel);
     m_status_info_panel        = new StatusPanel(m_tabpanel);
-    m_tabpanel->AddPage(m_status_info_panel, _L("Status"), "", true);
+    m_tabpanel->AddPage(m_status_info_panel, _L("Status"), true);
 
     m_media_file_panel = new MediaFilePanel(m_tabpanel);
-    m_tabpanel->AddPage(m_media_file_panel, _L("Storage"), "", false);
-    //m_tabpanel->AddPage(m_media_file_panel, _L("Internal Storage"), "", false);
+    m_tabpanel->AddPage(m_media_file_panel, _L("Storage"), false);
+    //m_tabpanel->AddPage(m_media_file_panel, _L("Internal Storage"), false);
 
     m_upgrade_panel = new UpgradePanel(m_tabpanel);
     m_tabpanel->AddPage(m_upgrade_panel, _L("Update"), "", false);

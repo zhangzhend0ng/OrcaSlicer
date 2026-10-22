@@ -406,6 +406,7 @@ public:
     {
         bool     visible{true}; // false when ConfigManipulation hides the row
         wxString label;         // Line::label the row draws (may change at runtime)
+        wxString label_en;      // Line::label_en, the untranslated English of label
         bool     multi{false};  // row packs several options, so label is precomposed
     };
     SettingRowState setting_row_state(const std::string &opt_id) const;

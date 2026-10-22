@@ -53,6 +53,7 @@ class Line : public UndoValueUIManager
 	bool		m_is_separator{ false };
 public:
     wxString	label;
+    wxString	label_en; // untranslated English of `label`, searchable by the Speed Dial in any UI language
     wxString	label_tooltip;
 	std::string	label_path;
     bool        undo_to_sys{false}; // BBS: object config
@@ -78,7 +79,7 @@ public:
 		m_extra_widgets.push_back(widget);
     }
 	Line(wxString label, wxString tooltip) :
-		label(_(label)), label_tooltip(_(tooltip)) {}
+		label(_(label)), label_en(label), label_tooltip(_(tooltip)) {}
 	Line() : m_is_separator(true) {}
 
 	bool is_separator() const { return m_is_separator; }

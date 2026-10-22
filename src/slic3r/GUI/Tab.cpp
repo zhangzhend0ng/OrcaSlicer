@@ -1652,8 +1652,8 @@ void Tab::toggle_line(const std::string &opt_key, bool toggle)
     }
 };
 
-// TRIM: set_option_label (runtime row rename for the Speed Dial) excised: the fork's Line has
-// no set_label/label_en. Setting titles fall back to their untranslated definition labels.
+// TRIM: set_option_label (runtime row rename for the Speed Dial) excised: the fork's Line has no
+// set_label. label_en is carried (set at construction), so English search names work regardless.
 
 Tab::SettingRowState Tab::setting_row_state(const std::string &opt_id) const
 {
@@ -1667,14 +1667,14 @@ Tab::SettingRowState Tab::setting_row_state(const std::string &opt_id) const
                     if (opt.opt_id != opt_id)
                         continue;
                     if (line.toggle_visible) // shown on any owning page is enough
-                        return {true, line.label, line.get_options().size() > 1};
+                        return {true, line.label, line.label_en, line.get_options().size() > 1};
                     found = true;
                 }
             }
         }
     }
     // Never registered on a page -> visible, but with no row label to contribute.
-    return {!found, wxString(), false};
+    return {!found, wxString(), wxString(), false};
 }
 
 // To be called by custom widgets, load a value into a config,
@@ -5849,7 +5849,7 @@ void Tab::load_current_preset()
                             std::string bmp_name = tab->type() == Slic3r::Preset::TYPE_FILAMENT      ? "spool" :
                                                    tab->type() == Slic3r::Preset::TYPE_SLA_MATERIAL  ? "" : "cog";
                             tab->Hide(); // #ys_WORKAROUND : Hide tab before inserting to avoid unwanted rendering of the tab
-                            dynamic_cast<Notebook*>(wxGetApp().tab_panel())->InsertPage(wxGetApp().tab_panel()->FindPage(this), tab, tab->title(), bmp_name);
+                            dynamic_cast<Notebook*>(wxGetApp().tab_panel())->InsertPage(wxGetApp().tab_panel()->FindPage(this), wxString(), tab, tab->title(), bmp_name);
                         }
                         else
 #endif

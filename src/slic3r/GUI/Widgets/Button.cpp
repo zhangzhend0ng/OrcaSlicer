@@ -105,6 +105,15 @@ void Button::SetPaddingSize(const wxSize& size)
     messureSize();
 }
 
+// upstream overload: raw bitmaps (plugin page icons)
+void Button::SetIcon(const wxBitmap& icon)
+{
+    this->active_icon       = ScalableBitmap();
+    this->active_icon.bmp() = icon;
+    messureSize();
+    Refresh();
+}
+
 void Button::SetIconSpacing(int spacing)
 {
     m_icon_spacing = spacing;

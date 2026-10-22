@@ -11393,9 +11393,9 @@ void Plater::priv::select_next_view_3D()
 {
     
     if (current_panel == view3D)
-        wxGetApp().mainframe->select_tab(size_t(MainFrame::tpPreview));
+        wxGetApp().mainframe->select_tab(TAB_ID_PREVIEW);
     else if (current_panel == preview)
-        wxGetApp().mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+        wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
 //    else if (current_panel == assemble_view)
 //        set_current_panel(view3D);
 }
@@ -12585,7 +12585,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                 q->select_plate(first_plate_index);
                 //set to 3d tab
                 q->select_view_3D("Preview");
-                wxGetApp().mainframe->select_tab(MainFrame::tpPreview);
+                wxGetApp().mainframe->select_tab(TAB_ID_PREVIEW);
             }
             else {
                 //set to 3d tab
@@ -12604,7 +12604,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
     else {
         //always set to 3D after loading files
         q->select_view_3D("3D");
-        wxGetApp().mainframe->select_tab(MainFrame::tp3DEditor);
+        wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
     }
 
     if (load_model) {
@@ -15808,7 +15808,14 @@ void Plater::priv::on_tab_selection_changing(wxBookCtrlEvent& e)
     }
 
     const int new_sel = e.GetSelection();
-    sidebar_layout.show = new_sel == MainFrame::tp3DEditor || new_sel == MainFrame::tpPreview;
+    if (new_sel == wxNOT_FOUND) {
+        // Guards against new_sel matching FindPageByName's own wxNOT_FOUND sentinel
+        // below when a TAB_ID_* isn't currently present in the tabpanel.
+        e.Skip();
+        return;
+    }
+    sidebar_layout.show = new_sel == main_frame->m_tabpanel->FindPageByName(TAB_ID_PREPARE) ||
+                           new_sel == main_frame->m_tabpanel->FindPageByName(TAB_ID_PREVIEW);
     update_sidebar();
     int old_sel = e.GetOldSelection();
     if (wxGetApp().preset_bundle && wxGetApp().preset_bundle->use_bbl_device_tab() && new_sel == MainFrame::tpMonitor &&
@@ -15822,7 +15829,7 @@ void Plater::priv::on_tab_selection_changing(wxBookCtrlEvent& e)
             }
         }
     } else {
-        if (new_sel == MainFrame::tpMonitor && wxGetApp().preset_bundle != nullptr) {
+        if (new_sel == main_frame->m_tabpanel->FindPageByName(TAB_ID_MONITOR) && wxGetApp().preset_bundle != nullptr) {
             auto     cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
             wxString url = cfg.opt_string("print_host_webui").empty() ? cfg.opt_string("print_host") : cfg.opt_string("print_host_webui");
             if (main_frame->m_printer_view && url.empty()) {
@@ -17639,7 +17646,7 @@ int Plater::new_project(bool skip_confirm, bool silent, const wxString& project_
     get_notification_manager()->close_notification_of_type(NotificationType::SlicingWarning);
 
     if (!silent)
-        wxGetApp().mainframe->select_tab(MainFrame::tp3DEditor);
+        wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
 
     //get_partplate_list().reinit();
     //get_partplate_list().update_slice_context_to_current_plate(p->background_process);
@@ -17818,7 +17825,7 @@ void Plater::load_project(wxString const& filename2,
     if (!m_exported_file) {
         p->select_view("topfront");
         p->camera.requires_zoom_to_plate = REQUIRES_ZOOM_TO_ALL_PLATE;
-        wxGetApp().mainframe->select_tab(MainFrame::tp3DEditor);
+        wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
     }
     else {
         p->partplate_list.select_plate_view();
@@ -17939,7 +17946,7 @@ void Plater::import_model_id(wxString download_info)
     const int max_retries = 3;
 
     /* jump to 3D eidtor */
-    wxGetApp().mainframe->select_tab((size_t)MainFrame::TabPosition::tp3DEditor);
+    wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
 
     /* prepare progress dialog */
     bool cont = true;
@@ -18718,7 +18725,7 @@ void Plater::calib_flowrate(bool is_linear, int pass) {
     if (new_project(false, false, calib_name) == wxID_CANCEL)
         return;
 
-    wxGetApp().mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+    wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
 
     if (is_linear) {
         if (pass == 1)
@@ -18801,7 +18808,7 @@ void Plater::calib_max_vol_speed(const Calib_Params& params)
 {
     const auto calib_vol_speed_name = wxString::Format(L"Max volumetric speed test");
     new_project(false, false, calib_vol_speed_name);
-    wxGetApp().mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+    wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
     if (params.mode != CalibMode::Calib_Vol_speed_Tower)
         return;
 
@@ -18882,7 +18889,7 @@ void Plater::calib_retraction(const Calib_Params& params)
 {
     const auto calib_retraction_name = wxString::Format(L"Retraction test");
     new_project(false, false, calib_retraction_name);
-    wxGetApp().mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+    wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
     if (params.mode != CalibMode::Calib_Retraction_tower)
         return;
 
@@ -18925,7 +18932,7 @@ void Plater::calib_VFA(const Calib_Params& params)
 {
     const auto calib_vfa_name = wxString::Format(L"VFA test");
     new_project(false, false, calib_vfa_name);
-    wxGetApp().mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+    wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
     if (params.mode != CalibMode::Calib_VFA_Tower)
         return;
 
@@ -18969,7 +18976,7 @@ void Plater::calib_input_shaping_freq(const Calib_Params& params)
 {
     const auto calib_input_shaping_name = wxString::Format(L"Input shaping Frequency test");
     new_project(false, false, calib_input_shaping_name);
-    wxGetApp().mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+    wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
     if (params.mode != CalibMode::Calib_Input_shaping_freq)
         return;
 
@@ -19017,7 +19024,7 @@ void Plater::calib_input_shaping_damp(const Calib_Params& params)
 {
     const auto calib_input_shaping_name = wxString::Format(L"Input shaping Damping test");
     new_project(false, false, calib_input_shaping_name);
-    wxGetApp().mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+    wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
     if (params.mode != CalibMode::Calib_Input_shaping_damp)
         return;
 
@@ -19937,7 +19944,7 @@ LoadType determine_load_type(std::string filename, std::string override_setting)
             wxGetApp().app_config->set("import_project_action", std::to_string(choice));
 
             // BBS: jump to plater panel
-            wxGetApp().mainframe->select_tab(MainFrame::tp3DEditor);
+            wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
             return load_type;
         }
 
@@ -20165,7 +20172,7 @@ void Plater::reset_with_confirm()
                                             .ShowModal() == wxID_YES) {
         reset();
         // BBS: jump to plater panel
-        wxGetApp().mainframe->select_tab(size_t(0));
+        wxGetApp().mainframe->select_tab(TAB_ID_HOME);
     }
 }
 
@@ -22019,7 +22026,7 @@ int Plater::export_config_3mf(int plate_idx, Export3mfProgressFn proFn)
 //BBS
 void Plater::send_calibration_job_finished(wxCommandEvent & evt)
 {
-    p->main_frame->request_select_tab(MainFrame::TabPosition::tpCalibration);
+    p->main_frame->request_select_tab(TAB_ID_CALIBRATION);
     auto calibration_panel = p->main_frame->m_calibration;
     if (calibration_panel) {
         auto curr_wizard = static_cast<CalibrationWizard*>(calibration_panel->get_tabpanel()->GetPage(evt.GetInt()));
@@ -22046,7 +22053,7 @@ void Plater::print_job_finished(wxCommandEvent &evt)
     if (!dev) return;
 
     dev->set_selected_machine(evt.GetString().ToStdString());
-    p->main_frame->request_select_tab(MainFrame::TabPosition::tpMonitor);
+    p->main_frame->request_select_tab(TAB_ID_MONITOR);
     //jump to monitor and select device status panel
     MonitorPanel* curr_monitor = p->main_frame->m_monitor;
     if(curr_monitor)
@@ -22061,7 +22068,7 @@ void Plater::send_job_finished(wxCommandEvent& evt)
 
     send_gcode_finish(evt.GetString());
     p->hide_send_to_printer_dlg();
-    //p->main_frame->request_select_tab(MainFrame::TabPosition::tpMonitor);
+    //p->main_frame->request_select_tab(TAB_ID_MONITOR);
     ////jump to monitor and select device status panel
     //MonitorPanel* curr_monitor = p->main_frame->m_monitor;
     //if (curr_monitor)

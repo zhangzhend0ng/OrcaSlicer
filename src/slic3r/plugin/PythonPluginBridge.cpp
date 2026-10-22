@@ -19,6 +19,7 @@
 #include "host/PluginHost.hpp"
 #include "PyPluginPackage.hpp"
 #include "PyPluginTrampoline.hpp"
+#include "pluginTypes/pages/PagesPluginCapability.hpp"
 #include "pluginTypes/script/ScriptPluginCapability.hpp"
 #include "pluginTypes/slicingPipeline/SlicingPipelinePluginCapability.hpp"
 
@@ -360,17 +361,17 @@ void bind_python_api(pybind11::module_& m)
 {
     m.doc() = "OrcaSlicer plugin API";
 
-    auto pluginTypes = py::enum_<PluginCapabilityType>(m, "PluginType", "Available plugin capability groups")
-                           .value("PrinterConnection", PluginCapabilityType::PrinterConnection)
-                           .value("Automation", PluginCapabilityType::Automation)
-                           .value("Analysis", PluginCapabilityType::Analysis)
-                           .value("Importer", PluginCapabilityType::Importer)
-                           .value("Exporter", PluginCapabilityType::Exporter)
-                           .value("Visualization", PluginCapabilityType::Visualization)
-                           .value("Script", PluginCapabilityType::Script)
-                           .value("SlicingPipeline", PluginCapabilityType::SlicingPipeline)
-                           .value("Unknown", PluginCapabilityType::Unknown)
-                           .export_values();
+    py::enum_<PluginCapabilityType>(m, "PluginType", "Available plugin capability groups")
+        .value("PrinterConnection", PluginCapabilityType::PrinterConnection)
+        .value("Pages", PluginCapabilityType::Pages)
+        .value("Analysis", PluginCapabilityType::Analysis)
+        .value("Importer", PluginCapabilityType::Importer)
+        .value("Exporter", PluginCapabilityType::Exporter)
+        .value("Visualization", PluginCapabilityType::Visualization)
+        .value("Script", PluginCapabilityType::Script)
+        .value("SlicingPipeline", PluginCapabilityType::SlicingPipeline)
+        .value("Unknown", PluginCapabilityType::Unknown)
+        .export_values();
 
     py::enum_<PluginResult>(m, "PluginResult", "Execution summary code")
         .value("Success", PluginResult::Success)
@@ -518,8 +519,9 @@ void bind_python_api(pybind11::module_& m)
     BOOST_LOG_TRIVIAL(debug) << "Registering embedded Python plugin type bindings";
 
     // Make sure you register your bindings here
-    ScriptPluginCapability::RegisterBindings(m, pluginTypes);
-    SlicingPipelinePluginCapability::RegisterBindings(m, pluginTypes);
+    PagesPluginCapability::RegisterBindings(m);
+    ScriptPluginCapability::RegisterBindings(m);
+    SlicingPipelinePluginCapability::RegisterBindings(m);
     PluginHost::RegisterBindings(m);
     BOOST_LOG_TRIVIAL(debug) << "Registered ScriptPluginCapability Python bindings";
 

@@ -106,7 +106,7 @@ public:
     // by this control) and show it immediately.
     bool ShowNewPage(wxWindow * page)
     {
-        return AddPage(page, wxString(), ""/*true *//* select it */);
+        return AddPage(page, wxString());
     }
 
     // Set effect to use for showing/hiding pages.
@@ -137,14 +137,13 @@ public:
 
     // Implement base class pure virtual methods.
 
-    // adds a new page to the control
     bool AddPage(wxWindow* page,
                  const wxString& text,
-                 const std::string& bmp_name,
-                 bool bSelect = false)
+                 bool bSelect = false,
+                 int imageId = NO_IMAGE) override
     {
         DoInvalidateBestSize();
-        return InsertNewPage(GetPageCount(), page, text, bmp_name, bSelect);
+        return InsertPage(GetPageCount(), page, text, bSelect, imageId);
     }
 
     //// Page management
@@ -161,23 +160,6 @@ public:
 
         if (!DoSetSelectionAfterInsertion(n, bSelect))
             page->Hide();
-
-        return true;
-    }
-
-    bool InsertNewPage(size_t n,
-                    wxWindow * page,
-                    const wxString & text,
-                    const std::string& bmp_name = "",
-                    bool bSelect = false)
-    {
-        if (!wxBookCtrlBase::InsertPage(n, page, text, bSelect))
-            return false;
-
-        GetBtnsListCtrl()->InsertPage(n, text, bSelect, bmp_name);
-
-        if (bSelect)
-            SetSelection(n);
 
         return true;
     }

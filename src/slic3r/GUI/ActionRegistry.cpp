@@ -149,10 +149,57 @@ std::unique_ptr<AppAction> make_action(const std::string& plugin_key, const std:
     return std::make_unique<PluginScriptAction>(plugin_key, capability, source_name);
 }
 
-// TRIM: upstream PluginPageAction + make_page_action (plugin "pages" capabilities as
-// speed-dial actions) excised: the Pages capability type is a batch-5 item on this fork.
+// A plugin page capability exposed as a speed-dial action. source_key = plugin_key
+// (identity), so a plugin display-name change does not re-key the action.
+struct PluginPageAction : AppAction
+{
+    static constexpr const char* kIdPrefix = "plugin_page_action";
 
-// ---- built-in command actions (the speed dial "commands" section") ------
+    std::string plugin_key;
+    std::string capability;
+
+    // The id an action for (plugin_key, capability) would have - lets refresh_page_capability
+    // remove a gone capability without materialising the action.
+    static std::string id_for(const std::string& plugin_key, const std::string& capability)
+    { return AppAction::compose_id(kIdPrefix, capability.empty() ? plugin_key : capability, plugin_key); }
+
+    PluginPageAction(std::string plugin_key_in, std::string capability_in, std::string source_name)
+        : AppAction(kIdPrefix,
+                    capability_in.empty() ? plugin_key_in : capability_in, // title
+                    plugin_key_in,                                         // source_key
+                    std::move(source_name))
+        , plugin_key(std::move(plugin_key_in))
+        , capability(std::move(capability_in))
+    {
+        // Stay classified as a plugin: grouped under "Plugins" and gated by the same run-confirm.
+        this->kind = AppActionKind::Plugin;
+        // Icon is left empty on purpose: the webview builds resources/images/<icon>.svg, which a
+        // plugin filesystem icon path would not resolve to.
+    }
+
+    AppActionRunResult run(const std::string& /*param*/) const override
+    {
+        MainFrame* mf = wxGetApp().mainframe;
+        if (mf)
+            mf->plugin_pages().select_page({PluginCapabilityType::Pages, capability, plugin_key});
+        return {AppActionRunResult::Level::Success};
+    }
+};
+
+// Builds an action for a page capability, or nullptr if it is not a currently-loaded,
+// enabled page capability.
+std::unique_ptr<AppAction> make_page_action(const std::string& plugin_key, const std::string& capability, const std::string& source_name)
+{
+    PluginManager& manager = PluginManager::instance();
+    if (!manager.is_plugin_loaded(plugin_key))
+        return nullptr;
+    // only_enabled defaults true, so a disabled capability resolves to nullptr here.
+    if (!manager.get_plugin_capability({PluginCapabilityType::Pages, capability, plugin_key}))
+        return nullptr;
+    return std::make_unique<PluginPageAction>(plugin_key, capability, source_name);
+}
+
+// ---- built-in command actions (the speed dial "commands" section) ------
 
 constexpr const char* kSettingPrefix       = "orca_setting";
 constexpr const char* kPlateGotoPrefix     = "orca_plate_goto";
@@ -209,7 +256,7 @@ SettingText setting_text(const std::wstring& def_label, const std::string& displ
 const char* mode_key(ConfigOptionMode mode)
 {
     switch (mode) {
-    case comAdvanced: return "advanced"; // TRIM: upstream's comExpert folded here (fork has no comExpert mode)
+    case comAdvanced: return "advanced"; // TRIM: upstream comExpert folded here (fork has no comExpert)
     case comDevelop: return "develop";
     default: return "simple";
     }
@@ -372,7 +419,7 @@ void ActionRegistry::init()
         });
     };
     auto on_capability = [this](const PluginCapabilityId& capability, ActionChange change) {
-        if (capability.type != PluginCapabilityType::Script) // TRIM: Pages capabilities are a batch-5 item
+        if (capability.type != PluginCapabilityType::Script && capability.type != PluginCapabilityType::Pages)
             return;
         if (!wxTheApp || wxGetApp().is_closing())
             return;
@@ -384,6 +431,8 @@ void ActionRegistry::init()
                 return;
             if (type == PluginCapabilityType::Script)
                 this->refresh_capability(plugin_key, name, change);
+            else
+                this->refresh_page_capability(plugin_key, name, change);
         });
     };
 
@@ -410,6 +459,16 @@ void ActionRegistry::init()
         auto it                        = source_names.find(key);
         const std::string& source_name = it == source_names.end() ? key : it->second;
         if (auto action = make_action(key, capability->name(), source_name))
+            upsert(std::move(action));
+    }
+
+    for (const auto& capability : manager.get_plugin_capabilities("", PluginCapabilityType::Pages)) {
+        if (!capability)
+            continue;
+        const std::string& key         = capability->audit_plugin_key();
+        auto it                        = source_names.find(key);
+        const std::string& source_name = it == source_names.end() ? key : it->second;
+        if (auto action = make_page_action(key, capability->name(), source_name))
             upsert(std::move(action));
     }
 
@@ -467,6 +526,12 @@ void ActionRegistry::refresh_source(const std::string& plugin_key, ActionChange 
         if (auto action = make_action(plugin_key, capability->name(), source_name))
             upsert(std::move(action));
     }
+    for (const auto& capability : manager.get_plugin_capabilities(plugin_key, PluginCapabilityType::Pages)) {
+        if (!capability)
+            continue;
+        if (auto action = make_page_action(plugin_key, capability->name(), source_name))
+            upsert(std::move(action));
+    }
 }
 
 void ActionRegistry::refresh_capability(const std::string& plugin_key, const std::string& capability, ActionChange change)
@@ -486,8 +551,22 @@ void ActionRegistry::refresh_capability(const std::string& plugin_key, const std
         remove(id);
 }
 
-// TRIM: refresh_page_capability (plugin "pages" capabilities) excised with PluginPageAction;
-// the Pages capability type is a batch-5 item on this fork.
+void ActionRegistry::refresh_page_capability(const std::string& plugin_key, const std::string& capability, ActionChange change)
+{
+    assert(wxThread::IsMain());
+
+    const std::string id = PluginPageAction::id_for(plugin_key, capability);
+    if (change == ActionChange::Removed) {
+        remove(id);
+        return;
+    }
+
+    PluginManager& manager = PluginManager::instance();
+    if (auto action = make_page_action(plugin_key, capability, find_loaded_source_name(manager, plugin_key)))
+        upsert(std::move(action));
+    else
+        remove(id);
+}
 
 void ActionRegistry::upsert(std::unique_ptr<AppAction> action)
 {
@@ -656,10 +735,8 @@ void ActionRegistry::materialize_setting_actions()
         const char* type_context = setting_type_context(opt.type);
         SettingText local   = setting_text(opt.label_local.empty() ? opt.label : opt.label_local, opt.display_label, row.label, row.multi,
                                            I18N::translate_utf8(type_context), opt.category_local, opt.group_local);
-        SettingText english = setting_text(opt.label, opt.display_label_en, row.label, row.multi, type_context,
-                                           // ADAPTED: fork SettingRowState has no label_en (fork Line keeps one label);
-                                           // the untranslated def label is the English alias source.
-                                           opt.category, opt.group);
+        SettingText english = setting_text(opt.label, opt.display_label_en, row.label_en, row.multi, type_context,
+                                           Tab::translate_category(opt.category, opt.type, false).ToStdWstring(), opt.group);
 
         // group stays empty so the source path is the single display/search breadcrumb rather than
         // being duplicated.
@@ -893,12 +970,6 @@ nlohmann::json ActionRegistry::snapshot()
 nlohmann::json ActionRegistry::tab_options() const
 {
     assert(wxThread::IsMain());
-    // TRIM: upstream enumerates the notebook pages by their stable page NAMES
-    // (Notebook::GetPageName/m_pageNames + TAB_ID_* defines); the fork's Notebook tracks
-    // labels/icons only, so the Speed Dial's tab picker is disabled on this fork and
-    // returns an empty set (the webview hides the tab section when it is empty).
-    return nlohmann::json::array();
-#if 0
     nlohmann::json out = nlohmann::json::array();
     if (!wxTheApp || wxGetApp().is_closing())
         return out;
@@ -922,7 +993,6 @@ nlohmann::json ActionRegistry::tab_options() const
         out.push_back(std::move(tab));
     }
     return out;
-#endif
 }
 
 }} // namespace Slic3r::GUI

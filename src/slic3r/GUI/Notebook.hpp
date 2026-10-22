@@ -3,7 +3,11 @@
 
 //#ifdef _WIN32
 
+#include <string>
+#include <vector>
+#include <string>
 #include <wx/bookctrl.h>
+#include <wx/imaglist.h>
 #include <wx/sizer.h>
 
 class ModeSizer;
@@ -24,9 +28,11 @@ public:
     void SetSelection(int sel);
     void UpdateMode();
     void Rescale();
-    bool InsertPage(size_t n, const wxString &text, bool bSelect = false, const std::string &bmp_name = "", const std::string &inactive_bmp_name = "");
+    bool InsertPage(size_t n, const wxString &text, bool bSelect = false, const std::string &bmp_name = "", int imageId = wxBookCtrlBase::NO_IMAGE);
     void RemovePage(size_t n);
     bool SetPageImage(size_t n, const std::string& bmp_name) const;
+    bool SetPageImage(size_t n, int imageId);
+    void SetImageList(wxImageList* imageList) { m_imageList = imageList; }
     void SetPageText(size_t n, const wxString& strText);
     wxString GetPageText(size_t n) const;
     // ORCA: the full page label, unaffected by SetCompact() blanking the button text.
@@ -51,13 +57,24 @@ private:
     int                             m_btn_margin;
     int                             m_line_margin;
     std::vector<wxString>           m_pageLabels; // ORCA
+    wxImageList*                    m_imageList{nullptr};
     std::vector<std::string>        m_pageIcons;  // ORCA: resource icon name per page, plugin pages empty
     wxWindow*                       m_overflow_button{nullptr}; // ORCA
 };
 
-class Notebook: public wxBookCtrlBase
+class Notebook : public wxBookCtrlBase
 {
 public:
+    // Negative values below wxBookCtrlBase::NO_IMAGE are reserved for the built-in
+    // tabs. Nonnegative values are wxImageList indices supplied by plugin pages.
+    static constexpr int PAGE_HOME         = -2;
+    static constexpr int PAGE_PREPARE      = -3;
+    static constexpr int PAGE_PREVIEW      = -4;
+    static constexpr int PAGE_MONITOR      = -5;
+    static constexpr int PAGE_MULTI_DEVICE = -6;
+    static constexpr int PAGE_PROJECT      = -7;
+    static constexpr int PAGE_CALIBRATION  = -8;
+
     Notebook(wxWindow * parent,
                  wxWindowID winid = wxID_ANY,
                  const wxPoint & pos = wxDefaultPosition,
@@ -116,7 +133,7 @@ public:
     // by this control) and show it immediately.
     bool ShowNewPage(wxWindow * page)
     {
-        return AddPage(page, wxString(), "", "");
+        return AddPage(page, wxString(), false, NO_IMAGE);
     }
 
 
@@ -148,15 +165,10 @@ public:
 
     // Implement base class pure virtual methods.
 
-    // adds a new page to the control
-    bool AddPage(wxWindow* page,
-                 const wxString& text,
-                 const std::string& bmp_name,
-                 const std::string& inactive_bmp_name,
-                 bool bSelect = false)
+    bool AddPage(wxWindow* page, const wxString& text, bool bSelect = false, int imageId = NO_IMAGE) override
     {
         DoInvalidateBestSize();
-        return InsertPage(GetPageCount(), page, text, bmp_name, inactive_bmp_name, bSelect);
+        return InsertPage(GetPageCount(), page, text, bSelect, imageId);
     }
 
     // Page management
@@ -166,10 +178,17 @@ public:
                             bool bSelect = false,
                             int imageId = NO_IMAGE) override
     {
-        if (!wxBookCtrlBase::InsertPage(n, page, text, bSelect, imageId))
+        wxString page_name;
+        std::string bmp_name;
+        const bool is_fixed_page = get_fixed_page_info(imageId, page_name, bmp_name);
+        const int stored_image_id = is_fixed_page ? NO_IMAGE : imageId;
+
+        if (!wxBookCtrlBase::InsertPage(n, page, text, bSelect, stored_image_id))
             return false;
 
-        GetBtnsListCtrl()->InsertPage(n, text, bSelect);
+        m_pageNames.insert(m_pageNames.begin() + n, page_name);
+        m_pageImageIds.insert(m_pageImageIds.begin() + n, stored_image_id);
+        GetBtnsListCtrl()->InsertPage(n, text, bSelect, bmp_name, stored_image_id);
 
         if (!DoSetSelectionAfterInsertion(n, bSelect))
             page->Hide();
@@ -178,19 +197,47 @@ public:
     }
 
     bool InsertPage(size_t n,
+                    const wxString& id,
+                    wxWindow* page,
+                    const wxString& text,
+                    int imageId,
+                    bool bSelect = false)
+    {
+        if (!wxBookCtrlBase::InsertPage(n, page, text, bSelect, imageId))
+            return false;
+
+        m_pageNames.insert(m_pageNames.begin() + n, id);
+        m_pageImageIds.insert(m_pageImageIds.begin() + n, imageId);
+        GetBtnsListCtrl()->InsertPage(n, text, bSelect, "", imageId);
+
+        if (!DoSetSelectionAfterInsertion(n, bSelect))
+            page->Hide();
+
+        return true;
+    }
+
+    bool InsertPage(size_t n,
+                    const wxString& id,
                     wxWindow * page,
                     const wxString & text,
                     const std::string& bmp_name = "",
-                    const std::string& inactive_bmp_name = "",
                     bool bSelect = false)
     {
         if (!wxBookCtrlBase::InsertPage(n, page, text, bSelect))
             return false;
 
-        GetBtnsListCtrl()->InsertPage(n, text, bSelect, bmp_name, inactive_bmp_name);
+        m_pageNames.insert(m_pageNames.begin() + n, id);
+        m_pageImageIds.insert(m_pageImageIds.begin() + n, NO_IMAGE);
+        GetBtnsListCtrl()->InsertPage(n, text, bSelect, bmp_name);
 
-        if (bSelect)
-            SetSelection(n);
+        // wxBookCtrlBase::InsertPage() only inserts into the page list and sizes the
+        // new page to the current page's rect — it never touches visibility. A freshly
+        // constructed page defaults to shown, so without this it renders on top of
+        // whatever page is currently selected until the next SetSelection() call hides
+        // it. Mirrors the pure-virtual InsertPage() override above, which already does
+        // this correctly.
+        if (!DoSetSelectionAfterInsertion(n, bSelect))
+            page->Hide();
 
         return true;
     }
@@ -224,8 +271,7 @@ public:
         return DoSetSelection(n);
     }
 
-    // Neither labels nor images are supported but we still store the labels
-    // just in case the user code attaches some importance to them.
+    // Labels are stored by the custom button list; page images use the wx image-list IDs below.
     virtual bool SetPageText(size_t n, const wxString & strText) override
     {
         wxCHECK_MSG(n < GetPageCount(), false, wxS("Invalid page"));
@@ -239,6 +285,23 @@ public:
     {
         wxCHECK_MSG(n < GetPageCount(), wxString(), wxS("Invalid page"));
         return GetBtnsListCtrl()->GetPageText(n);
+    }
+
+    virtual bool SetPageImage(size_t n, int imageId) override
+    {
+        if (n >= m_pageImageIds.size())
+            return false;
+
+        if (!GetBtnsListCtrl()->SetPageImage(n, imageId))
+            return false;
+
+        m_pageImageIds[n] = imageId;
+        return true;
+    }
+
+    virtual int GetPageImage(size_t n) const override
+    {
+        return n < m_pageImageIds.size() ? m_pageImageIds[n] : NO_IMAGE;
     }
 
     // ORCA: the real page label. GetPageText() returns the button label, which SetCompact() blanks.
@@ -255,14 +318,10 @@ public:
         return GetBtnsListCtrl()->GetPageIcon(n);
     }
 
-    virtual bool SetPageImage(size_t WXUNUSED(n), int WXUNUSED(imageId)) override
+    void SetImageList(wxImageList* imageList)
     {
-        return false;
-    }
-
-    virtual int GetPageImage(size_t WXUNUSED(n)) const override
-    {
-        return NO_IMAGE;
+        m_imageList = imageList;
+        GetBtnsListCtrl()->SetImageList(imageList);
     }
 
     bool SetPageImage(size_t n, const std::string& bmp_name)
@@ -278,7 +337,58 @@ public:
             page->SetFocus();
     }
 
+    // wxBookCtrlBase::DeleteAllPages() clears its page list directly rather than
+    // going through DoRemovePage() per page, so it would otherwise leave
+    // m_pageNames desynchronized (a mutation path outside the four this class
+    // already keeps in sync). Not currently called on a Notebook anywhere in
+    // this codebase, but kept correct for the same reason the rest of this
+    // bookkeeping exists.
+    virtual bool DeleteAllPages() override
+    {
+        m_pageNames.clear();
+        m_pageImageIds.clear();
+        return wxBookCtrlBase::DeleteAllPages();
+    }
+
     ButtonsListCtrl* GetBtnsListCtrl() const { return static_cast<ButtonsListCtrl*>(m_bookctrl); }
+
+    int FindPageByName(const wxString& id) const
+    {
+        if (id.empty())
+            return wxNOT_FOUND;
+        for (size_t i = 0; i < m_pageNames.size(); ++i)
+            if (m_pageNames[i] == id)
+                return static_cast<int>(i);
+        return wxNOT_FOUND;
+    }
+
+    wxWindow* GetPageByName(const wxString& id) const
+    {
+        const int idx = FindPageByName(id);
+        return idx == wxNOT_FOUND ? nullptr : GetPage(static_cast<size_t>(idx));
+    }
+
+    bool SelectPageByName(const wxString& id)
+    {
+        const int idx = FindPageByName(id);
+        if (idx == wxNOT_FOUND)
+            return false;
+        SetSelection(static_cast<size_t>(idx));
+        return true;
+    }
+
+    // Inverse of FindPageByName: index -> id. Empty string for an out-of-range
+    // index or a page that was never given an id (e.g. settings Tab pages).
+    wxString GetPageName(size_t n) const
+    {
+        return n < m_pageNames.size() ? m_pageNames[n] : wxString();
+    }
+
+    wxString GetSelectedPageName() const
+    {
+        const int sel = GetSelection();
+        return sel < 0 ? wxString() : GetPageName(static_cast<size_t>(sel));
+    }
 
     void UpdateMode()
     {
@@ -396,6 +506,8 @@ protected:
         wxWindow* const win = wxBookCtrlBase::DoRemovePage(page);
         if (win)
         {
+            m_pageNames.erase(m_pageNames.begin() + page);
+            m_pageImageIds.erase(m_pageImageIds.begin() + page);
             GetBtnsListCtrl()->RemovePage(page);
             DoSetSelectionAfterRemoval(page);
         }
@@ -419,7 +531,47 @@ protected:
     }
 
 private:
+    static bool get_fixed_page_info(int imageId, wxString& page_name, std::string& bmp_name)
+    {
+        switch (imageId) {
+        case PAGE_HOME:
+            page_name = wxS("home");
+            bmp_name = "tab_home_active";
+            return true;
+        case PAGE_PREPARE:
+            page_name = wxS("prepare");
+            bmp_name = "tab_3d_active";
+            return true;
+        case PAGE_PREVIEW:
+            page_name = wxS("preview");
+            bmp_name = "tab_preview_active";
+            return true;
+        case PAGE_MONITOR:
+            page_name = wxS("monitor");
+            bmp_name = "tab_monitor_active";
+            return true;
+        case PAGE_MULTI_DEVICE:
+            page_name = wxS("multi_device");
+            bmp_name = "tab_multi_active";
+            return true;
+        case PAGE_PROJECT:
+            page_name = wxS("project");
+            bmp_name = "tab_auxiliary_active";
+            return true;
+        case PAGE_CALIBRATION:
+            page_name = wxS("calibration");
+            bmp_name = "tab_calibration_active";
+            return true;
+        default:
+            return false;
+        }
+    }
+
     void Init();
+
+    std::vector<wxString> m_pageNames;   // index-parallel to wxBookCtrlBase::m_pages
+    std::vector<int>      m_pageImageIds; // index-parallel to wxBookCtrlBase::m_pages
+    wxImageList*          m_imageList{nullptr};
 
     wxShowEffect m_showEffect,
                  m_hideEffect;

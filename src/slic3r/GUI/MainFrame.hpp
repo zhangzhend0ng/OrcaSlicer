@@ -33,6 +33,19 @@
 #include "PrinterWebView.hpp"
 #include "calib_dlg.hpp"
 #include "MultiMachinePage.hpp"
+#include "slic3r/plugin/host/PluginPages.hpp"
+
+// Stable identifiers for MainFrame::m_tabpanel's built-in pages. These are
+// names rather than positional indices so optional pages cannot shift them.
+#define TAB_ID_HOME          "home"
+#define TAB_ID_PREPARE       "prepare"
+#define TAB_ID_PREVIEW       "preview"
+#define TAB_ID_MONITOR       "monitor"
+#define TAB_ID_MULTI_DEVICE  "multi_device"
+#define TAB_ID_PROJECT       "project"
+#define TAB_ID_CALIBRATION   "calibration"
+#define TAB_ID_AUXILIARY     "auxiliary"
+#define TAB_ID_DEBUG_TOOL    "debug_tool"
 
 #define ENABEL_PRINT_ALL 0
 
@@ -121,7 +134,7 @@ class MainFrame : public DPIFrame
     wxMenuItem* m_menu_item_reslice_now { nullptr };
     wxSizer*    m_main_sizer{ nullptr };
 
-    size_t      m_last_selected_tab;
+    wxString    m_last_selected_tab;
 
     std::string     get_base_name(const wxString &full_name, const char *extension = nullptr) const;
     std::string     get_dir_name(const wxString &full_name) const;
@@ -340,8 +353,9 @@ public:
     // When tab == -1, will be selected last selected tab
     //BBS: GUI refactor
     void        select_tab(wxPanel* panel);
-    void        select_tab(size_t tab = size_t(-1));
-    void        request_select_tab(TabPosition pos);
+    void        select_tab(const wxString& id = wxString());
+    void        select_tab(size_t tab); // ADAPTED: fixed-index callers map onto the name-based core
+    void        request_select_tab(const wxString& id);
     int         get_calibration_curr_tab();
     void        select_view(const std::string& direction);
         /**
@@ -389,6 +403,8 @@ public:
 
     //SoftFever
     void show_device(bool bBBLPrinter);
+    void fit_tab_labels(); // ORCA
+    PluginPages& plugin_pages() { return m_plugin_pages; }
 
     PA_Calibration_Dlg* m_pa_calib_dlg{ nullptr };
     Temp_Calibration_Dlg* m_temp_calib_dlg{ nullptr };
@@ -413,6 +429,7 @@ public:
     CalibrationPanel*     m_calibration{ nullptr };
     WebViewPanel*         m_webview { nullptr };
     PrinterWebView*       m_printer_view{nullptr};
+    PluginPages           m_plugin_pages;
     wxLogWindow*          m_log_window { nullptr };
     // BBS
     //wxBookCtrlBase*       m_tabpanel { nullptr };

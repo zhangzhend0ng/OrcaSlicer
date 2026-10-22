@@ -57,6 +57,7 @@ public:
     bool SetFont(const wxFont& font) override;
 
     void SetIcon(const wxString& icon);
+    void SetIcon(const wxBitmap& icon); // upstream overload: raw bitmaps (plugin page icons)
 
     void SetInactiveIcon(const wxString& icon);
 

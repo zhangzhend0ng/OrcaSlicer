@@ -1188,7 +1188,7 @@ void SSWCP_Instance::sw_SwitchTab() {
             auto tab_item = std::find_if(SSWCP::m_tab_map.begin(), SSWCP::m_tab_map.end(),
                                          [&target_tab](const auto& tab) { return boost::iequals(tab.first, target_tab); });
             if (tab_item != SSWCP::m_tab_map.end()) {
-                wxGetApp().mainframe->request_select_tab(MainFrame::TabPosition(tab_item->second));
+                wxGetApp().mainframe->request_select_tab(tab_item->second);
                 send_to_js();
                 finish_job();
                 return;
@@ -5542,16 +5542,16 @@ std::unordered_map<std::string, std::shared_ptr<SSWCP_UserLogin_Instance::Subscr
     SSWCP_UserLogin_Instance::m_subscribe_map;
 std::mutex SSWCP::m_file_size_mutex;
 
-std::unordered_map<std::string, int> SSWCP::m_tab_map = {
-    {"Home", MainFrame::TabPosition::tpHome},
-    {"3DEditor", MainFrame::TabPosition::tp3DEditor},
-    {"Preview", MainFrame::TabPosition::tpPreview},
-    {"Monitor", MainFrame::TabPosition::tpMonitor},
-    {"MultiDevice", MainFrame::TabPosition::tpMultiDevice},
-    {"Project", MainFrame::TabPosition::tpProject},
-    {"Calibration", MainFrame::TabPosition::tpCalibration},
-    {"Auxiliary", MainFrame::TabPosition::tpAuxiliary},
-    {"DebugTool", MainFrame::TabPosition::toDebugTool}
+std::unordered_map<std::string, wxString> SSWCP::m_tab_map = { // ADAPTED: name-based ids
+    {"Home", TAB_ID_HOME},
+    {"3DEditor", TAB_ID_PREPARE},
+    {"Preview", TAB_ID_PREVIEW},
+    {"Monitor", TAB_ID_MONITOR},
+    {"MultiDevice", TAB_ID_MULTI_DEVICE},
+    {"Project", TAB_ID_PROJECT},
+    {"Calibration", TAB_ID_CALIBRATION},
+    {"Auxiliary", TAB_ID_AUXILIARY},
+    {"DebugTool", TAB_ID_DEBUG_TOOL},
 };
 
 std::unordered_set<std::string> SSWCP::m_machine_find_cmd_list = {
