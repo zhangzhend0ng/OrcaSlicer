@@ -2167,7 +2167,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
 
     {
         LifecycleEventContext ctx;
-        ctx.name = path;
+        ctx.id = std::to_string(print->model().id().id);
+        ctx.name = print->get_model_name();
         ctx.code = LifecycleEvtCode::Ok;
         ctx.msg  = path;
         ctx.cancellation_check = [print]() { return print->canceled(); };
@@ -2211,14 +2212,18 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
     GCodeOutputStream file(boost::nowide::fopen(path_tmp.c_str(), "wb"), m_processor);
     if (!file.is_open()) {
         BOOST_LOG_TRIVIAL(error) << std::string("G-code export to ") + path + " failed.\nCannot open the file for writing.\n" << std::endl;
-        const std::string err_msg = std::string("G-code export to ") + path + " failed.\nCannot open the file for writing.\n";
+        std::string err_msg = std::string("G-code export to ") + path + " failed.\nCannot open the file for writing.\n";
         if (!fs::exists(folder)) {
             // fs::create_directory(folder);
-            BOOST_LOG_TRIVIAL(error) << "the parent path " + folder.string() + " is not there!!!" << std::endl;
+            // Upstream appends the missing-folder notice to the error the event and the throw carry.
+            std::string add_err_msg = std::string("the parent path ") + folder.string() + " is not there!!!\n";
+            BOOST_LOG_TRIVIAL(error) << add_err_msg << std::endl;
+            err_msg += add_err_msg;
         }
         {
             LifecycleEventContext ctx;
-            ctx.name = path;
+            ctx.id = std::to_string(print->model().id().id);
+            ctx.name = print->get_model_name();
             ctx.code = LifecycleEvtCode::Error;
             ctx.msg  = std::string(path) + "\n" + err_msg;
             ctx.cancellation_check = [print]() { return print->canceled(); };
@@ -2242,7 +2247,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         boost::nowide::remove(path_tmp.c_str());
         {
             LifecycleEventContext ctx;
-            ctx.name = path;
+            ctx.id = std::to_string(print->model().id().id);
+            ctx.name = print->get_model_name();
             ctx.code = LifecycleEvtCode::Error;
             ctx.msg  = std::string(path) + "\n" + ex.what();
             ctx.cancellation_check = [print]() { return print->canceled(); };
@@ -2325,7 +2331,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
     if (ret) {
         {
             LifecycleEventContext ctx;
-            ctx.name = path;
+            ctx.id = std::to_string(print->model().id().id);
+            ctx.name = print->get_model_name();
             ctx.code = LifecycleEvtCode::Error;
             ctx.msg  = std::string(path) + "\nFailed to rename the output G-code file: " + ret.message();
             ctx.cancellation_check = [print]() { return print->canceled(); };
@@ -2342,7 +2349,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
 
     {
         LifecycleEventContext ctx;
-        ctx.name = path;
+        ctx.id = std::to_string(print->model().id().id);
+        ctx.name = print->get_model_name();
         ctx.code = LifecycleEvtCode::Ok;
         ctx.msg  = path;
         ctx.cancellation_check = [print]() { return print->canceled(); };
