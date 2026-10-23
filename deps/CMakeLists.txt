@@ -308,6 +308,7 @@ include(OpenVDB/OpenVDB.cmake)
 
 include(GMP/GMP.cmake)
 include(MPFR/MPFR.cmake)
+include(Eigen/Eigen.cmake)
 include(CGAL/CGAL.cmake)
 
 include(NLopt/NLopt.cmake)
@@ -384,6 +385,7 @@ set(_dep_list
     dep_OpenVDB
     dep_OpenCSG
     dep_OpenCV
+    dep_Eigen
     dep_CGAL
     dep_GLFW
     dep_OCCT
