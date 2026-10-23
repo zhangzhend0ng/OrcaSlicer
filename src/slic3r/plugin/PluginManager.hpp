@@ -178,6 +178,11 @@ public:
     // Sets the cloud user whose _subscribed/{user_id} directory is scanned and installed into.
     void set_cloud_user(const std::string& user_id);
 
+    // ADAPTED (cloud domain cut): the fork ships the stub CloudPluginService, so this is always
+    // false here. GUI surfaces use it to degrade cloud-origin packages to plain local behavior
+    // (local action set, no cloud round-trips) instead of keying off sidecar install metadata.
+    bool cloud_plugin_service_available() const;
+
     void subscribe_on_load_callback(PluginLifecycleCompleteFn fn);
     void subscribe_on_unload_callback(PluginLifecycleCompleteFn fn);
     void subscribe_on_capability_load_callback(CapabilityLifecycleFn fn);

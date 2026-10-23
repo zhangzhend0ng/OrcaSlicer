@@ -39,7 +39,9 @@ namespace {
 const wxString kDeletePluginTitle            = _L("Delete Plugin");
 const wxString kUnsubscribeTitle             = _L("Unsubscribe");
 const wxString kOverwritePluginTitle         = _L("Overwrite Plugin");
-std::string s_selected_plugin_install_action = "explore";
+// ADAPTED (cloud domain cut): "explore" (plugin hub) is not offered on this fork; the install
+// button is pinned to the local-package flow. The page normalizes any persisted value anyway.
+std::string s_selected_plugin_install_action = "install-local";
 
 struct PluginContextAction
 {
@@ -262,7 +264,9 @@ std::string to_string(PluginUpdateStatus status)
 PluginSource derive_plugin_source(const PluginDescriptor& descriptor)
 {
     const bool has_cloud_meta = descriptor.cloud.has_value();
-    const bool is_cloud       = descriptor.is_cloud_plugin();
+    // ADAPTED (cloud domain cut): with no cloud service behind this fork, sidecar cloud-origin
+    // packages are plain local ones - badge them Local instead of Subscribed/Mine.
+    const bool is_cloud       = descriptor.is_cloud_plugin() && PluginManager::instance().cloud_plugin_service_available();
     const bool is_mine        = is_cloud && has_cloud_meta && descriptor.cloud->is_mine;
 
     // Source is ownership/locality only; issue states never replace this badge.
@@ -277,7 +281,11 @@ PluginAvailableActions evaluate_action_policy(const PluginDialogItem& item)
 {
     PluginAvailableActions available_actions;
     const bool is_loading             = item.status == PluginStatus::Loading;
-    const bool is_cloud               = item.is_cloud_plugin;
+    // ADAPTED (cloud domain cut): cloud identity only grants the cloud action set (Unsubscribe /
+    // Delete-mine / Reinstall, all of which round-trip the stub service and fail) while the
+    // cloud service is actually reachable. Without it, cloud-origin packages fall through to
+    // the local action set (Delete / Reload / Delete cache and reload).
+    const bool is_cloud               = item.is_cloud_plugin && PluginManager::instance().cloud_plugin_service_available();
     const bool is_mine                = item.source == PluginSource::Mine;
     const bool has_local              = item.has_local_package;
     const bool authorized_for_install = !item.unauthorized;

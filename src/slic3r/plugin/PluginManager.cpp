@@ -1330,6 +1330,8 @@ void PluginManager::set_cloud_user(const std::string& user_id)
     m_cloud_user_id = user_id;
 }
 
+bool PluginManager::cloud_plugin_service_available() const { return m_cloud_service.can_fetch_cloud_plugins(); }
+
 // ── Errors ──────────────────────────────────────────────────────────────────────────────────
 
 bool PluginManager::set_plugin_error(const std::string& plugin_key, std::string error)

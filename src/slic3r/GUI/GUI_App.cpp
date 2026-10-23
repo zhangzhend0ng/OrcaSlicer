@@ -3075,7 +3075,9 @@ bool GUI_App::on_init_inner()
 
     if (m_agent && m_agent->is_user_login()) {
         enable_user_preset_folder(true);
-        plugin_mgr.set_cloud_user(m_agent->get_user_id());
+        // ADAPTED (cloud domain cut): a Snapmaker account login never seeds a plugin cloud user;
+        // plugin discovery stays local-directory only. fetch_plugins_from_cloud is stub-guarded
+        // and returns immediately.
         // If there is a user logged in we do an immediate sync.
         std::vector<std::string> not_found, unauthorized;
         plugin_mgr.fetch_plugins_from_cloud(&not_found, &unauthorized);
@@ -3095,7 +3097,6 @@ bool GUI_App::on_init_inner()
         }
     } else {
         enable_user_preset_folder(false);
-        plugin_mgr.set_cloud_user("");
     }
 
     // BBS if load user preset failed
@@ -4469,9 +4470,9 @@ void GUI_App::request_user_logout()
         GUI::wxGetApp().sidebar().load_ams_list({}, {});
         remove_user_presets();
         enable_user_preset_folder(false);
-        Slic3r::PluginManager::instance().unload_cloud_plugins();
-        Slic3r::PluginManager::instance().clear_cloud_plugin_metadata();
-        Slic3r::PluginManager::instance().set_cloud_user("");
+        // ADAPTED (cloud domain cut): logout must not touch plugins. unload_cloud_plugins()
+        // keys off sidecar cloud-origin metadata and would unload locally installed
+        // cloud-origin packages; there is no cloud user or metadata to clear either.
         preset_bundle->load_user_presets(DEFAULT_USER_FOLDER_NAME, ForwardCompatibilitySubstitutionRule::Enable);
         mainframe->update_side_preset_ui();
 
@@ -4811,12 +4812,12 @@ void GUI_App::enable_user_preset_folder(bool enable)
         std::string user_id = m_agent->get_user_id();
         app_config->set("preset_folder", user_id);
         GUI::wxGetApp().preset_bundle->update_user_presets_directory(user_id);
-        PluginManager::instance().set_cloud_user(user_id);
+        // ADAPTED (cloud domain cut): the user preset folder never doubles as a plugin cloud
+        // user; plugin discovery stays local-directory only.
     } else {
         BOOST_LOG_TRIVIAL(info) << "preset_folder: set to empty";
         app_config->set("preset_folder", "");
         GUI::wxGetApp().preset_bundle->update_user_presets_directory(DEFAULT_USER_FOLDER_NAME);
-        PluginManager::instance().set_cloud_user("");
     }
 }
 

@@ -1,9 +1,8 @@
 const pluginsById = new Map();
+// ADAPTED (cloud domain cut): no plugin hub on this fork - the only install path is a local
+// package. The "explore" entry (open_plugin_hub) was removed; NormalizeInstallAction pins any
+// other value to "install-local".
 const pluginInstallActions = {
-  "explore": {
-    label: "Install plugin",
-    command: "open_plugin_hub"
-  },
   "install-local": {
     label: "Install local plugin",
     command: "install_local_plugin"
@@ -18,7 +17,7 @@ let searchExpandOverride = new Map();
 let selectedPluginId = "";
 let contextPluginId = "";
 let activeDetailTab = "plugin-info";
-let selectedInstallAction = "explore";
+let selectedInstallAction = "install-local";
 // Config tab: the capability whose config is shown. Name and type together address it natively.
 let selectedCapabilityName = "";
 let selectedCapabilityType = "";
@@ -46,6 +45,11 @@ function OnInit() {
   ctxMenu = document.getElementById("ctxMenu");
   exploreMenu = document.getElementById("exploreMenu");
   exploreMenuButton = document.getElementById("explore_menu_btn");
+
+  // ADAPTED (cloud domain cut): with install-local as the only action, the split-button
+  // dropdown has nothing to choose between - hide the menu button and the menu outright.
+  if (exploreMenuButton) exploreMenuButton.hidden = true;
+  if (exploreMenu) exploreMenu.hidden = true;
 
   if (typeof TranslatePage === "function")
     TranslatePage();
@@ -193,7 +197,7 @@ function StoreSplitRatio(ratio) {
 
 function NormalizeInstallAction(action) {
   const normalized = String(action || "");
-  return pluginInstallActions[normalized] ? normalized : "explore";
+  return pluginInstallActions[normalized] ? normalized : "install-local";
 }
 
 function SetSelectedInstallAction(action, notifyNative = false) {
