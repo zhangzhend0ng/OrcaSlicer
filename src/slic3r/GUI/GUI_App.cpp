@@ -3750,6 +3750,14 @@ static void update_dark_children_ui(wxWindow* window, bool just_buttons_update =
 // Note: Don't use this function for Dialog contains ScalableButtons
 void GUI_App::UpdateDarkUIWin(wxWindow* win)
 {
+#ifdef __WINDOWS__
+    // Top-level windows themed through this path (the main frame among them) also need the DWM
+    // dark title-bar/border attribute: without it the native frame ring around the custom dark
+    // chrome stays light whenever the system app theme is light, even with dark mode enabled.
+    // Dialogs already get this via UpdateDlgDarkUI / UpdateFrameDarkUI.
+    if (win != nullptr && win->IsTopLevel() && win->GetHWND() != nullptr)
+        NppDarkMode::SetDarkTitleBar(win->GetHWND());
+#endif
     update_dark_children_ui(win);
 }
 
