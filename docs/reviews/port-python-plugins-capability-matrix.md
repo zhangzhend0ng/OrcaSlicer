@@ -30,4 +30,4 @@
 ## 未验证项与补全路径
 
 - 行 4（Pages 卸载/摘 tab）实机完整开关循环：任务 5（Windows CDP 驱动）验收后回填。
-- macOS universal 包捆绑 Python 运行时 Intel 切片完整性：任务 3（脚本+夹具先行，无 mac 实机则如实标注）。
+- macOS universal 包捆绑 Python 运行时 Intel 切片：修复已落（本批：`build_universal()` 对 `Contents/MacOS/{python,tools}` 逐 Mach-O lipo 合并 + `verify_universal_archs()` 双架构断言 + `scripts/scan_app_archs.sh` 打包后扫描门）；stub 夹具 20/20 行为验证通过（含孤儿双向检测/非 Mach-O 跳过/strict 判定）。**未实机验证**：真 lipo/codesign 行为与 Intel 包启动需 mac 构建机执行 `build_release_macos.sh -a universal` + 对产物跑 `scan_app_archs.sh --strict`。

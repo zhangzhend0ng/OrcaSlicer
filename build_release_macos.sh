@@ -191,6 +191,92 @@ function verify_python_runtime() {
         echo "       or missing Rosetta 2 for the x86_64 leg?)" >&2
         exit 1
     fi
+
+    verify_universal_archs "$app"
+}
+
+# --- Universal Mach-O tree merge -----------------------------------------------
+# build_universal() starts from the arm64 .app and lipo's only the four first-party
+# binaries; without this pass Contents/MacOS/python and Contents/MacOS/tools (uv)
+# stay arm64-only and the Intel slice dies on first plugin import. Every Mach-O in
+# a merged tree must exist in BOTH per-arch bundles -- an orphan in either bundle
+# fails the build instead of shipping half a runtime.
+function merge_universal_macho_tree() {
+    local rel_dir="$1"          # path inside the .app, e.g. "Contents/MacOS/python"
+    local x86_app="$2"
+    local uni_app="$3"
+    local uni_dir="$uni_app/$rel_dir"
+    local x86_dir="$x86_app/$rel_dir"
+
+    if [ ! -d "$uni_dir" ]; then
+        return 0  # nothing bundled under this tree (e.g. profile validator app)
+    fi
+
+    echo "Merging universal Mach-O files under $rel_dir..."
+    local f rel x86_file merged=0 errors=0
+    while IFS= read -r -d '' f; do
+        rel="${f#$uni_dir/}"
+        x86_file="$x86_dir/$rel"
+        # Only Mach-O output goes through lipo; scripts, .py and data copy as-is.
+        lipo -info "$f" >/dev/null 2>&1 || continue
+        if [ ! -f "$x86_file" ] || ! lipo -info "$x86_file" >/dev/null 2>&1; then
+            echo "ERROR: $rel_dir/$rel has no Mach-O x86_64 counterpart in the Intel bundle" >&2
+            errors=$((errors + 1))
+            continue
+        fi
+        lipo -create "$x86_file" "$f" -output "${f}.universal"
+        mv "${f}.universal" "$f"
+        codesign --force --sign - "$f" >/dev/null 2>&1 || \
+            echo "  WARNING: ad-hoc codesign failed for $rel_dir/$rel"
+        merged=$((merged + 1))
+    done < <(find "$uni_dir" -type f -print0)
+
+    # Reverse sweep: an Intel-only Mach-O must not be silently dropped either.
+    if [ -d "$x86_dir" ]; then
+        while IFS= read -r -d '' f; do
+            rel="${f#$x86_dir/}"
+            lipo -info "$f" >/dev/null 2>&1 || continue
+            if [ ! -f "$uni_dir/$rel" ]; then
+                echo "ERROR: $rel_dir/$rel exists only in the Intel bundle (missing from the arm64 base)" >&2
+                errors=$((errors + 1))
+            fi
+        done < <(find "$x86_dir" -type f -print0)
+    fi
+
+    [ "$errors" -eq 0 ] || exit 1
+    echo "  $merged Mach-O file(s) merged into universal slices under $rel_dir."
+}
+
+# --- Universal-slice assertion --------------------------------------------------
+# Fail the build if any Mach-O in the executable trees lacks one of the two slices.
+# Per-arch legs never trip this (their main binary is single-slice): the check
+# activates automatically whenever the main binary itself is universal.
+function verify_universal_archs() {
+    local app="$1"
+    local main_bin="$app/Contents/MacOS/Snapmaker_Orca"
+    [ -f "$main_bin" ] || return 0
+    lipo -info "$main_bin" 2>/dev/null | grep -q x86_64 || return 0
+    lipo -info "$main_bin" 2>/dev/null | grep -q arm64 || return 0
+
+    echo "  Asserting universal slices for every bundled Mach-O..."
+    local dir f info bad=0 checked=0
+    for dir in "Contents/MacOS" "Contents/Frameworks"; do
+        [ -d "$app/$dir" ] || continue
+        while IFS= read -r -d '' f; do
+            lipo -info "$f" >/dev/null 2>&1 || continue
+            checked=$((checked + 1))
+            info=$(lipo -info "$f" 2>/dev/null)
+            if ! echo "$info" | grep -q x86_64 || ! echo "$info" | grep -q arm64; then
+                echo "ERROR: ${f#$app/} is missing an x86_64 or arm64 slice: $info" >&2
+                bad=$((bad + 1))
+            fi
+        done < <(find "$app/$dir" -type f -print0)
+    done
+    if [ "$bad" -ne 0 ]; then
+        echo "ERROR: $bad Mach-O file(s) in $(basename "$app") are not universal" >&2
+        exit 1
+    fi
+    echo "  $checked Mach-O file(s) all carry both x86_64 and arm64 slices."
 }
 
 function build_slicer() {
@@ -420,6 +506,17 @@ function build_universal() {
         codesign --force --sign - "${UNIVERSAL_APP}/${BINARY_PATH}" 2>/dev/null || true
     fi
     
+    # Contents/MacOS/python and Contents/MacOS/tools (uv) must not stay arm64-only:
+    # the base copy came from the arm64 bundle, so every bundled Mach-O under those
+    # trees is lipo-merged against the x86_64 bundle here. A counterpart missing on
+    # either side fails the build.
+    merge_universal_macho_tree "Contents/MacOS/python" \
+        "$PROJECT_DIR/build/x86_64/Snapmaker_Orca/Snapmaker Orca.app" \
+        "$UNIVERSAL_APP"
+    merge_universal_macho_tree "Contents/MacOS/tools" \
+        "$PROJECT_DIR/build/x86_64/Snapmaker_Orca/Snapmaker Orca.app" \
+        "$UNIVERSAL_APP"
+
     verify_python_runtime "$UNIVERSAL_APP"
     # Create universal binary for profile validator if it exists
     if [ -f "$PROJECT_DIR/build/arm64/Snapmaker_Orca/Snapmaker_Orca_profile_validator.app/Contents/MacOS/Snapmaker_Orca_profile_validator" ] && \
