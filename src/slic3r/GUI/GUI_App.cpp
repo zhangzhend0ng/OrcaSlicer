@@ -3049,12 +3049,14 @@ bool GUI_App::on_init_inner()
     PluginManager& plugin_mgr = PluginManager::instance();
     plugin_mgr.initialize();
 
-    // Set cloud plugin directory from previous session so cloud-installed
-    // plugins are discovered even before the network agent is ready.
-    const std::string preset_folder = app_config->get("preset_folder");
-    if (!preset_folder.empty()) {
-        plugin_mgr.set_cloud_user(preset_folder);
-    }
+    // ADAPTED (cloud domain cut): upstream seeds the cloud plugin directory from a previous
+    // session's preset_folder so cloud-subscribed installs are discovered before the network
+    // agent is ready. This fork carries no cloud plugin domain (CloudPluginService is a stub,
+    // no login agent), so plugin discovery, install routing and allowed-root resolution stay
+    // local-directory only: {data_dir}/orca_plugins/. Seeding a stale preset_folder here made
+    // the scanned directory set drift with login timing (early scans included
+    // orca_plugins/_subscribed/<uid>/, later scans dropped it), so plugins came and went
+    // across runs. With no seeding, m_cloud_user_id stays empty for the whole session.
 
     plugin_mgr.discover_plugins(false, true);
 
