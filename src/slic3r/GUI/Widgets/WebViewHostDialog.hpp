@@ -85,8 +85,11 @@ protected:
 private:
     void on_script_message_event(wxWebViewEvent& event);
     void on_webview_recreated(wxCommandEvent& event);
+    void on_show_event(wxShowEvent& event);
 
     wxWebView* m_browser{nullptr};
+    wxString   m_loaded_url;
+    bool       m_first_show_done{false};
 };
 
 }} // namespace Slic3r::GUI

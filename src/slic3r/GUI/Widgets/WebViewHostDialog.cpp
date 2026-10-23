@@ -184,6 +184,7 @@ bool WebViewHostDialog::create_webview(const std::string& resource_path,
     // the app theme with no flash, and re-theme live when the app theme toggles.
     register_theme_user_scripts();
     m_browser->Bind(EVT_WEBVIEW_RECREATED, &WebViewHostDialog::on_webview_recreated, this);
+    Bind(wxEVT_SHOW, &WebViewHostDialog::on_show_event, this);
 
     load_url(target_url);
     wxGetApp().UpdateDlgDarkUI(this);
@@ -210,9 +211,30 @@ void WebViewHostDialog::load_url(const wxString& url)
     if (!m_browser)
         return;
 
+    m_loaded_url = url;
     BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << " enter, url=" << into_u8(url);
     WebView::LoadUrl(m_browser, url);
     m_browser->SetFocus();
+}
+
+// ADAPTED (webview suspend hardening): WebView2 suspends hidden pages and this wx backend never
+// resumes them, so a dialog re-shown after sitting hidden (the open -> close -> open reuse path,
+// e.g. GUI_App::open_plugins_dialog) displays a blank, input-dead page. Upstream rebuilds these
+// views on show through its lazy-page base (a6dbf2502d, which needs LazyPage.hpp this fork does
+// not carry); until that base exists here, a re-show force-reloads the page, which wakes the
+// renderer and replays the page's init (request_plugins et al.).
+void WebViewHostDialog::on_show_event(wxShowEvent& event)
+{
+    event.Skip();
+    if (!event.IsShown() || m_browser == nullptr || m_loaded_url.empty())
+        return;
+
+    if (!m_first_show_done) {
+        m_first_show_done = true; // create_webview() just loaded this page.
+        return;
+    }
+
+    load_url(m_loaded_url);
 }
 
 bool WebViewHostDialog::run_script(const wxString& script)
