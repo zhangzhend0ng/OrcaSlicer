@@ -260,7 +260,9 @@ function clearCookie(name) {
 /*--------Studio WX Message-------*/
 function IsInSlicer()
 {
-	let bMatch=navigator.userAgent.match(  RegExp('BBL-Slicer','i') );
+	// The host UA marker is fork-specific (Widgets/WebView.cpp SetUserAgent -> "SM-Slicer/...");
+	// upstream Bambu-lineage pages gate on "BBL-Slicer". Match both so the ported pages send.
+	let bMatch=navigator.userAgent.match(  RegExp('(BBL|SM)-Slicer','i') );
 	
 	return bMatch;
 }
