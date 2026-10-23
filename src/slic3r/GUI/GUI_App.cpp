@@ -2535,9 +2535,20 @@ void GUI_App::init_plugin_gui_wiring()
                 wxGetApp().mainframe->plugin_pages().on_cap_register(capability);
         });
     plugin_mgr.subscribe_on_capability_unload_callback(
-        [refresh_plugins_dialog](const PluginCapabilityId&) {
+        [refresh_plugins_dialog](const PluginCapabilityId& capability) {
             refresh_plugins_dialog();
+            // Single-capability toggle-off: the whole-plugin path never fires this callback.
+            if (capability.type == PluginCapabilityType::Pages && wxTheApp && !wxGetApp().is_closing() && wxGetApp().mainframe)
+                wxGetApp().mainframe->plugin_pages().on_cap_deregister(capability);
         });
+    plugin_mgr.subscribe_on_unload_callback([](const std::string& plugin_key) {
+        if (wxTheApp == nullptr || wxGetApp().is_closing())
+            return;
+        // unload_plugin() notifies plugin-level only; Pages tabs are torn down here, mirroring
+        // the capability-load registration above.
+        if (wxGetApp().mainframe)
+            wxGetApp().mainframe->plugin_pages().on_plugin_deregister(plugin_key);
+    });
     plugin_mgr.subscribe_on_load_callback([](const std::string& plugin_key) {
         if (wxTheApp == nullptr || wxGetApp().is_closing())
             return;
