@@ -30,6 +30,7 @@
 | 5a-followup | ad6a00fdc2 | 59/59 | F1 十站 ctx + err_msg |
 | 5j 残簇六片 | （本批） | （本批） | 见下 |
 | 5k status 考卷补收 | （本批） | 60/60（slic3rutils_tests clean rebuild 后） | test_plugin_status.cpp = a5413efc37 的考卷（代码片 5j 已吸收、考卷漏带）；NativeCommands TRIM 注释澄清（install 链路勘误，见"验证与勘误"；注释级改动走 DLL 目标增量重编验证） |
+| 5l i18n 包裹层 | （本批） | 60/60（触碰 TU 定向 clean + DLL 重编 + 二进制字符串验证后） | e821665e4b 决策落地=ABSORBED：8 文件消息包裹（Manager/Loader/FsUtils/Resolver/Hooks/Bridge/Config）+ registration_failed 出参对齐上游形态（取代前缀匹配等价物）；顺带上游同提交的两处措辞更新（No update available / Use Delete to remove the local files）。残留 ±1 对 = 云桩域结构性差异（上游 unsubscribe 双站点，port 单站点），不可达路径 |
 
 ## 失效记录与流程防线（审查 F2/F3）
 
@@ -67,6 +68,11 @@ b728e79f26（扩参）、37dcc65752（stdlib 免弹读，test_plugin_audit.cpp �
 - **验证仪器（可复用）**：`sandboxes/api_surface_dump_plugin.py`（双 App 内省 dump）+ `sandboxes/diff_api_surface.py --expect`（期望快照机检，差异≡台账期望集 → `VERDICT: PERFECT`，未归类差异 → DEVIATION rc=1）+ `sandboxes/api_behavior_probe_plugin.py`（行为指纹：ExecutionResult 工厂/config 往返/storage 契约/PluginContext/枚举语义，弹窗安全、可重入）。当前基线：surface 148/1/1（快照与 dump 存 `SnapmakerOrca-mcp/sync-scratch/api_surface/`，port@588170bd81 sha `5fa0ea81…`）、双端行为指纹一致（`68f1682033af…`）。安装法见插件文件头；松散 .py 不被扫描，须目录式+enabled sidecar。
 - **勘误（install 链路）**：曾据 NativeCommands TRIM 注释误判"本地安装按钮死线"。实况：`PluginsDialog::handle_web_command` 自带 webview 命令分发，`refresh_plugins`/`install_local_plugin` → `refresh_plugins()`/`install_plugin_from_file()`（inspect→覆盖确认→安装，全链在树，静态验证）；后端 `PluginManager::inspect_local_plugin_package`/`install_plugin` 均在。唯一无 fork 等价物的入口是 `install_plugin`（云 plugin hub），属云桩域。TRIM 注释已改写防再误读。
 - **test-sync 归因（决策：不做机械同步批）**：共有 test_plugin_* 文件 vs orca/main@e5bb802378 的断言级漂移已逐条归因——printer-agent 域用例（裁剪）、6626377abc 权限票测试块、cefdd9b609 长路径/zip 逃逸用例、4441bcc065 用例间生命周期（均已 DEFERRED）、secret_constants 重构与 conf 文件名字面量（纯命名漂移）；其余为 include/格式漂移，无考题集合变化。机械同步=吸收已 DEFERRED 块，与既定决策冲突，故记录归因而非同步。
+
+## 验证与勘误 II（10-23 全量代码审查，docs/reviews/port-python-plugins-full-review-2026-10-23.md）
+
+- 审查 VERDICT: REQUEST CHANGES（窄面）→ 唯一 (C) 项 F1′（e821665e4b 未入台账）已由 **5l 落地**（ABSORBED，见批次表）。F2′-1 max-pages dropdown 补记于此：PluginPages.cpp 不携带上游 54fe28ab08（08-11）的 visible-page-count/下拉特性，代码内 ADAPTED 注释即声明，fork 无对应 Preferences 设置页，维持不携带。F2′-2（registration_failed 字符串契约）随 5l 出参化自然消除。
+- 审查其余 PASS 项：文件级 53/56 全映照（缺 3=printerAgent 裁剪）、内容差异全归因、上轮 F1 修复与 orca/main 现状逐字一致（ctx.name=get_model_name）、GIL/生命周期/wx 抽检无 (N)。
 
 ## 已知环境事项（不属吸收面）
 

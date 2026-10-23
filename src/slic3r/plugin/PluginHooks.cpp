@@ -10,6 +10,8 @@
 #include "libslic3r/LifecycleEvents.hpp"
 #include "libslic3r/Print.hpp"
 #include "common_func/common_func.hpp"
+#include "slic3r/GUI/I18N.hpp"
+#include "slic3r/GUI/format.hpp"
 // Snapmaker port: SoftFever_VERSION is upstream's host-version macro; map it to our release version.
 #define SoftFever_VERSION Snapmaker_VERSION
 
@@ -103,12 +105,12 @@ void install_slicing_pipeline_hook()
                     } catch (const std::exception& ex) {
                         // A Python raise reaches here as pybind11::error_already_set; surface it as a
                         // (non-critical) slicing error instead of a crash.
-                        throw SlicingError(std::string("Slicing pipeline plugin '") +
-                                           ref.capability_name + "' error: " + ex.what());
+                        throw SlicingError(GUI::format(_u8L("Slicing pipeline plugin '%1%' error: %2%"),
+                                                       ref.capability_name, ex.what()));
                     }
                     if (r.status == PluginResult::FatalError)
-                        throw SlicingError(std::string("Slicing pipeline plugin '") +
-                                           ref.capability_name + "' error: " + r.message);
+                        throw SlicingError(GUI::format(_u8L("Slicing pipeline plugin '%1%' error: %2%"),
+                                                       ref.capability_name, r.message));
                     // log a non-empty success/skipped message instead of dropping it. This is
                     // log-only by design: every pipeline hook fires AFTER set_done() (see Print.cpp),
                     // so the Print-level m_step_active is -1 here. Calling active_step_add_warning()

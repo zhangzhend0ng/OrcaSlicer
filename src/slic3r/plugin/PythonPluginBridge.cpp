@@ -5,6 +5,7 @@
 #include <exception>
 #include <memory>
 #include <mutex>
+#include <slic3r/GUI/I18N.hpp>
 #include <slic3r/plugin/PluginAuditManager.hpp>
 #include <string>
 #include <unordered_map>
@@ -189,7 +190,7 @@ std::vector<CapturedCapability> PythonPluginBridge::finalize_plugin_capture(cons
                     granted = PluginAuditManager::instance().request_permissions(plugin_key, requested_permissions);
                 }
                 if (!granted) {
-                    error = "Plugin permission request denied";
+                    error = _u8L("Plugin permission request denied");
                     BOOST_LOG_TRIVIAL(warning) << error << " for key " << plugin_key;
                     discard_pending_for_key();
                     clear_active_key();

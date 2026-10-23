@@ -334,11 +334,11 @@ bool parse_plugin_overrides(const std::string& raw, CapabilityConfigDocument& do
 
     const nlohmann::json parsed = nlohmann::json::parse(raw, nullptr, /* allow_exceptions */ false);
     if (parsed.is_discarded()) {
-        error = "The preset stores invalid plugin capability configuration JSON.";
+        error = _u8L("The preset stores invalid plugin capability configuration JSON.");
         return false;
     }
     if (!parsed.is_array()) {
-        error = "The preset's plugin capability configuration is not an array and cannot be edited.";
+        error = _u8L("The preset's plugin capability configuration is not an array and cannot be edited.");
         return false;
     }
 
@@ -590,7 +590,7 @@ nlohmann::json PluginConfig::get_config_response(const PluginCapabilityId& id)
             } catch (const std::exception& ex) {
                 error = ex.what();
             } catch (...) {
-                error = "Unknown error";
+                error = _u8L("Unknown error");
             }
         }
 
@@ -686,7 +686,7 @@ nlohmann::json PluginConfig::restore_config_response(const PluginCapabilityId& i
         } catch (const std::exception& ex) {
             error = ex.what();
         } catch (...) {
-            error = "Unknown error";
+            error = _u8L("Unknown error");
         }
     }
 
