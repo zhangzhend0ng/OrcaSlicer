@@ -101,3 +101,11 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - **上游既有设计（保留不动）**：~~targetless 审计事件的 Yes 授权仅会话内有效不落盘~~ **勘误（同日）**：非上游设计，系移植缺口——orca/main 的 write/read_install_state 均带 `permissions.events` 桶（write:856/read:811），port 两行丢失 → targetless 授权（如 snapbins 的 `Socket:socket.__new__`）每次会话重弹 nullptr 父模态框（位置不受控、可藏于任意窗口后、模态期间全应用输入锁定，且会在 PluginsDialog 构造链中途弹出卡住 Show()）——用户侧即"Install local plugin 按了没反应"。两行已按上游原文回填（见修复批）；实测授权落盘 `events: ["Socket:socket.__new__"]`，重启不再弹。有 target 的事件授权原本就持久化（Bamboo fs_read 双路径落盘实测）。
 - 验证：13:42 构建，7 插件本地加载执行如常（audit 证据×2）、无重复键/无 _subscribed 扫描、权限弹窗主屏可见可点（BM_CLICK 实测 Yes 生效、会话内放行）。
 - **勘误追加（5689b2c8ac）**：PluginsDialog/index.html 的 fuzzy-search.js 引用在吸收批抄成 `../js/`（上游 `../../js/`），页面每次加载 404 且搜索匹配器缺失——已按上游原文修复；全 web 资产 158 个相对引用复检全部可解析。
+
+## 插件生命周期实机验收（10-23 深夜，锁屏盲操链路）
+
+- **环境**：控制台被锁（LockApp/CoreWindow 盖屏吞输入、窗口不上屏、副屏黑），合成输入不可用；改用 PrintWindow（窗口像素）+CDP（对话框 DOM/命令）+WM_COMMAND/BM_CLICK（原生确认框）盲操链。对话框打开靠临时未提交钩子（env `ORCA_AUTO_OPEN_PLUGINS_DIALOG`，验收后已删）；"open_plugins" 原生命令在锁屏下无 UI 入口（NativeCommands.cpp:605 只有 SpeedDial/菜单两条触发路，均需输入）。
+- **验收结论**（Vase Maker=Pages 能力插件，全链实证）：插件级禁用→tab/webview 摘除 ✓（e1580a3331 卸载半边工作正常）；重启用→tab/webview **未回归**（缺口，见下）；卸载（plugin_menu_action web 命令 + Delete 确认框 SendMessage BM_CLICK）→行/目录/tab 全清 ✓；退出重启→零残留（6 行、无目录、无孤儿 webview）✓；目录恢复+refresh_plugins→热发现，启用后 tab/webview 回归 ✓。
+- **缺口与修复（load 半边断线）**：`PluginPages::on_plugin_register` 在树内**零调用方**——load_plugin 只发插件级事件（PluginManager.cpp:820/829/852/880），能力级 load 回调仅 set_capability_enabled(:1119) 与 rekey(:1910) 两处发出；启动 tab 靠 PluginPages 初始化枚举、会话中装载无人注册。已在 GUI_App load 订阅补 `plugin_pages().on_plugin_register(plugin_key)`（镜像 e1580a3331 的卸载侧；ResourceTextures 的同名接线本就在场）。修复后重启用/恢复启用两路径均实证 tab+webview 回归。
+- **附带发现**：wxMessageBox（含 SysLink 的任务对话框形态）对 PostMessage(BM_CLICK/WM_COMMAND IDYES) 不生效，SendMessage(BM_CLICK) 同步派发生效；确认框枚举须按标题过滤（PluginsDialog 本体也是 #32770）。
+- **环境残留**：显示合成损坏为机器级（非本仓问题，重启/重登录恢复）；锁屏期间杀了 explorer 一次（已自动重启）、LockApp 一次（系统自愈）。
