@@ -946,6 +946,37 @@ static void AdjustWorkingAreaForAutoHide(const HWND hWnd, MINMAXINFO* mmi)
     }
 }
 
+// A Win10 half-screen snap (or any shell arrange) can push a WM_NCCALCSIZE through DefWindowProc —
+// a wParam==FALSE call, or a window placement that reads SW_SHOWMAXIMIZED while the arrange runs —
+// which reserves the native caption that the WM_NCCALCSIZE override in MSWWindowProc otherwise
+// hides. Nothing re-runs NCCALCSIZE once the window settles, so the reserved caption stays on top
+// of the custom topbar as a second title bar. Detect it from the client/window insets and force one
+// frame recalculation, which lands back in the non-maximized branch of our handler.
+static void RepairCustomFrameAfterArrange(HWND hWnd)
+{
+    if (IsIconic(hWnd) || IsZoomed(hWnd))
+        return;
+    RECT windowRect, clientRect;
+    if (!GetWindowRect(hWnd, &windowRect) || !GetClientRect(hWnd, &clientRect))
+        return;
+    MapWindowPoints(hWnd, nullptr, reinterpret_cast<POINT*>(&clientRect), 2);
+    // Custom frame: top inset ~1px, side inset = thick frame. A reserved caption adds the caption
+    // height to the top inset only; the relative comparison stays valid under DPI scaling.
+    const int topInset  = clientRect.top - windowRect.top;
+    const int sideInset = clientRect.left - windowRect.left;
+    if (topInset <= sideInset + 4)
+        return;
+    // The recalculation re-enters through WM_WINDOWPOSCHANGED; the inset check above already
+    // terminates that chain, the flag only bounds a pathological re-entrant cascade.
+    static bool repairing = false;
+    if (repairing)
+        return;
+    repairing = true;
+    SetWindowPos(hWnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    repairing = false;
+}
+
 WXLRESULT MainFrame::MSWWindowProc(WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam)
 {
     HWND hWnd = GetHandle();
@@ -988,6 +1019,10 @@ WXLRESULT MainFrame::MSWWindowProc(WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam
                 return 0;
             }
         }
+        break;
+
+    case WM_WINDOWPOSCHANGED:
+        RepairCustomFrameAfterArrange(hWnd);
         break;
 
     case WM_GETMINMAXINFO: {
