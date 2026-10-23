@@ -3,6 +3,7 @@
 上游对照：SoftFever/OrcaSlicer `orca/main`（审查基准 10-22 16:14 fetch @664f734e222e；收尾复查 10-22 晚 fetch @e5bb802378，`src/slic3r/plugin/` 自 59e96b71d0 后零新增。每次开工须重新 fetch 复查）。
 本台账为吸收/裁剪/延后决策的**唯一权威记录**：任何"已吸收"声称必须能落到本表或提交信息之一；上游新提交先在此定决策再动代码。
 历史输入：10-22 早晨吸收审计（mcp 工作区未跟踪稿）+ 10-22 晚 REQUEST CHANGES 审查（docs/reviews/port-python-plugins-2026-10-22.md，mcp 工作区）。
+能力矩阵：[port-python-plugins-capability-matrix.md](port-python-plugins-capability-matrix.md)（支持/裁剪/不触发现状冻结 v1，2026-10-23；"插件能不能用 X"先查矩阵，决策仍以本台账为准）。
 
 ## 范围声明（防误判）
 
