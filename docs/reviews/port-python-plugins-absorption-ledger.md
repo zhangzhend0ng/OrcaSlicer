@@ -77,3 +77,12 @@ b728e79f26（扩参）、37dcc65752（stdlib 免弹读，test_plugin_audit.cpp �
 ## 已知环境事项（不属吸收面）
 
 build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发段错误（crashpad dump 时间链自 10-22 15:36 起，早于当日全部吸收批），与后置 pwsh 部署步骤失败（运行时缺件）症状吻合；dump/ctest 门禁不受影响；装包构建复验弹窗行为时一并排查。
+
+**勘误（10-23 实测归因，a0dc6f6c31）**：上述段错误的真凶不是部署缺件，而是 batch-4（187eed00b5）Tab.cpp 嫁接带入的悬空 option 引用（gcode_skip_config_block / use_3mf / enable_power_loss_recovery / 三个 plugin_config_overrides 无 def，`ConfigOptionsGroup::get_option` 空指针解引用，选中 Snapmaker 机型即必崩；时间线与"16:59 起全部启动猝死"吻合）。def 链已由 a0dc6f6c31 补齐，GUI 启动恢复。"15-40s 崩溃"原始观察（10-22 午后健康窗内）与本崩溃为不同时相，pwsh 部署缺件仍是独立待修环境项。
+
+## 实机插件适配验证（10-23，用户本地 6 插件 + stratum）
+
+- **对象**：从用户 OrcaSlicer（SoftFever 发行版）侧迁入的 5 个 cloud-origin 插件（ModelFinder 1.0.5 / FilamentHub 0.2.5 / Vase Maker 0.8.15 / Support Fins 0.2.0 / Open Bamboo Networking 0.2.41）+ 本地 whl SnapBins 0.2.0 + fork 自研 stratum，全部装于 `{data_dir}/orca_plugins/` 本地目录。
+- **结果**：全部被宿主发现并加载执行（fresh pyc import 证据 ×7、audit 归因执行证据 snapbins/5d35283e、pages 页签注册证据见 12:24 会话截屏）；权限沙箱按设计工作（snapbins socket / 5d35283e fs-read 被 AUDIT BLOCKED，弹窗授权链路在主屏正常弹出）。
+- **决策（4313d584d8）**：插件发现收敛为**纯本地目录**。裁掉 GUI_App 启动时 preset_folder→set_cloud_user 的种子（云域裁剪的遗留缝：扫描目录集随登录时序漂移，_subscribed 时扫时不扫、双副本期出重复键）。云向对话框命令保持既有桩守卫（can_fetch_cloud_plugins 短路），不另动插件树代码。
+- **记录**：plugins UI"点不了/关不掉"三因——conf 持久化的坏窗口几何（window_mainframe 副屏负坐标，已修 conf）、模态权限弹窗在屏外禁用对话框（ShowModal 机理）、a6dbf2502d webview 重建逻辑 DEFERRED 导致僵尸 webview 不可恢复（本案例可作为该批次吸收依据）。
