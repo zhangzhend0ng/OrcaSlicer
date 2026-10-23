@@ -97,5 +97,5 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
   3. Snapmaker 账号登录/`enable_user_preset_folder` 重新喂 `set_cloud_user(uid)` → `_subscribed/<uid>/` 再被扫描（含空目录副作用）。→ GUI_App 全部 5 处 set_cloud_user 移除；preset_folder 语义（预设域）不受影响。
   4. 安装按钮 "Explore/插件中枢" 指向 cloud.orcaslicer.com。→ web 页钉死 install-local（隐藏下拉、默认值本地化，host 侧默认值同步）。
   5. PluginResolver printer_agent 反查块（def 永不存在 → 不可达死代码）。→ 删除 + TRIM 注释。
-- **上游既有设计（保留不动）**：targetless 审计事件（如 socket.__new__）的 Yes 授权**仅会话内有效不落盘**（`permission_list_for(category, by_event=true)` 返回空）——每次重启后插件首次越权操作会重新弹窗，属上游审计设计而非移植缺陷；有 target 的事件（bind/connect 等）的授权才会持久化到 sidecar。
+- **上游既有设计（保留不动）**：~~targetless 审计事件的 Yes 授权仅会话内有效不落盘~~ **勘误（同日）**：非上游设计，系移植缺口——orca/main 的 write/read_install_state 均带 `permissions.events` 桶（write:856/read:811），port 两行丢失 → targetless 授权（如 snapbins 的 `Socket:socket.__new__`）每次会话重弹 nullptr 父模态框（位置不受控、可藏于任意窗口后、模态期间全应用输入锁定，且会在 PluginsDialog 构造链中途弹出卡住 Show()）——用户侧即"Install local plugin 按了没反应"。两行已按上游原文回填（见修复批）；实测授权落盘 `events: ["Socket:socket.__new__"]`，重启不再弹。有 target 的事件授权原本就持久化（Bamboo fs_read 双路径落盘实测）。
 - 验证：13:42 构建，7 插件本地加载执行如常（audit 证据×2）、无重复键/无 _subscribed 扫描、权限弹窗主屏可见可点（BM_CLICK 实测 Yes 生效、会话内放行）。
