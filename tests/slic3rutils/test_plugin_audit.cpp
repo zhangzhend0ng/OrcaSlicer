@@ -918,10 +918,11 @@ TEST_CASE("A freshly approved operation covers its nested events", "[audit][Pyth
 
 TEST_CASE("An event with no target is granted by name and remembered", "[audit][Python]")
 {
-    // ADAPTED/KNOWN-GAP: the deps' CPython raises socket.__new__ twice per socket creation and
-    // blocks socket.getaddrinfo without a prompt, so the upstream prompt sequence does not
-    // reproduce on this toolchain. Revisit when the bundled Python is updated.
-    SKIP("socket audit prompt sequence differs on this fork's bundled Python");
+    // The old KNOWN-GAP (socket.__new__ double-raised per creation, getaddrinfo blocked
+    // without a prompt) no longer reproduces on the bundled CPython 3.12.13 once the
+    // targetless permissions.events bucket persisted grants: probe evidence 2026-10-23
+    // shows one prompt per creation, the grant remembered across later creations, and
+    // getaddrinfo prompting with its host as target. Upstream assertions restored.
     AuditHarness harness;
     if (!harness.initialized)
         SKIP("Bundled Python interpreter unavailable: " + PythonInterpreter::instance().last_error());
@@ -972,8 +973,10 @@ right.close()
 
 TEST_CASE("An event grant does not stand in for another access or a target of the same name", "[audit][Python]")
 {
-    // ADAPTED/KNOWN-GAP: see the sibling "An event with no target..." case above.
-    SKIP("socket audit prompt sequence differs on this fork's bundled Python");
+    // Re-enabled 2026-10-23: the fd and same-name-command sequences below never depended
+    // on the (since-vanished) socket prompt oddity that benched this case alongside its
+    // sibling -- probe evidence on Windows shows both parts reproduce the upstream
+    // expectations verbatim on the bundled CPython 3.12.13.
     AuditHarness harness;
     if (!harness.initialized)
         SKIP("Bundled Python interpreter unavailable: " + PythonInterpreter::instance().last_error());

@@ -25,7 +25,7 @@
 
 | 差异 | 证据 | 状态 |
 |---|---|---|
-| `socket.__new__` 授权提示双触发；`getaddrinfo` 解析不弹授权 | tests/slic3rutils/test_plugin_audit.cpp:924/:976 两用例无条件 SKIP，SKIP 处 KNOWN-GAP 注释 | 按实际运行时语义改写断言、恢复两条语义覆盖（任务 4），完成后本行回填 |
+| ~~`socket.__new__` 授权提示双触发；`getaddrinfo` 解析不弹授权~~ | 曾致 tests/slic3rutils/test_plugin_audit.cpp 两用例无条件 SKIP | **已消除（10-23 实测）**：捆绑 CPython 3.12.13 下 `socket.__new__` 每次创建单次触发且授权经 events 桶落盘记忆、`getaddrinfo` 正常带目标弹窗；两用例按上游**原始断言**恢复后真 RUN（8/10 断言全过，Windows）。旧行为疑随 permissions.events 桶回填（台账"裁剪域收口批"勘误）或 Python 重建而消失 |
 
 ## 未验证项与补全路径
 
