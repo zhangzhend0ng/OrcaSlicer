@@ -2552,6 +2552,12 @@ void GUI_App::init_plugin_gui_wiring()
     plugin_mgr.subscribe_on_load_callback([](const std::string& plugin_key) {
         if (wxTheApp == nullptr || wxGetApp().is_closing())
             return;
+        // Mirror of the unload-side Pages teardown above: a plugin (re)loaded mid-session
+        // (toggled back on, installed, reloaded) brings its Pages tabs back with it.
+        // load_plugin() only publishes the plugin-level event, so capability-load
+        // subscribers alone never see this.
+        if (wxGetApp().mainframe)
+            wxGetApp().mainframe->plugin_pages().on_plugin_register(plugin_key);
         PluginResourceTextures::instance().on_plugin_register(plugin_key);
         Slic3r::GUI::bump_texture_library_generation();
     });
