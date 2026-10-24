@@ -31,4 +31,4 @@
 ## 未验证项与补全路径
 
 - 行 4（Pages 卸载/摘 tab）实机完整开关循环：**已完成（10-23 深夜）**，见行 4/13 回填；能力级（单 capability）toggle 路径未单测（代码审查覆盖：set_capability_enabled 发能力级回调→on_cap_register 在树）。
-- macOS universal 包捆绑 Python 运行时 Intel 切片：修复已落（本批：`build_universal()` 对 `Contents/MacOS/{python,tools}` 逐 Mach-O lipo 合并 + `verify_universal_archs()` 双架构断言 + `scripts/scan_app_archs.sh` 打包后扫描门）；stub 夹具 20/20 行为验证通过（含孤儿双向检测/非 Mach-O 跳过/strict 判定）。**未实机验证**：真 lipo/codesign 行为与 Intel 包启动需 mac 构建机执行 `build_release_macos.sh -a universal` + 对产物跑 `scan_app_archs.sh --strict`。
+- macOS universal 包捆绑 Python 运行时 Intel 切片：修复已落（本批：`build_universal()` 对 `Contents/MacOS/{python,tools}` 逐 Mach-O lipo 合并 + `verify_universal_archs()` 双架构断言 + `scripts/scan_app_archs.sh` 打包后扫描门）；stub 夹具 23/23 行为验证通过（含**整树缺失负例**（10-24 复核补：ARM 底包整目录缺席而 Intel 侧有 Mach-O 须失败，两侧皆无才跳过）、单文件双向孤儿检测、非 Mach-O 跳过、strict 判定）。**未实机验证**：真 lipo/codesign 行为与 Intel 包启动需 mac 构建机执行 `build_release_macos.sh -a universal` + 对产物跑 `scan_app_archs.sh --strict`。

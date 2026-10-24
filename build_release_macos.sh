@@ -209,7 +209,19 @@ function merge_universal_macho_tree() {
     local x86_dir="$x86_app/$rel_dir"
 
     if [ ! -d "$uni_dir" ]; then
-        return 0  # nothing bundled under this tree (e.g. profile validator app)
+        # Nothing under this tree in the arm64 base (e.g. profile validator app) -- but an
+        # Intel-only subtree here would be silently dropped from the universal bundle, so
+        # fail on any Mach-O the Intel side still carries before skipping.
+        local f errors=0
+        if [ -d "$x86_dir" ]; then
+            while IFS= read -r -d '' f; do
+                lipo -info "$f" >/dev/null 2>&1 || continue
+                echo "ERROR: $rel_dir/${f#$x86_dir/} exists only in the Intel bundle (missing from the arm64 base)" >&2
+                errors=$((errors + 1))
+            done < <(find "$x86_dir" -type f -print0)
+        fi
+        [ "$errors" -eq 0 ] || exit 1
+        return 0
     fi
 
     echo "Merging universal Mach-O files under $rel_dir..."
