@@ -118,11 +118,16 @@ Section "Main program" SecMain
     ; and the embedded interpreter of the plugin system imports from it at runtime. The
     ; blanket "*.py" exclusion above would strip the stdlib out of the installed runtime,
     ; so the python/ tree is packed explicitly, .py files included.
-    IfFileExists "${PACK_SOURCE_DIR}\python\python3*.dll" 0 skip_python_runtime
+    ; Unconditional on purpose: an earlier revision gated this on
+    ; IfFileExists "${PACK_SOURCE_DIR}\python\python3*.dll", but PACK_SOURCE_DIR is a
+    ; compile-time source path resolved against the installer's *runtime* working directory,
+    ; so on a real install the gate never held and the stdlib was silently skipped
+    ; (only the .pyc files the recursive main block packs made it onto the machine).
+    ; The File below now fails the *build* when the runtime is absent, which is the only
+    ; correct place to catch that.
     SetOutPath "$INSTDIR\python"
     File /r /x "*.pdb" /x "*.lib" /x "*.h" /x "include" /x "libs" "${PACK_SOURCE_DIR}\python\*.*"
     SetOutPath "$INSTDIR"
-    skip_python_runtime:
 
     IfFileExists "$INSTDIR\snapmaker-orca.exe" 0 extract_error
     
