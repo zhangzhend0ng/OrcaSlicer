@@ -114,6 +114,16 @@ Section "Main program" SecMain
     ; PACK_SOURCE_DIR = compile time only. At runtime this File extracts from embedded payload to $INSTDIR.
     File /r /x "*.pdb" /x "*.ilk" /x "*.exp" /x "*.lib" /x "*.obj" /x "*.idb" /x "*.tlog" /x "*.h" /x "*.hpp" /x "*.c" /x "*.cpp" /x "*.cxx" /x "*.cc" /x "*.vcxproj" /x "*.vcxproj.filters" /x "*.sln" /x "*.cmake" /x "*.py" /x "*.md" /x "*.vcxproj.user" /x "CMakeFiles" /x "RelWithDebInfo" /x "Debug" /x "MinSizeRel" /x ".vs" /x "vcpkg_installed" /x "*.dir" /x "include\*" /x "lib\*" "${PACK_SOURCE_DIR}\*.*"
 
+    ; The bundled CPython runtime is source-based (only ~20 frozen .pyc; the stdlib is .py),
+    ; and the embedded interpreter of the plugin system imports from it at runtime. The
+    ; blanket "*.py" exclusion above would strip the stdlib out of the installed runtime,
+    ; so the python/ tree is packed explicitly, .py files included.
+    IfFileExists "${PACK_SOURCE_DIR}\python\python3*.dll" 0 skip_python_runtime
+    SetOutPath "$INSTDIR\python"
+    File /r /x "*.pdb" /x "*.lib" /x "*.h" /x "include" /x "libs" "${PACK_SOURCE_DIR}\python\*.*"
+    SetOutPath "$INSTDIR"
+    skip_python_runtime:
+
     IfFileExists "$INSTDIR\snapmaker-orca.exe" 0 extract_error
     
     DetailPrint "Creating uninstaller..."
