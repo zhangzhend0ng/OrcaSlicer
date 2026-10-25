@@ -1,6 +1,6 @@
 # port/python-plugins 吸收决策台账（living ledger）
 
-上游对照：SoftFever/OrcaSlicer `orca/main`（审查基准 10-22 16:14 fetch @664f734e222e；收尾复查 10-22 晚 fetch @e5bb802378。**10-25 fetch 复查：`src/slic3r/plugin/` 新增 557feba649（preset plugin APIs，即范围声明中预设"合入后再评估"的 preset-plugin-apis 分支），决策见"三方复查轮"节**。每次开工须重新 fetch 复查）。
+上游对照：SoftFever/OrcaSlicer `orca/main`（审查基准 10-22 16:14 fetch @664f734e222e；收尾复查 10-22 晚 fetch @e5bb802378。**10-25 fetch 复查：`src/slic3r/plugin/` 新增 557feba649（preset plugin APIs，即范围声明中预设"合入后再评估"的 preset-plugin-apis 分支），决策见"三方复查轮"节**。**10-25 收尾轮再 fetch @09aa0114b4：新增权限系列 + 2 小提交，决策见"10-25 收尾轮"节**。每次开工须重新 fetch 复查）。
 本台账为吸收/裁剪/延后决策的**唯一权威记录**：任何"已吸收"声称必须能落到本表或提交信息之一；上游新提交先在此定决策再动代码。
 历史输入：10-22 早晨吸收审计（mcp 工作区未跟踪稿）+ 10-22 晚 REQUEST CHANGES 审查（docs/reviews/port-python-plugins-2026-10-22.md，mcp 工作区）。
 能力矩阵：[port-python-plugins-capability-matrix.md](port-python-plugins-capability-matrix.md)（支持/裁剪/不触发现状冻结 v1，2026-10-23；"插件能不能用 X"先查矩阵，决策仍以本台账为准）。
@@ -122,3 +122,16 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - **能力矩阵勘误**：行 1 引用漂移（Print.cpp 实际触发点 2541-2812，步列表补 posDetectOverhangsForLift；契约注释在 SlicingPipelinePluginCapability.cpp:18-19）——12/13 总数判定不变；行 4/13 回填本轮修复与六段链复验。
 - **fff_print 套件链接损坏（修复批内发现，d542603208）**：吸收把 test_slicing_pipeline_hook.cpp 加进 fff_print_tests 却漏了其夹具 test_helpers.cpp（hook 考卷调的 4 参 init_print 只在后者定义）→ 该套件自吸收起从未链接成功，且伞目标 `tests` 静默跳过它，门禁从未察觉（假绿的新形态：目标级缺失而非陈旧增量）。修复=源清单补 test_helpers.cpp（镜像上游）+ 删除其与 test_data.cpp 撞链接名的 4 个重复定义（mesh_names/mesh/model/gcode，保留 test_data 正典版）。**吸收后首次运行：49 用例 34 过 15 失败，无一归因插件移植**——14 个 bed-fit（fork Arrange.cpp 与上游差 ~230 行且自 fork 基点未被移植触碰，与 slic3rutils #246/#280 存量同族）+ 1 个 tree_support（fork 域）。34 个通过项含真实切片/gcode/模型用例=挂点编译且惰性下的切片管线绿灯。**流程教训：伞目标 tests 的成员完整性须显式核查（cmake --build --target <每个套件>），不能只信 umbrella exit 0。**
 - **E2E 生命周期 harness 落地（249ad11ac0，tests/e2e/）**：单测覆盖不到软件周期（首启→装→用→重启→卸载→残留→恢复→CLI 切片），三轮人工盲操取证的技术（CDP/AttachThreadInput 前台提升/绝对坐标菜单点击/同步 BM_CLICK 确认框/UIA Int32 pid）已产品化为仓内可复跑 harness：隔离 --datadir（不碰用户数据）+ 提交在案的 Pages 探针插件 + 有界轮询断言。lifecycle 场景 9 段 21 断言（段 5/8/9 即 df6a5fdd40 竞态修复的回归面——修复前该 harness 必翻红）；slice 场景以自带 project_settings 的 pa_pattern.3mf 走全流程 CLI 切片，双跑规范化哈希（剥三类易变注释行：时钟头/随机对象 id）必须一致，golden（0aa3c58f…@350c133cdb 铸）提供 A/B 回归门禁——吸收 557feba649 或任何切片管线改动必须过此门。编排器全量实跑 E2E PASSED（~105s）。**发布清单须把 run_e2e.py 列为门禁项（需交互桌面，故不进默认 ctest）**。
+
+## 10-25 收尾轮（发行实证 + 557feba649 吸收）
+
+开工 fetch @orca/main 09aa0114b4。`src/slic3r/plugin/` 自 557feba649 后新增 3 组（9 个非 merge 提交），逐条决策：
+
+| 上游提交 | 决策 | 落点/理由 |
+|---|---|---|
+| 6c791532c6 + 2410112046 + 6a0223f055 + 9739d3a9c4 + f3f872281e + f1011098ca + 1086b771b5（plugin-network-permissions 系列，已合入 main） | **DEFERRED——独立权限批** | 范围声明"合入后再评估"触发条款成立。plugin/ 内 +649/-89（PluginAuditManager 网络授权 API + fs 通配权限 + symlink 拒绝/相对路径归一，PluginFsUtils/PythonPluginBridge/PluginManager 连带）+ test_plugin_audit.cpp +446 行考卷 + probe 沙箱件。与 557 批共享 PluginManager.cpp 一个文件：557 批取 557 时点文本，权限批后续叠加，保持批间可分离。属插件系统自身设施（audit/权限），在范围内，但须独立周期（本轮已被 557 批 + 发行实证占满）。 |
+| 9f85357ade 关机期 worker 线程 UI 调用 RuntimeError（#16763） | **ABSORB（本轮）** | 36 行。fork run_on_ui_blocking 与上游修复前形态逐字吻合（promise/future 无界 fut.get()），GUI_App::is_closing() 在树（GUI_App.hpp:345，吸收轮为插件代码加的）。修复 printer-agent disconnect 死锁——fork printer_agent 域虽裁剪，但"UI 线程关机期不再排水 CallAfter 队列"的一般性死锁面在 fork 同样存在。 |
+| 258ddc15e8 i18n 复数占位符（PluginManager 1 行句点） | **ABSORB（并入 557 批文本）** | 目标行位于 ScriptAsyncRuntime::run_invocation——该函数由 557feba649 引入，fork 现无此函数（grep 证实）。557 批吸收时直接取 orca/main 现行文本（含句点），无需独立提交。 |
+
+- **勘误（三方复查轮 117 行）**：PyPluginTrampoline.hpp 并非 557 新文件——lifecycle 批（5899177f18）已在树，557 为 +76 修改。"新文件"表述作废。
+- **Tab.cpp/hpp 在 557 后另有 3 个无关上游提交触碰**（b1846e3408 涂色渗透层 / 30ceeee18d 3MF 警告 / 19eb55d3e5 silent_mode）：557 批只取 557 hunks，不整文件跟。
