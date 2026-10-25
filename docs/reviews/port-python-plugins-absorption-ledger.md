@@ -135,3 +135,34 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 
 - **勘误（三方复查轮 117 行）**：PyPluginTrampoline.hpp 并非 557 新文件——lifecycle 批（5899177f18）已在树，557 为 +76 修改。"新文件"表述作废。
 - **Tab.cpp/hpp 在 557 后另有 3 个无关上游提交触碰**（b1846e3408 涂色渗透层 / 30ceeee18d 3MF 警告 / 19eb55d3e5 silent_mode）：557 批只取 557 hunks，不整文件跟。
+
+### B 发行实证（NSIS 出包 + 装机冒烟）
+
+- **工具链**：winget 装 NSIS 需 UAC 被拒；改用便携版 nsis-3.13.zip（C:\coil\tools\nsis，未入仓）。
+- **出包**：makensis installer.nsi（/DSOURCE_DIR=build-port\src\Release），V2.4.1 包 129MB。包清单以 /V4 日志为权威（12097 File 行：589 .py、57 TK*.dll、根+python 双 python312.dll）。**负例验证**：删 python/ 显式块的对照包 0 .py——检查仪器灵敏。
+- **新发行阻塞（已修 a8c3cef380）**：47d410d7f2 的 python/ File 块带 `IfFileExists "${PACK_SOURCE_DIR}\python\python3*.dll"` **运行期**门（PACK_SOURCE_DIR 是编译期源路径，安装时按安装器 CWD 解析，装机必不成立）→ 静默装机实测仅 29 个 .pyc 落盘、589 个 .py 全缺——装机版内嵌解释器无标准库。编译期清单绿（File 正常打包）+ 运行期门拦截 = 假绿新形态：**只有真装机才能暴露**。修复=删门（缺 runtime 应在构建期 FATAL）。
+- **装机验证（真实静默装机 Program Files\Snapmaker_Orca，宿主自动批准 UAC）**：589 .py ✓、57 OCCT ✓、Uninstall.exe ✓、ARP（WOW6432Node 视图，32 位 NSIS 常态，控制面板可见）✓、URL 协议（64 位视图）✓；**内嵌解释器 pycache 证据指向装机目录 stdlib**（collections/encodings/threading…）；装机形态 e2e lifecycle 9 腿全过 + slice golden 一致。
+- **e2e harness 加固（ea7c87f6aa）**：连续运行中确定性复现的 "PluginsDialog did not become present" 归因为**僵尸 WebView2 占用 CDP 端口**（异常中止路径不清理，fork 已知僵尸 webview 问题的外显）；launch() 前按 `--remote-debugging-port=<本harness端口>` 参数过滤清扫，不误伤第三方 webview。
+- 残留：安装器 UI 交互流（欢迎页/组件页/升级卸载链）未逐页走查（静默路径已覆盖文件+注册表写面）。
+
+### C 批次 5m：557feba649 preset plugin APIs 吸收（8f7c9ca30e + 8f6da5ec5e）
+
+16 文件按批落位（逐文件决策见 8f7c9ca30e 提交信息）。要点：
+- **ADAPT 集（PluginHostPresets.cpp）**：combo 名称解析改标签匹配（fork 定制 ComboBox 无 per-item alias/flag 通道，widget 基座偏移 ~1000 行不属吸收面），内部名走 find_preset/get_preset_name_by_alias 回退；`auto_calc_flushing_volume→auto_calc_flushing_volumes` 改名。
+- **TRIM 集**：AMS 徽标重真（GetFlag/FilamentAMSType/set_sync_badge 缺席）、on_filament_change()（上游空体）、is_mixed_filament 拒绝（fork 无混色虚拟槽）——全部带 in-code ADAPTED 注。
+- **兼容修**：9f85357ade 的 Call::state 用字面 0 初始化（fork C++17 下 MSVC 局部类 NSDMI 不查外围函数局部枚举；上游 C++20 无此问题）。
+- **门禁**：libslic3r_gui clean-first 重编 + app 链接 ✓；slic3rutils（ctest 逐用例）新 4 考卷全绿，5 败全归因（3 action_source 静态资产/模式断言 + 2 bed-fit arrange 存量族）；tests/e2e 全量过（lifecycle 9 腿 + slice golden 0aa3c58f 逐字节一致）；API surface dump 重跑 → 期望集更新为 expected_snapshot_557.json（29 项新增全为 orca.host.preset 面，PERFECT；port dump sha256 前缀 2c210a8e9d4a6591，存 mcp sync-scratch/api_surface/run_557_batch）。
+- **附带修复（4c3815e8da）**：d542603208 拆重复定义时拆错方向，slic3rutils_tests 自 10-25 16:58 起**链接断裂**（伞目标静默跳过故无人察觉——假绿新形态：目标级链接失败）。方向反转后两套件同时恢复；fork 枚举子 cube_20x20x20 补入 test_helpers.hpp（两头文件互斥包含，无 TU 双含）。
+- **门禁姿势勘误**：slic3rutils 的门禁=ctest 逐用例单进程（catch_discover_tests，test_plugin_audit.cpp:462 注释明示该域按每用例一进程设计）。ad-hoc 单进程全量跑会出现 56 例 "interpreter already running" 跳过 + audit 域序列崩溃——**非缺陷，是未按门禁姿势跑**。台账此前 "265/8" 基线的复现条件应以此为前提复核。
+
+### D 从零 deps 构建实证（build-deps-fresh）
+
+全配方 superbuild 从零（DL_CACHE 162MB 复用免下载）**最终 exit 0**。两处阻塞记录：
+1. **环境项（不入库）**：OpenSSL Configure 拒 Git-Bash MSYS perl（IPC::Cmd 残缺）→ PATH 前置 C:\Strawberry\perl\bin 解决。首次点火的后台日志因管道 tail 只留尾行（传输变异教训：构建日志直落文件）。
+2. **配方漂移（已修 8207907f12）**：deps/OpenSSL/OpenSSL.cmake 的 install_cmake_files 步 copy_directory `openssl`，该目录 fork 树内缺失（上游有 6 件包元数据）→ 从 orca/main 原文恢复。共享 mcp deps（OrcaSlicer_dep）当年如何过此步未考（不在本轮范围）。
+- 产物清点：destdir/usr/local 完整（38 个 OCCT DLL、OpenSSLConfig 套件等）。**未做**：用 build-deps-fresh 产物完整配置构建 app（新前缀的 app 构建验证留给下轮，本轮只证 superbuild 配方健康）。
+
+### E mac / F 收尾决策
+
+- E：本机无 mac 硬件，未做（补全路径：有硬件后 build_release_macos.sh -a universal + scan_app_archs.sh --strict + Intel 侧启动冒烟）。
+- F 未动（时间被 B/C/D 占满）：printerAgent 域整体决策、cloud 桩域收口、6626377abc 残差/a62fb17e03/cefdd9b609 三 DEFER 再评估、SnapLogClient flaky 移交，全部顺延。
