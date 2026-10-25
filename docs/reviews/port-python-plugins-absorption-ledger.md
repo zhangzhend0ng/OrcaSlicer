@@ -1,6 +1,6 @@
 # port/python-plugins 吸收决策台账（living ledger）
 
-上游对照：SoftFever/OrcaSlicer `orca/main`（审查基准 10-22 16:14 fetch @664f734e222e；收尾复查 10-22 晚 fetch @e5bb802378，`src/slic3r/plugin/` 自 59e96b71d0 后零新增。每次开工须重新 fetch 复查）。
+上游对照：SoftFever/OrcaSlicer `orca/main`（审查基准 10-22 16:14 fetch @664f734e222e；收尾复查 10-22 晚 fetch @e5bb802378。**10-25 fetch 复查：`src/slic3r/plugin/` 新增 557feba649（preset plugin APIs，即范围声明中预设"合入后再评估"的 preset-plugin-apis 分支），决策见"三方复查轮"节**。每次开工须重新 fetch 复查）。
 本台账为吸收/裁剪/延后决策的**唯一权威记录**：任何"已吸收"声称必须能落到本表或提交信息之一；上游新提交先在此定决策再动代码。
 历史输入：10-22 早晨吸收审计（mcp 工作区未跟踪稿）+ 10-22 晚 REQUEST CHANGES 审查（docs/reviews/port-python-plugins-2026-10-22.md，mcp 工作区）。
 能力矩阵：[port-python-plugins-capability-matrix.md](port-python-plugins-capability-matrix.md)（支持/裁剪/不触发现状冻结 v1，2026-10-23；"插件能不能用 X"先查矩阵，决策仍以本台账为准）。
@@ -44,7 +44,7 @@
 |---|---|---|
 | e68694dbaf file-URL 百分号编码 | **ABSORBED 5i** | helper + fork 在场 call sites；跳过：MultiNozzleSync（缺）、missing_connection（fork 走 localhost 页服务）、ReleaseNote/WipeTower/ElegooLink（站点不存在）、WebViewDialog homepage（fork 走 gateway URL） |
 | 203bc63f35 model.js 转义+附件守卫 | **ABSORBED 5i** | model.js 与上游 parent 逐字节一致；is_absolute_path_within_root 以 weakly_canonical 自含实现（fork 的 is_path_within_root 在插件 fs 侧） |
-| 6626377abc 权限重问 | 源码已入（batch-3）；**测试块 +770 行 DEFERRED** | 下批吸收建议：record_root_frame 测试面，需独立周期 |
+| 6626377abc 权限重问 | 源码已入（batch-3）；测试块 **DEFERRED（残差勘误 10-25：fork test_plugin_audit.cpp 与锚点仅差 ~48 行——主体已随后续文件级吸收进树，残留为 printerAgent/cloud includes、4441bcc065 生命周期注释与 conf 字面量，均属已 DEFERRED 簇；原"+770 行"为提交时点描述，非当前残差）** | 下批吸收建议：record_root_frame 测试面，需独立周期 |
 | 4441bcc065 用例间 Python 生命周期 | **DEFERRED** | 测试基建，随 6626377abc 测试块同批 |
 | c023632a7d 配置/预设跨实例锁+原子写 | **DEFERRED 整提交** | 引擎域（InstanceLock/AppConfig/Preset）；PluginConfig 片段依赖 write_file_atomically（不在 fork），port 的 PID-rename 仍防崩溃截断 |
 | a62fb17e03 移除 cloud 删除自有插件 | **DEFERRED** | 移除体骑在 cloud 桩域（OrcaCloudServiceAgent 缺席、CloudPluginService 冲突）；port 的 delete_mine_plugin 为指向桩的死接线，待 cloud 域清理批一并处理 |
@@ -109,3 +109,14 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - **缺口与修复（load 半边断线）**：`PluginPages::on_plugin_register` 在树内**零调用方**——load_plugin 只发插件级事件（PluginManager.cpp:820/829/852/880），能力级 load 回调仅 set_capability_enabled(:1119) 与 rekey(:1910) 两处发出；启动 tab 靠 PluginPages 初始化枚举、会话中装载无人注册。已在 GUI_App load 订阅补 `plugin_pages().on_plugin_register(plugin_key)`（镜像 e1580a3331 的卸载侧；ResourceTextures 的同名接线本就在场）。修复后重启用/恢复启用两路径均实证 tab+webview 回归。
 - **附带发现**：wxMessageBox（含 SysLink 的任务对话框形态）对 PostMessage(BM_CLICK/WM_COMMAND IDYES) 不生效，SendMessage(BM_CLICK) 同步派发生效；确认框枚举须按标题过滤（PluginsDialog 本体也是 #32770）。
 - **环境残留**：显示合成损坏为机器级（非本仓问题，重启/重登录恢复）；锁屏期间杀了 explorer 一次（已自动重启）、LockApp 一次（系统自愈）。
+
+## 三方复查轮（10-24/25，独立审查 + 修复批）
+
+独立复查结论：①映照 PASS（API surface dump @e2cbf01ee0 与 5j 基线 sha256 逐字节一致，diff --expect VERDICT: PERFECT 148/1/1）②功能等价 REQUEST CHANGES→已修（见下 Pages 竞态）③发行就绪 REQUEST CHANGES→两项已修（installer.nsi、COPY_DLLS）。8 个被审提交（4bab3d8205..e2cbf01ee0）逐个复核全过：CGAL 配方/Eigen/守卫/CutSurface 干净前缀重编 ✓、89f8592074 断言与上游逐字一致 ✓、macho 负例含旧代码反证全绿 ✓、run_on_load_callbacks 双端一致 CallAfter 编组（无线程安全问题，此前"对话框刷新 vs 裸调"对照系假疑点）✓。测试面：slic3rutils 280=265/8skip/1mayfail/6 存量（与基线逐条对号，#3 Http basic authentication 系 [!mayfail] 标签用例非失败）；libslic3r 320 由 1 失败修至全绿（SSWCP，见下）。
+
+- **557feba649（preset plugin APIs，PR #16518）决策：DEFERRED——独立吸收批评估**。范围声明预设的"preset-plugin-apis 合入 main 后再评估"触发条件已成立。体量 16 文件 +2668 行：新文件 PyPluginTrampoline.hpp、PluginHostPresets.cpp +686、PluginManager +439/101（含 ScriptAsyncRuntime 与 cancel_and_wait_for_capabilities 无限期排水语义重写）、GUI 侧 ActionRegistry/OptionsGroup/PluginsDialog/Tab 接线、考卷 test_plugin_host_api.cpp +158。与 fork 的 cancel/GIL/wx 语义耦合深，须按 5i 级别独立周期吸收，不并入本修复批。
+- **Pages boot 竞态（10-23 验收"恢复回归 ✓"的证伪与修复）**：卸载→恢复→启用后 tab 永不回归，跨重启确定性复现（is_loaded=true/能力 enabled/无错误，目录与 config 字节级还原）。根因（插桩定界）：插件加载若在 MainFrame 构造窗口内完成，PluginPages::initialize 枚举已过、load 回调（CallAfter）在构造中途被泵到时 `wxGetApp().mainframe` 尚为 null 被静默跳过，无人兜底。上游同构窗口（on_cap_register 对 null parent 静默 return，initialize 只枚举当时已活能力）。修复=boot 与 recreate_GUI 两个 mainframe 赋值点后幂等重放注册（GUI_App::replay_plugin_pages_registration）+ on_cap_register 静默失败路径（能力不可得/InsertPage 拒绝）补 error 日志。六段链（禁用/重启用/卸载/重启零残留/恢复+启用回归/再重启持久）复验全绿。
+- **installer.nsi 发行阻塞修复**：原 `/x "*.py"` 会把捆绑 CPython 的 stdlib（python/ 树 589 个 .py，仅 21 个 .pyc）从安装包剥离→安装版内嵌解释器丢标准库、插件系统死。来源为 fork 打包提交 ff54f00419（吸收前无捆绑 Python 时无害；上游无 installer.nsi 可比）。修复=python/ 子树显式 File（含 .py，排除 include/libs 开发件）。**验证缺口：本机无 makensis，未做 NSIS 编译验证；补全路径=sign_and_package.sh 出包 + 装机插件加载冒烟**。
+- **COPY_DLLS 修复**：原 28 个硬编码 OCCT DLL（缺 TKDE×8 与 TKBin*/TKStd*/TKXml* 等共 24 个，Release 目录此前靠手工拷贝凑齐）改为 `bin/occt/*.dll` 整目录 GLOB 拷贝 + 前缀缺失 FATAL；根目录 python312.dll 改为 POST_BUILD copy_if_different（原只拷进 python/ 子目录，exe 导入表按根目录解析；手工拷贝件曾于 10-23 21:50 打补）。删除法验证：删根目录 python312.dll 重构即复现。
+- **SSWCP flows 修复（fork 域存量，非插件面）**：test_sswcp_protocol.cpp:64 确定性失败——`select_complete_cached_nozzle_info` 在缓存 flow 不完整时 `flows.clear()` 抹掉直采值，违反头文件契约（"仅全部有效才替换"）。对照唯一调用方 Plater.cpp:9196 语义（不完整缓存不该清空 nozzle_volume_types）后删除 else-clear。libslic3r 320 用例由 316/1/3 修至 317/0/3 全绿。
+- **能力矩阵勘误**：行 1 引用漂移（Print.cpp 实际触发点 2541-2812，步列表补 posDetectOverhangsForLift；契约注释在 SlicingPipelinePluginCapability.cpp:18-19）——12/13 总数判定不变；行 4/13 回填本轮修复与六段链复验。
