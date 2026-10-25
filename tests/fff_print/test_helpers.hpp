@@ -31,6 +31,9 @@ enum class TestMesh {
     L,
     V,
     _40x10,
+    // ADAPTED (fork): fork superset enumerator used by test_bed_temperature / test_print
+    // (mirrors the fork's test_data.hpp; no TU includes both headers, see test_helpers.cpp).
+    cube_20x20x20,
     sphere_50mm,
     bridge,
     bridge_with_hole,
