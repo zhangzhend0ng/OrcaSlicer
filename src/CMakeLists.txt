@@ -501,6 +501,10 @@ if (WIN32)
     add_custom_command(TARGET Snapmaker_Orca POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:Snapmaker_Orca>/python"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_PREFIX_PATH}/libpython" "$<TARGET_FILE_DIR:Snapmaker_Orca>/python"
+        # The executable links python3xx.dll directly and the Windows loader only searches the
+        # executable's own directory (plus PATH): the runtime subdir copy above does not satisfy
+        # the import table, so the DLL itself must also land next to the binary.
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_bundled_python_root}/python${_bundled_python_abi}.dll" "$<TARGET_FILE_DIR:Snapmaker_Orca>/python${_bundled_python_abi}.dll"
         COMMENT "Copying Python runtime into the build tree"
         VERBATIM)
 

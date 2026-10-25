@@ -1015,33 +1015,22 @@ function(Snapmaker_Orca_copy_dlls target config postfix output_dlls)
         )
     endif()
 
-    file(COPY ${CMAKE_PREFIX_PATH}/bin/occt/TKBO.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKBRep.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKCAF.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKCDF.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKernel.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKG2d.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKG3d.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKGeomAlgo.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKGeomBase.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKHLR.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKLCAF.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKMath.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKMesh.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKPrim.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKService.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKShHealing.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKSTEP.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKSTEP209.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKSTEPAttr.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKSTEPBase.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKTopAlgo.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKV3d.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKVCAF.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKXCAF.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKXDESTEP.dll
-            ${CMAKE_PREFIX_PATH}/bin/occt/TKXSBase.dll
-            ${CMAKE_PREFIX_PATH}/bin/freetype.dll
+    # Copy the whole OCCT runtime instead of a hard-coded subset: the dependency set drifts
+    # across OCCT releases (TKDE* data-exchange family, TKBin*/TKStd*/TKXml* serialization),
+    # and the loader resolves part of it lazily, so a stale list ships an app that starts but
+    # breaks on the first STEP/STL/IGES import or mesh operation that needs a missing module.
+    file(GLOB _occt_runtime_dlls "${CMAKE_PREFIX_PATH}/bin/occt/*.dll")
+    if (NOT _occt_runtime_dlls)
+        message(FATAL_ERROR "No OCCT runtime DLLs found under ${CMAKE_PREFIX_PATH}/bin/occt -- check CMAKE_PREFIX_PATH")
+    endif ()
+    file(COPY ${CMAKE_PREFIX_PATH}/bin/occt/ DESTINATION ${_out_dir})
+    set(_occt_out_list "")
+    foreach (_occt_dll ${_occt_runtime_dlls})
+        get_filename_component(_occt_dll_name "${_occt_dll}" NAME)
+        list(APPEND _occt_out_list "${_out_dir}/${_occt_dll_name}")
+    endforeach ()
+
+    file(COPY ${CMAKE_PREFIX_PATH}/bin/freetype.dll
          DESTINATION ${_out_dir})
 
     # Build the DLL list in a local variable first
@@ -1050,32 +1039,7 @@ function(Snapmaker_Orca_copy_dlls target config postfix output_dlls)
         ${_out_dir}/libmpfr-4.dll
         ${_out_dir}/WebView2Loader.dll
 
-        ${_out_dir}/TKBO.dll
-        ${_out_dir}/TKBRep.dll
-        ${_out_dir}/TKCAF.dll
-        ${_out_dir}/TKCDF.dll
-        ${_out_dir}/TKernel.dll
-        ${_out_dir}/TKG2d.dll
-        ${_out_dir}/TKG3d.dll
-        ${_out_dir}/TKGeomAlgo.dll
-        ${_out_dir}/TKGeomBase.dll
-        ${_out_dir}/TKHLR.dll
-        ${_out_dir}/TKLCAF.dll
-        ${_out_dir}/TKMath.dll
-        ${_out_dir}/TKMesh.dll
-        ${_out_dir}/TKPrim.dll
-        ${_out_dir}/TKService.dll
-        ${_out_dir}/TKShHealing.dll
-        ${_out_dir}/TKSTEP.dll
-        ${_out_dir}/TKSTEP209.dll
-        ${_out_dir}/TKSTEPAttr.dll
-        ${_out_dir}/TKSTEPBase.dll
-        ${_out_dir}/TKTopAlgo.dll
-        ${_out_dir}/TKV3d.dll
-        ${_out_dir}/TKVCAF.dll
-        ${_out_dir}/TKXCAF.dll
-        ${_out_dir}/TKXDESTEP.dll
-        ${_out_dir}/TKXSBase.dll
+        ${_occt_out_list}
 
         ${_out_dir}/freetype.dll
     )
