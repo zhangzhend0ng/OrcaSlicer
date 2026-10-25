@@ -119,10 +119,10 @@ bool select_complete_cached_nozzle_info(const std::vector<std::pair<std::string,
     }
 
     diameters = std::move(cached_diameters);
+    // Contract (header): flows are replaced only when every cached flow is valid; otherwise the
+    // freshly resolved direct values must survive -- clearing here would wipe them.
     if (flows_complete)
         flows = std::move(cached_flows);
-    else
-        flows.clear();
     return true;
 }
 
