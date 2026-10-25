@@ -190,8 +190,13 @@ void PluginPages::on_cap_register(const PluginCapabilityId& id)
         return;
 
     auto capability = get_pages_cap(id, true);
-    if (!capability)
+    if (!capability) {
+        // Registration is silently skipped when the capability is missing, not yet enabled, or not
+        // a Pages capability at callback time -- an observable invariant, so log it.
+        BOOST_LOG_TRIVIAL(error) << "[PluginPages] page registration skipped: capability '" << id.name << "' of plugin " << id.plugin_key
+                                 << " is missing, disabled or not a Pages capability at registration time";
         return;
+    }
 
     std::string icon;
     try {
@@ -228,6 +233,8 @@ void PluginPages::on_cap_register(const PluginCapabilityId& id)
     // ADAPTED: name-based insert so the tab picker (ActionRegistry) can address the page by its
     // upstream page_tab_id; the fork keeps the wxImageList icon id alongside the name.
     if (!m_parent->InsertPage(m_parent->GetPageCount(), page_tab_id(id), page, title, image_id)) {
+        BOOST_LOG_TRIVIAL(error) << "[PluginPages] page registration failed: notebook rejected the page for '" << id.name << "' of plugin "
+                                 << id.plugin_key;
         if (image_id != wxBookCtrlBase::NO_IMAGE && m_image_list && image_id == m_image_list->GetImageCount() - 1)
             m_image_list->Remove(image_id);
         page->Destroy();

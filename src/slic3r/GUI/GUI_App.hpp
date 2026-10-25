@@ -835,6 +835,12 @@ private:
     // GUI-side subscriptions to plugin loader events (dialog refresh,
     // network-agent registration, plate revalidation).
     void            init_plugin_gui_wiring();
+    // Replay Pages registration after a main-frame assignment: a plugin whose load
+    // completed inside the MainFrame constructor can have its load callback run
+    // (event pump mid-construction) before `mainframe` was set, where the callback
+    // must skip; PluginPages::initialize() enumerated even earlier and missed it.
+    // Idempotent, so it only ever fills that gap.
+    void            replay_plugin_pages_registration();
     void            remove_old_networking_plugins();
     //BBS set extra header for http request
     std::map<std::string, std::string> get_extra_header();

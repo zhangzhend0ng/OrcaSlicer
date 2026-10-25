@@ -2556,8 +2556,13 @@ void GUI_App::init_plugin_gui_wiring()
         // (toggled back on, installed, reloaded) brings its Pages tabs back with it.
         // load_plugin() only publishes the plugin-level event, so capability-load
         // subscribers alone never see this.
-        if (wxGetApp().mainframe)
+        if (wxGetApp().mainframe) {
             wxGetApp().mainframe->plugin_pages().on_plugin_register(plugin_key);
+        } else {
+            // The load finished before the main frame existed (boot race): the startup
+            // enumeration in PluginPages::initialize must cover this plugin instead.
+            BOOST_LOG_TRIVIAL(warning) << "[plugin-pages] load of " << plugin_key << " completed before mainframe; startup enumeration must register its pages";
+        }
         PluginResourceTextures::instance().on_plugin_register(plugin_key);
         Slic3r::GUI::bump_texture_library_generation();
     });
@@ -2586,6 +2591,16 @@ void GUI_App::init_plugin_gui_wiring()
     // Packs already loaded before this wiring, or in tests where no callback fires.
     PluginResourceTextures::instance().initial_sweep();
     Slic3r::GUI::bump_texture_library_generation();
+}
+
+void GUI_App::replay_plugin_pages_registration()
+{
+    if (mainframe == nullptr)
+        return;
+    auto& pages = mainframe->plugin_pages();
+    for (const auto& capability : PluginManager::instance().get_plugin_capabilities("", PluginCapabilityType::Pages))
+        if (capability)
+            pages.on_cap_register(capability->identity());
 }
 
 void GUI_App::open_plugins_dialog(size_t open_on_tab, const std::string& highlight_option)
@@ -3142,6 +3157,9 @@ bool GUI_App::on_init_inner()
 
     BOOST_LOG_TRIVIAL(info) << "create the main window";
     mainframe = new MainFrame();
+    // A plugin load that completed inside the constructor may have had its load callback
+    // run before `mainframe` was set (event pump mid-construction); replay registration.
+    replay_plugin_pages_registration();
     if (!m_updateDialog)
     {
         m_updateDialog = new UpdateVersionDialog(mainframe);
@@ -4045,6 +4063,8 @@ void GUI_App::recreate_GUI(const wxString &msg_name)
 
     switch_window_pools();
     mainframe = new MainFrame();
+    // Same constructor-window gap as the boot path above: replay registration.
+    replay_plugin_pages_registration();
 
     if (!m_updateDialog) {
         m_updateDialog = new UpdateVersionDialog(mainframe);
