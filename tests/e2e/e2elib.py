@@ -60,6 +60,19 @@ def wait_until(fn, timeout=20, interval=1.0, what="condition"):
     return value
 
 
+def sweep_stale_webviews(cdp_port):
+    """Kill WebView2 browser processes still carrying this harness's debugging-port flag.
+
+    The flag is injected only through WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS in
+    AppSession.launch(), so the filter cannot touch another application's webviews."""
+    marker = "--remote-debugging-port=%d" % cdp_port
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | "
+          "Where-Object { $_.CommandLine -like '*%s*' } | "
+          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" % marker)
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=30,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 # --------------------------------------------------------------------------- #
 # Native window helpers (ctypes)
 # --------------------------------------------------------------------------- #
@@ -269,6 +282,15 @@ class AppSession:
 
     def launch(self, extra_args=()):
         check(self.proc is None or self.proc.poll() is not None, "session already running")
+        # A scenario that aborted earlier (exception before terminate()) can leave WebView2
+        # browser processes behind; app exit does not always reap them (the fork's zombie
+        # webview issue). A leftover browser holding the CDP port makes every later
+        # session's webview targets invisible (pages never enumerate), which surfaced as
+        # deterministic "PluginsDialog did not become present" failures when several runs
+        # share a machine. Sweep only processes this harness created: the debugging-port
+        # flag comes from WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS below and never appears on
+        # another application's webview.
+        sweep_stale_webviews(self.cdp_port)
         env = dict(os.environ)
         env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--remote-debugging-port=%d" % self.cdp_port
         args = [self.exe, "--datadir", self.datadir] + self.extra_args + list(extra_args)
