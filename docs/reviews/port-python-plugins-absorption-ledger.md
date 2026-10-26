@@ -220,3 +220,46 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - **根因**：CI 打包用 `scripts/packaging/stage_connect_bundle.py` 按 `.github/connect-bundle.lock.json` 下载 control 发布包，**除替换 `snapmaker_control_windows_x64.exe` 外还整目录替换 `resources/web/flutter_web`**（脚本 243 行 replace_directory）——即"main 配 control 1.8.5"的正确形态 = control 1.8.5 的 exe **加其自带 web**（main.dart.js，version.json 报 1.8.5/20261023182959）。本地打包从未跑此步：包里一直是 git 树 web 2.3.40 + 10-22 的旧 exe 1.7.6，双重协议错位。git 树里的 resources/web/flutter_web（2.3.40，含 askUserLogin 等登录方法族，宿主 SSWCP 分发器 74 个 sw_* 无登录族——fork 与上游 main 逐字同）只是 dev 基线，正式形态被 CI 覆盖。
 - **修复**：预置 sha256 校验过的 1.8.5 zip 进脚本缓存（%LOCALAPPDATA%/OrcaSlicer/connect-bundle-cache），对 build-port/src/Release/resources 跑 staging（exe 10,493,480 B + web 整换 + 陈旧 CLI 清理），makensis 重出（130,654,082 B，17:05，File 12118），静默重装。
 - **验证**：装机后 app/control 双侧报 1.8.5；新会话（17:07）**getUserLoginState 失败 0 次、data is not a map 0 次**（旧会话每轮必现）；gateway port_ready→health_ready→ws 全链正常；589 .py / 57 TK / 双 python312.dll / 合并版主 DLL 基线完好。设备页/预打印页/登录点击待用户实机确认。教训：**本地出包清单必须包含 connect staging 步**（后续出包流程备忘）。
+
+## 10-26 深夜 women 大步伐吸收·第一步：安装与依赖基建整块（PluginDependencyInstaller + 事务四件套）
+
+来源 women @0aa325e101（平行分叉，见"平行分叉评估"节矿脉清单）。开工 fetch：orca/main 09aa0114b4→555321215e、women feature_plugin_system 仍在 0aa325e101（无新提交）、upstream main 已 fetch；`src/slic3r/plugin/` 无新增上游提交，主线不阻塞。
+
+### 吸收面（文件级）
+
+新文件 7 件（src/slic3r/plugin/，原样搬运 + 点状适配）：
+- **PluginDependencyInstaller**（.hpp/.cpp）——uv 事务装包：staging→previous→rename 发布、`.dependency-install.lock` + PluginFileLock 跨进程锁、已装包 dist-info 钉版 constraints（防降级）、UV_*/PYTHON*/PIP* 环境清洗（防注入，Windows 大小写不敏感归一）、offline/wheelhouse 宿主策略（`{plugins_dir}/.dependency-policy.json`，无 Python API）、120s 截止 + shutdown 感知、失败保全既有包。
+- **PluginInstallTransaction**（.hpp/.cpp）——本地包替换持久事务：`.install-transactions/<key>/journal.json`（schema=1 + filename/plugin_key/config 快照 + pending/rollback/committed 三相），candidate/previous 目录摆位，启动恢复（recover_plugin_replacements）。
+- **PluginFileLock.hpp**——LockFileEx/flock 跨进程排他锁（文件常存、锁归 OS、reparse point 拒收）。
+- **PluginAtomicFile.hpp**——write_file_atomically（scratch 目录 + 单次 rename + MOVEFILE_WRITE_THROUGH）。
+- **PluginArchiveCompat.hpp**——extended_path（\\?\ 前缀长路径）+ extract_zip_entry_to_file（miniz callback 写出）。
+- 适配：PluginFileLock/AtomicFile 的 windows.h 前补 WIN32_LEAN_AND_MEAN + NOMINMAX 守卫（women 裸引；经 PluginManager.hpp 传导到全部插件 TU 后炸 BoundingBox.hpp 的 min/max 成员初始化列表——首测只在无 PCH 的 slic3rutils_tests 显形，in-code ADAPTED 注释）。
+
+接缝（port 侧改造，我方语义为准）：
+- **PluginLoader.cpp**：`install_packages` 朴素 uv 直装体（~108 行，无锁/无钉版/无 staging）整体替换为 `install_packages_transactionally` 委托；本地已存在目录的安装改走 `replace_local_plugin_package` 持久事务（云装仍走 backup 路径）；whl 依赖解压改 `ensure_wheel_extracted`。
+- **PluginManager**：initialize() 增 `.runtime.lock` profile 锁 + `recover_plugin_replacements`（先于解释器与发现；m_config.load() 相应前移）；shutdown() 尾部再恢复 + 释放锁；load_plugin_impl 增 `can_activate_plugin_replacement` 预检；load worker 增 `settle_plugin_replacement`（新函数：装载成功→提交事务，失败→自动回滚旧包+旧配置并重扫）；install_plugin 加固（load-in-progress/能力引用计数/未决事务三检 + unload 前后保全 install state + 装失败 finish(false) 回滚）；delete_plugin 删前先回滚未决事务；`write_loaded_plugin_install_state` void→bool（women 语义，settle 依赖持久化结果）；新增 `is_shutting_down()` getter（DependencyInstaller 截止检查用）。
+- **PluginConfig**：save() 的 PID-rename 写改 write_file_atomically；新增 `snapshot_plugin_config`/`restore_plugin_config`（按包过滤快照/恢复，适配我方无 commit_locked 结构：锁内改文档、锁外 save）。
+- **PluginFsUtils**：extract_zip_to_directory 事务化重写（extract_zip_contents 私有化 + extended_path 全覆盖 + 已存条目冲突检查收紧 any-entry）；新增 wheel 缓存块（WHEEL_CACHE_RECORD 完成记录 + wheel_sha256 OpenSSL EVP + complete_wheel_cache 逐文件大小/symlink 校验 + extract_and_publish staging/backup/发布失败回滚 + ensure_wheel_extracted）；write_install_state 改原子写（尾部补换行）。
+- **PythonInterpreter**：initialize() 最前 `recover_dependency_install`（CPython 起来前完成 shared packages 断发布恢复）；load_module_from_whl 解压改 ensure_wheel_extracted（**替换事务正确性关键**：whl 更新后旧解缓存必须按 sha256 失效，否则继续加载陈旧代码——原 `fs::exists` 跳过式缓存在替换后必错）。
+- **src/slic3r/CMakeLists.txt**：plugin/ 增 5 组件源。
+
+### 已知 women bug 处置（任务豁免逐项评估）
+- mrgtmp0 合并残留垃圾文件：排除即修（未带入）。
+- LocalPluginsDialog ifdef 编译炸 + pid_t 宏冲突：随"LocalPluginsDialog 不吸收"决策不入口（见下）；pid_t 守卫知识留档——wx/libslic3r include 链后引 CPython 头需 `#ifdef pid_t / #undef pid_t`。
+
+### 不吸收项
+- **LocalPluginsDialog.cpp/.hpp**（946+17 行）：深耦合 women 独有 LocalPluginRuntime/LocalPluginStore（local_store().install/scan/remove/execute 全家）、文件内嵌 fixture 测试代码、安装路径明示绕过审计（"Permission audit is not enabled yet"）——与我方 PluginsDialog（inspect→覆盖确认→install，audit 链完整）功能重复且违红线。其 dependency-policy 配置 UI 是 configure_dependency_install 唯一宿主入口：策略文件可手编（宿主自有面），需要 UI 时在我方 PluginsDialog 挂钩（残留项）。
+- LocalPluginRuntime/Store/Core、OrcaPluginCore.cmake spike 门控体系：women 架构分叉本体。
+- orca_http_shutdown_test、spike 编译期开关（ORCA_LOCAL_PLUGIN_SPIKE）：women spike 域。
+
+### audit 红线合规
+替换事务候选状态 `permissions = {}`（"新代码必须重新取得授权"）与我方 install_plugin 既有 `revoke_plugin_permissions` 同语义（双重清空幂等无害）；回滚恢复旧包原 sidecar（含其既有授权），旧代码保旧授权；DependencyInstaller 为宿主侧子进程（无 Python API 面），较原朴素版更严（钉版防降级 + env 清洗），安装同意边界（inspect→确认）不变；wheel 缓存为纯文件面加固；`.install-transactions`/`.runtime.lock`/`.dependency-*` 均 dot 前缀，is_ignored_plugin_directory 天然不扫。
+
+### 门禁（全过）
+- 触碰目标 clean rebuild：libslic3r_gui 删 obj 目录 + lib 后全量重编 374 TU、0 错（编译行实证，防增量假绿）；ALL_BUILD exit 0（Snapmaker_Orca.dll + orca.dll + 三测试套件 exe 全产出；pwsh 缺失 3 行噪声为已知环境项）。
+- 过程坑：`cmake --build -- --clean-first` 会把 --clean-first 传给 MSBuild 打用法错误静默变增量（假绿新形态）；正确姿势=cmake 位放 `--clean-first` 或删 obj 目录。MSBuild 删 CMakeFiles/*.dir 后需先重跑 configure 再生 cmake_pch.cxx。
+- libslic3r **320/320** 全绿。
+- slic3rutils **279/284**，5 败与 10-25 基线集逐项吻合：#482/483/486（静态资产/模式断言族）+ #591/#625（bed-fit 族——#591 详查为 "Objects could not fit on the bed" 异常，其插件加载/配置分发/存储断言 5 项先全过，属 arrange 夹具存量非本批）。
+- fff_print **37/52，15 败全部归因上游合并 da212e688b 后未门禁面**：失败 0.05s 即抛 arrange "Objects could not fit on the bed"（含 13 个切片管线 hook 考卷 + 2 个 init_print）；fff_print_tests 仅链 libslic3r+test_common **不链 libslic3r_gui**，本批全部改动不在其二进制内（链接分析排除）；失败集 vs 10-24 的漂移（tree_support 转绿、hook 夹具转红）与合并带入的 bugfixs_algo #1076 方向一致。**残留：上游 arrange 差异族需独立批对照 pre-merge 基线收口**。
+- tests/e2e 全量：lifecycle 9 腿全绿（107s）+ slice 双跑确定性 + golden sha256 `0aa3c58f7c5a0614…` 与基线逐字节一致。
+- API surface：本批零绑定注册触碰（新组件均 C++ 内部面，DependencyInstaller 明示 no Python API），surface 构造上不变，未重跑 dump（快照基线 expected_snapshot_557.json 继续有效；若后续批触碰绑定面须重跑）。
