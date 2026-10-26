@@ -197,3 +197,26 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - **现象**：用户装机后 app 打不开。装机树运行日志实证 `Snapmaker_Orca.dll was not loaded, error=126`。
 - **根因**：开启 ORCA_LOCAL_PLUGIN_SPIKE 后，orca_local_plugin_runtime 静态链 CPython（python312.lib），**python312.dll 进入 Snapmaker_Orca.dll 导入表**（dumpbin /dependents 实证）；其 CMake 不向 exe 根目录拷 python312.dll，NSIS 包里两条 `python312.dll` 清单行都是 python\ 子树（主递归块+显式块重复打包）——安装根目录零 python312.dll，加载器解析失败，壳 exe 直接退出。我方发行线无此问题（1e10e863cf 的 COPY_DLLS 修复含根 python312.dll POST_BUILD 拷贝）——两移植线在发行工程化上的又一差距实证。
 - **修复（bring-up 本地）**：Release 根补拷 python312.dll → 重打包 → 静默重装 → 装机版隔离 datadir 复跑：无 126、webview/日志全链正常、进程存活确认。正解（若此线要长期活）= 其 CMake COPY_DLLS 补根拷贝，未做（非我方树）。
+
+## 10-26 我方线最新 HEAD 重打包（fa2adbd2c8）
+
+- **动机**：在位安装包（10-25 23:38, 129MB）打于批次 5m/8f6da5ec5e 定稿重链（10-26 00:14 DLL）**之前**，二进制过期。
+- **构建**：build-port 增量 ALL_BUILD（VS2022 x64 Release，共享 mcp deps）。libslic3r/libslic3r_gui 重编 + Snapmaker_Orca.dll 重链成功（14:49）。两处非阻塞失败：①POST_BUILD python 树铺设 `rm -rf` 被瞬时占用打断（无进程常驻锁，手工重放三步全过）；②`orca_stubgen` 链接 LNK2019×4（get_profile_version/set_privacy_policy/CBaseException::set_log_folder/sentryReportLog——吸收后 libslic3r_gui 新引用，stubgen 链接行缺 bury_point/common_func/BaseException 对象，**存量断点**，非本包载荷，独立修）；③pwsh 不在 PATH（encoding-check 工具 POST_BUILD，已知环境项）。
+- **出包**：makensis 3.13（MSYS_NO_PATHCONV=1 防 /V4 被路径转换），SOURCE_DIR=build-port\src\Release，产物 `build-port/Snapmaker_Orca_Windows_Installer_V2.4.1.exe`（129,233,469 B，14:58）。旧包改名留存 `_stale-built1025-2338.exe`。
+- **清单验证（/V4 日志 nsis_pack_20261026.log 为权威）**：File 行 12097（=基线）、.py 589、TK*.dll 57、pyd 42（python/ 双打包 21×2 已知形态）、根 python312.dll 实压缩 1.9MB + python/ 子树两行 0 字节引用、Snapmaker_Orca.dll 73,799,680 B（14:49 产物）、零 NSIS 警告。OCCT 57 件与 deps 源抽样逐字节一致。
+- **残留**：装机冒烟未跑（用户机器在位装机实例运行中，装机动作待确认）；exe 壳 23:23 产物（源未变，MSBuild no-op）。
+
+## 10-26 上游 main 合入 + 重打包（da212e688b → 626331f60a）
+
+- **合入**：`git merge upstream/main`（@bac6fd5c1e：Connect CLI v1.8.5 + stapler CI + release_2.4.1→main 合并 + bugfixs_algo #1076）。净变更 18 文件 +427/−143（port 线已自带大部分 2.4.1 同源内容，git 静默合并）。6 文件 8 冲突块全解：lock json 取上游 v1.8.5；**SSWCPProtocol else-clear 弃上游**（上游 `else flows.clear()` 与上游自己的 test:63-64 断言矛盾——2.4.1 合并把该回归带回了上游，我方保留修复版，合并后 libslic3r 320/320 全绿自证）；AppConfig/GUI_App/SSWCP.cpp/.hpp 均取 HEAD（插件声明+成员、wxString 版 m_tab_map 全链一致——合并树 request_select_tab 唯一活签名为 wxString 版，TAB_ID_* 常量在位）；flutter_web/WebSocket 调试面两侧均已删净（冲突块为基线残影）。
+- **附带修复两个存量断点**：①orca_stubgen 自吸收起链接必断（4 符号），镜像壳 exe 模式把 common_func/bury_point/BaseException/StackWalker/SentryWrapper 编入目标（ae7b6feba5）——**ALL_BUILD 吸收以来首次全绿**；②上游新考卷 test_wipe_tower.cpp 夹具缺 `G92 E0`，validate() 阶段即死（use_relative_e_distances 默认 true + Marlin 默认——上游 CI 测试工作流仅 workflow_dispatch 手动触发，考卷带病合入），夹具补齐后 3 考卷 2 绿（626331f60a）。
+- **残留（上游缺陷实证）**：考卷 745"wall filament without a block"挂在 2.4.1 的 tool_change_new 优雅降级路径——空 ToolChangeResult 未初始化 start_pos/end_pos/elapsed_time（Vec2f 裸构造=垃圾值），下游 float_to_string_decimal_point 的 to_chars 缓冲溢出抛异常；上游 main 同款代码逐字一致，同挂。临时探针已删（诊断法：REQUIRE 字符串相等让 Catch2 打出真实校验消息 + 加 G92 E0 对照转绿，归因闭环）。修法初判=空结果构造处补零值初始化，待独立批。
+- **门禁（用户指示停止后续测试）**：libslic3r 320/320 ✓；slic3rutils 279/284（5 败，接近 280 基线的 6 存量水位）；Tab.cpp option def 链（a0dc6f6c31 面）grep 在位、Plater:9196 喷嘴流调用完好。
+- **出包**：`build-port/Snapmaker_Orca_Windows_Installer_V2.4.1.exe`（131,059,801 B，15:56）。清单（/V4 nsis_pack_merged_20261026.log）：File 12098（=基线+1，合并新内容）、.py 589、TK 57、pyd 42、根 python312.dll 实压缩、Snapmaker_Orca.dll 73,803,776 B（15:36 合并后产物）。前包留档 `_pre-upstream-merge-1458.exe`（未合上游版）与 `_stale-built1025-2338.exe`。
+
+## 10-26 设备页/预打印页/登录异常根因：本地打包缺 connect-bundle staging（已修）
+
+- **症状**：装机版首页登录态查询 `getUserLoginState code=-1` 三连败 + `data is not a map`，设备/预打印页显示不对，点登录无反应。**15:01（合并前包）与 16:19（合并后包）症状相同**；control 历史日志（10-15 官方版时代起）无任何成功登录记录。
+- **根因**：CI 打包用 `scripts/packaging/stage_connect_bundle.py` 按 `.github/connect-bundle.lock.json` 下载 control 发布包，**除替换 `snapmaker_control_windows_x64.exe` 外还整目录替换 `resources/web/flutter_web`**（脚本 243 行 replace_directory）——即"main 配 control 1.8.5"的正确形态 = control 1.8.5 的 exe **加其自带 web**（main.dart.js，version.json 报 1.8.5/20261023182959）。本地打包从未跑此步：包里一直是 git 树 web 2.3.40 + 10-22 的旧 exe 1.7.6，双重协议错位。git 树里的 resources/web/flutter_web（2.3.40，含 askUserLogin 等登录方法族，宿主 SSWCP 分发器 74 个 sw_* 无登录族——fork 与上游 main 逐字同）只是 dev 基线，正式形态被 CI 覆盖。
+- **修复**：预置 sha256 校验过的 1.8.5 zip 进脚本缓存（%LOCALAPPDATA%/OrcaSlicer/connect-bundle-cache），对 build-port/src/Release/resources 跑 staging（exe 10,493,480 B + web 整换 + 陈旧 CLI 清理），makensis 重出（130,654,082 B，17:05，File 12118），静默重装。
+- **验证**：装机后 app/control 双侧报 1.8.5；新会话（17:07）**getUserLoginState 失败 0 次、data is not a map 0 次**（旧会话每轮必现）；gateway port_ready→health_ready→ws 全链正常；589 .py / 57 TK / 双 python312.dll / 合并版主 DLL 基线完好。设备页/预打印页/登录点击待用户实机确认。教训：**本地出包清单必须包含 connect staging 步**（后续出包流程备忘）。
