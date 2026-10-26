@@ -176,3 +176,11 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - **架构差异**：核心拆 LocalPluginRuntime/RuntimeCore/Store/StoreCore（我方/上游单 PluginManager+Bridge）；能力子模块注册从 bridge 下放到各能力 .cpp；host/ 多出 HostCore/Mesh/Slicing/ConfigLocal/DockLocal(+Layout)/PagesLocal/AppInfoIdentity；audit 为简化 fs-root 允拒模型（上游权限授权系双方都未全带）；双方均无 printerAgent 能力件。
 - **对方独有、具吸收价值的候选**（未定决策，待逐项评估后立批）：PluginDependencyInstaller（uv 事务装包，offline/wheelhouse 宿主策略，无 Python API）、PluginInstallTransaction/FileLock/AtomicFile/ArchiveCompat 安装基建、tests/plugin_core 55 文件（file_lock/dependency_crash/recovery/dock_layout/gui_dock_restart 等工程轴用例）+ plugin_contracts/plugin_benchmark、docs/plugins 32 篇契约文档、tools/plugin_sdk + scripts/verify_*。
 - **试合冲突面**（tmp/merge-probe 已测并回滚）：62 冲突（34 add/add plugin/、19 GUI、libslic3r Print/Model/Format/TextureDisplacement 与 web dialog）——直接合入不可行，任何采纳都须按吸收批逐文件走。
+
+### women 分支构建实证（10-26 续：feature_plugin_system 编译起活）
+
+- **worktree**：C:\coil\Projects\SnapmakerOrca-women（detached @0aa325e101，本地补丁未提交，仅构建用）。
+- **deps 代际判定（关键）**：该分支按 wx 3.1 / OCCT 7.6 代的配方代码写就——用共享 mcp deps（wx 3.3.2 + 新 OCCT）配置时 GUI 层 74 错（wxPostEvent 单参删除、wxTimerEvent 默认构造删除、wxString 转换收紧等 wx 3.3 破坏面）+ OCCT 传递包含缺失。**换 build-deps-fresh（本仓配方产物：wx 3.1 + OCCT 7.6 + CGAL 6.2.1）后全量构建 exit 0**。即：其树不带上游 wx 3.3/新 OCCT 兼容层（我方 release_2.4.1 吸收已带）——上节"平行分叉评估"补强：**代际隔离在依赖层即成立，合并可行性进一步降低**。
+- **本地补丁（4 文件 5 处，均为 CGAL 6.2.1 适配，fresh CGAL 同版本故保留）**：CutSurface.cpp 读侧 property_map .first→.value()（10 处，去引用防 optional 悬垂）+ AABB_traits→AABB_traits_3；MeshBoolean.cpp extract_boundary_cycles 命名空间迁移；TextShape.cpp NCollection_Utf8Iter→NCollection_UtfIterator<char>（7.6 两名兼容）+ 补 OCCT 显式 include。
+- **构建配置**：VS2022 x64，CMAKE_PREFIX_PATH=build-deps-fresh/destdir/usr/local，wxWidgets_ROOT_DIR/LIB_DIR 显式，**wxWidgets_USE_REL_AND_DBG=OFF 必须**（VS 多配置生成器下 FindwxWidgets 默认要求 debug+release 双套，deps 只有 release——该坑同时解释了为何 build-port 当年显式传 OFF）。
+- **产物与冒烟**：exe+Snapmaker_Orca.dll+32 运行时 DLL 齐；启动冒烟过（homepage localhost 网关全链资源加载、字体、PartPlate、日志正常，隔离 datadir）。python/ 树其构建不拷贝，从 build-port 拷入后其 LocalPluginRuntime 仍未在无 UI 介入下激活（日志零 python 痕迹，喂 .install_state.json 约定一致的探针插件亦无发现活动）——**其插件运行时为惰性/需其 UI 触发或其元数据检查器拒收上游格式**，未深究，记残留。
