@@ -263,3 +263,38 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - fff_print **37/52，15 败全部归因上游合并 da212e688b 后未门禁面**：失败 0.05s 即抛 arrange "Objects could not fit on the bed"（含 13 个切片管线 hook 考卷 + 2 个 init_print）；fff_print_tests 仅链 libslic3r+test_common **不链 libslic3r_gui**，本批全部改动不在其二进制内（链接分析排除）；失败集 vs 10-24 的漂移（tree_support 转绿、hook 夹具转红）与合并带入的 bugfixs_algo #1076 方向一致。**残留：上游 arrange 差异族需独立批对照 pre-merge 基线收口**。
 - tests/e2e 全量：lifecycle 9 腿全绿（107s）+ slice 双跑确定性 + golden sha256 `0aa3c58f7c5a0614…` 与基线逐字节一致。
 - API surface：本批零绑定注册触碰（新组件均 C++ 内部面，DependencyInstaller 明示 no Python API），surface 构造上不变，未重跑 dump（快照基线 expected_snapshot_557.json 继续有效；若后续批触碰绑定面须重跑）。
+
+## 10-26 深夜 women 大步伐吸收·第二步：工程轴考卷 + SDK + 文档
+
+### 吸收面
+- **tests/plugin_core/**（新目录，5 个 C++ 场景 runner + fixtures.py）：
+  - file_lock.cpp（跨进程锁：owner/竞争者双进程、kill 后 OS 释放、锁文件常存、symlink 拒收）
+  - wheel_cache_recovery.cpp（真 Manager/Python 回归：entry/dependency × crc/unsafe/duplicate/conflict/legacy + case-alias 共 11 场景，全程真 wheel 真导入，断言完成记录/部分目录拒用/回滚保全）
+  - dependency_environment.cpp + **dependency_environment_main.cpp（新写 driver）**——women 从其 55 场景 main harness 调用（harness 与 texture 场景耦合不可整搬），driver 保持契约体逐字 + 补 argv/隔离 data_dir 管道（women harness 原责）
+  - dependency_recovery.cpp + dependency_crash_interpose.cpp（**APPLE-only**，dyld 真 rename 崩溃注入——women 原样非 APPLE 不编译，带入文件与门控保持一致）
+  - fixtures.py（确定性 wheel/插件夹具工厂，无网络无系统 site-packages）
+- **tests/plugin_core/CMakeLists.txt（新写）**：runner 目标 + `orca_plugin_core_runner_extras` 函数（私有 TU 解析复用 slic3rutils_tests/orca_stubgen 模式：common_func/bury_point/SentryWrapper/BaseException/StackWalker 直编）+ python/uv 铺设 + ctest 三项（python 编排器驱动）+ APPLE 门控 dependency 组 + orca_plugin_sdk_export。
+- **scripts/**（8 件）：test_plugin_file_lock.py / test_plugin_wheel_cache_recovery.py / test_plugin_dependency_recovery.py（macOS 侧）/ test_plugin_dependency_environment.py（**新写**：wheelhouse 夹具构建 + 隔离 profile 驱动）/ verify_plugin_sdk.py / generate_plugin_sdk.py / export_plugin_sdk.py / package_plugin_runtime.py（UPSTREAM 常量改我方 HEAD，ADAPTED 注）/ package_plugin_wheelhouse.py（离线 wheelhouse 打包，配 DependencyInstaller offline 策略）。
+- **tools/plugin_sdk/main.cpp**：生产绑定活体导出器（无 wxApp/无插件/无真 profile）。
+- **docs/plugins/**：LOCAL_RECOVERY.md（替换事务协议文档，与第一步实现逐条对应）、WHEEL_CACHE_RECOVERY.md、examples/（SDK 示例件 8 文件）。
+
+### 接线踩坑（防再犯，均已修）
+1. `cmake --build -- --clean-first` 把 --clean-first 传给 MSBuild 打用法错误后**静默变增量**（第一步已记）。
+2. 独立 runner exe 首跑 0xC0000135：静态 libslic3r_gui 拖全 DLL 导入表，需 DLL 汤。
+3. **Snapmaker_Orca_copy_dlls(COPY_DLLS ...) 首参是模式令牌非目标名**——函数实际永远落 `<调用目录>/<config>`（app/slic3rutils 全靠与 exe 默认位置重合的巧合工作）；钉死每目标 RUNTIME_OUTPUT_DIRECTORY 会打破巧合 → exe 与 DLL 分层。修法：保留共享 Release DLL 池（configure 期一次 copy_dlls）+ POST_BUILD 拷入各 runner 钉死目录。
+4. VS 多配置生成器在 plain RUNTIME_OUTPUT_DIRECTORY 下仍追加 `\Release`，须同时钉五个 `_<CONFIG>` 变体。
+5. 两 runner 并行 POST_BUILD 向同一目录铺 python 确定性互撞（-m 并行）——每目标独立目录根治。
+6. wheel_cache 编排器 `output.mkdir(exist_ok=False)` 对 ctest 重跑不幂等——加 rmtree 前置（测试 harness 适配，非产品码迁就）。
+
+### 不吸收项（逐项归因）
+- **55 场景 main harness 及 texture_* 16 件/gcode/slicing/path3 等场景件**：texture 管线（TextureDisplacementConsumer 等）为 women 独有 libslic3r 面；其余场景域我方 slic3rutils 既有考卷已覆盖（lifecycle/audit/host-api/config 等），重复移植无增益。
+- **dock_layout.cpp / gui_dock_restart.cpp（任务点名件）**：依赖 women 独有 `plugin/host/PluginDockLayout.hpp`（我方 host/ 无此文件）——引它=吸收 women dock 架构本体，超基建范围，随架构分叉整体决策（DEFERRED）。gui_dock_teardown/gui_pages_restart/gui_dualhost/gui_legacy_states 同族同因。
+- **plugin_benchmark**：main.cpp include TextureDisplacementConsumer.hpp（women 独有）；bulk 件可移但单独成件价值有限——整块 DEFERRED（连带 PERFORMANCE.md 退回：其记录的是该 harness 方法论）。
+- **plugin_contracts（dualhost 工具契约）**：women DUAL_HOST 特性域。
+- docs/plugins 其余 19 篇（TEXTURE_COMPATIBILITY/DUAL_HOST/SPIKE_HISTORY/LOCAL_PHASE1/VERIFICATION/DISTRIBUTION 等）：women-only 域叙事或引用未吸收工具链。
+
+### 门禁（全过）
+- 触碰目标（3 runner + sdk_export）clean 全编 0 错；ALL_BUILD exit 0（新目标入列）。
+- **plugin_core ctest 3/3**：file_lock ✓、wheel_cache_recovery ✓（26s 全场景）、dependency_environment ✓（真 uv 离线装包 + UV_*/PYTHON*/PIP* 保全 + 失败安装耐久）。
+- **SDK 链冒烟**：generate_plugin_sdk.py → 活体导出 10 模块 → 内建 verify 过（输出 sync-scratch/sdk_smoke_step2）。
+- 产品码零触碰（tests/scripts/tools/docs only），slic3rutils/libslic3r 门禁不受影响（未重跑；上轮基线仍有效）。
