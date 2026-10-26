@@ -191,3 +191,9 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - **其导入入口（spike 模式）**：文件菜单 "Local Plugins — development"（MainFrame.cpp:2643，ORCA_LOCAL_PLUGIN_SPIKE 门控）→ 原生 wx 对话框 LocalPluginsDialog → **"Install Plugin" 按钮**弹 wxFileDialog（**.py / .whl**）→ 信任告警确认（"以你的账户权限访问文件与网络"）→ local_store().install() 落盘 `{datadir}/orca_plugins/`，装机形态即 `%APPDATA%\Snapmaker_Orca\orca_plugins\`。插件格式 = PEP 723 头（`# /// script` + `[tool.orcaslicer.plugin]` name/version，tests/plugin_core/fixtures.py 为范）。注意其对话框自述"**Permission audit is not enabled yet**"——审计沙箱在其 spike 里关闭。
 - **其树新 bug（本地补丁绕过，未上游报）**：LocalPluginsDialog.cpp 的 `#include "Tab.hpp"` 等位于 `#ifdef ORCA_PYTHON_PLUGINS`（17-41 行）内，而文件尾部的 fixture 清理循环无条件解引用 Tab → **纯 spike 配置编译必炸 C2027**。本地补丁=把 Tab.hpp 提为无条件包含；另有 pid_t 宏冲突（wx/libslic3r 链污染 CPython pyconfig.h 的 `typedef int pid_t`）补 `#undef pid_t` 守卫。另其单提交里混入了合并残留垃圾文件 `src/slic3r/GUI/mrgtmp0`（卫生佐证）。
 - **残留**：裸 .py 投入 orca_plugins 后其启动 9 秒静默中断（无日志错误行）——其 autoload 对裸文件的崩溃面或格式不收，未深究；其受支持路径=对话框 Install Plugin。
+
+### women 安装包启动失败修复（10-26 续三：error=126）
+
+- **现象**：用户装机后 app 打不开。装机树运行日志实证 `Snapmaker_Orca.dll was not loaded, error=126`。
+- **根因**：开启 ORCA_LOCAL_PLUGIN_SPIKE 后，orca_local_plugin_runtime 静态链 CPython（python312.lib），**python312.dll 进入 Snapmaker_Orca.dll 导入表**（dumpbin /dependents 实证）；其 CMake 不向 exe 根目录拷 python312.dll，NSIS 包里两条 `python312.dll` 清单行都是 python\ 子树（主递归块+显式块重复打包）——安装根目录零 python312.dll，加载器解析失败，壳 exe 直接退出。我方发行线无此问题（1e10e863cf 的 COPY_DLLS 修复含根 python312.dll POST_BUILD 拷贝）——两移植线在发行工程化上的又一差距实证。
+- **修复（bring-up 本地）**：Release 根补拷 python312.dll → 重打包 → 静默重装 → 装机版隔离 datadir 复跑：无 126、webview/日志全链正常、进程存活确认。正解（若此线要长期活）= 其 CMake COPY_DLLS 补根拷贝，未做（非我方树）。
