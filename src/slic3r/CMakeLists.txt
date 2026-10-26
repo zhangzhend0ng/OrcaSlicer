@@ -927,17 +927,31 @@ if(ORCA_BUNDLED_UV_EXECUTABLE_CONFIG)
 endif()
 
 if (ORCA_BUILD_PYTHON_STUBGEN_MODULE)
+    # libslic3r_gui references fork-side symbols (GUI_App -> set_privacy_policy /
+    # get_profile_version / CBaseException::set_log_folder; MoonRaker/SSWCP/webview
+    # objects -> sentryReportLog) whose definitions live in these translation units.
+    # They are compiled into the module the same way the snapmaker-orca shim does it
+    # (src/CMakeLists.txt, Snapmaker_Orca_app_gui): the module must resolve them
+    # locally instead of importing from Snapmaker_Orca.dll.
     add_library(orca_stubgen MODULE
         plugin/PythonPluginBridge.cpp
+        ../common_func/common_func.cpp
+        ../bury_cfg/bury_point.cpp
+        ../dev-utils/BaseException.cpp
+        ../dev-utils/StackWalker.cpp
+        ../sentry_wrapper/SentryWrapper.cpp
     )
 
     target_compile_definitions(orca_stubgen PRIVATE
         ORCA_PYTHON_STUBGEN_MODULE
+        BURY_EXPORTS
     )
 
     target_include_directories(orca_stubgen PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_BINARY_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/..
+        ${CMAKE_CURRENT_SOURCE_DIR}/../sentry_wrapper
         Utils
     )
 
