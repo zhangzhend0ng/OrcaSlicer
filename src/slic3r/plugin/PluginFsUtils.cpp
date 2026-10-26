@@ -1031,6 +1031,29 @@ bool read_install_state(const boost::filesystem::path& plugin_dir, PluginInstall
     }
 }
 
+namespace {
+
+// The single descriptor -> sidecar metadata mapping. Prefer installed_version (fetched at install
+// time and preserved across rewrites) over a possibly stale manifest version.
+void apply_install_metadata(PluginInstallState& state, const PluginDescriptor& entry)
+{
+    state.installed_from    = entry.is_cloud_plugin() ? "cloud" : "local";
+    state.installed_version = !entry.installed_version.empty() ? entry.installed_version : entry.version;
+    state.plugin_name       = entry.name;
+    state.cloud_uuid        = entry.cloud_uuid();
+}
+
+} // namespace
+
+void seed_install_metadata(PluginInstallState& state, const PluginDescriptor& entry)
+{
+    if (!state.plugin_name.empty())
+        return;
+
+    apply_install_metadata(state, entry);
+    state.enabled = true;
+}
+
 bool write_install_state(const boost::filesystem::path& plugin_dir, const PluginInstallState& state)
 {
     namespace fs                = boost::filesystem;

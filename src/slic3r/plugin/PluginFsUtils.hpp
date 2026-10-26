@@ -192,6 +192,12 @@ bool write_install_state(const boost::filesystem::path& plugin_dir, const Plugin
 // Convenience overload: write(dir, entry, /*enabled=*/true, /*capabilities=*/{}).
 bool write_install_state(const boost::filesystem::path& plugin_dir, const PluginDescriptor& entry);
 
+// Fill the descriptor-derived install metadata into a sidecar state that does not describe an
+// installed plugin yet, and mark it enabled. Leaves permissions and capabilities untouched.
+// Single source for the metadata mapping used by the install writer and by the audit prompt path
+// that creates a sidecar on demand.
+void seed_install_metadata(PluginInstallState& state, const PluginDescriptor& entry);
+
 // Reads install state back into the descriptor; plugin_key is always derived. Returns whether the
 // sidecar was present and valid.
 bool read_install_state(const boost::filesystem::path& plugin_dir, PluginDescriptor& entry);

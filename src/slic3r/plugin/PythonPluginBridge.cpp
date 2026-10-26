@@ -559,9 +559,25 @@ void bind_python_api(pybind11::module_& m)
            const std::vector<std::string>& network_http,
            const std::vector<std::string>& network_socket,
            const std::vector<std::string>& process,
-           bool                            threading) {
+           bool                            threading,
+           const std::vector<std::string>& network) {
             if (g_active_plugin_key.empty())
                 throw py::value_error("request_permissions() called outside plugin discovery context");
+
+            // A network URL is reduced to scheme://host, so one grant covers every path, query
+            // and port on that host. It is recorded as an HTTP grant; network_permission_matches
+            // applies that grant to raw socket events for the same host too.
+            std::vector<std::string> normalized_network;
+            normalized_network.reserve(network.size());
+            for (const std::string& url : network) {
+                const std::string normalized = PluginAuditManager::normalize_network_url(url);
+                if (normalized.empty())
+                    throw py::value_error(
+                        "request_permissions(network=...) requires an http:// or https:// URL with a host");
+                if (std::find(normalized_network.begin(), normalized_network.end(), normalized) ==
+                    normalized_network.end())
+                    normalized_network.push_back(normalized);
+            }
 
             std::lock_guard<std::mutex> lock(g_registry_mutex);
             PluginPermissions& requested = g_pending_permissions[g_active_plugin_key];
@@ -580,6 +596,7 @@ void bind_python_api(pybind11::module_& m)
             add_targets(requested.fs_read, "fs_read", fs_read);
             add_targets(requested.fs_readwrite, "fs_readwrite", fs_readwrite);
             add_targets(requested.network_http, "network_http", network_http);
+            add_targets(requested.network_http, "network", normalized_network);
             add_targets(requested.network_socket, "network_socket", network_socket);
             add_targets(requested.process, "process", process);
 
@@ -593,12 +610,22 @@ void bind_python_api(pybind11::module_& m)
         py::arg("network_socket") = std::vector<std::string>{},
         py::arg("process") = std::vector<std::string>{},
         py::arg("threading") = false,
+        py::arg("network") = std::vector<std::string>{},
         R"pbdoc(Request permissions while OrcaSlicer loads your module.
 
 Each bucket takes the target strings the plugin expects the corresponding audit event to
 report: filesystem paths for fs_read and fs_readwrite, URLs for network_http, socket addresses
 for network_socket, and commands for process. threading=True requests permission to start
 threads. Targets already granted to the plugin are not asked for again.
+
+A filesystem target may end in "/*" to grant a whole directory tree, for example
+"/path/to/folder/*". That covers the folder itself and every path beneath it, at any depth.
+"*" is the only wildcard and is recognized only as the final path component; a "*" anywhere
+else in a target is an ordinary character. Wildcards apply to fs_read and fs_readwrite only,
+and a grant in one of those buckets never authorizes the other direction. Tree grants are
+matched on canonical paths, so a symlink below the granted folder does not extend the grant
+outside it. Paths the host denies by name or keyword stay denied even when a wildcard covers
+them.
 
 The host presents one request to the user after register_capabilities() returns and before any
 capability instance is created. Denying the request aborts the plugin load.)pbdoc");

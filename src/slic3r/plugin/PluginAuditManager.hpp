@@ -147,6 +147,20 @@ public:
     // without adding a permission.
     bool request_permissions(const std::string& plugin_key, const PluginPermissions& requested);
 
+    // Ask the user to grant network access to the given http(s) URLs. Each URL is reduced to its
+    // scheme://host form before it is compared or persisted, so a URL with a path, query or port
+    // cannot create a second grant for the same host, and one grant covers both the HTTP and raw
+    // socket events a request to that host raises. Invalid URLs deny the whole request.
+    bool request_network_permissions(const std::string& plugin_key, const std::vector<std::string>& urls);
+
+    // Canonical scheme://host form used to store and match network permissions. Returns an empty
+    // string for anything that is not an http(s) URL with a host.
+    static std::string normalize_network_url(const std::string& url);
+    // True when a saved network grant covers the target: an exact grant, a canonical
+    // scheme://host grant (host-wide), or a legacy persisted host/address form that normalizes
+    // to the same host. A grant that persisted a full URL stays scoped to that exact URL.
+    static bool network_permission_matches(const std::vector<std::string>& granted, const std::string& target);
+
     void report_violation(const AuditViolation& violation);
     bool audit_denial_pending() const;
     void clear_audit_denial();
@@ -173,6 +187,10 @@ public:
     // Answers permission prompts in place of the dialog, for tests. Production never sets it.
     using PermissionPrompt = std::function<bool(const std::string& event_name, const std::vector<std::string>& targets)>;
     static void set_permission_prompt_for_testing(PermissionPrompt prompt);
+    // Same seam for the combined registration-time permission message (request_permissions):
+    // receives the message the dialog would show and answers it. Production never sets it.
+    using PermissionMessagePrompt = std::function<bool(const std::string& message)>;
+    static void set_permission_message_prompt_for_testing(PermissionMessagePrompt prompt);
 
     bool verbose_events = true;
 
