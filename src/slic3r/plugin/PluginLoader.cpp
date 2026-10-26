@@ -5,7 +5,9 @@
 // service header stays free of the manager.
 #include "PluginManager.hpp"
 
+#include "PluginDependencyInstaller.hpp"
 #include "PluginFsUtils.hpp"
+#include "PluginInstallTransaction.hpp"
 #include "PythonInterpreter.hpp"
 #include "PythonPluginBridge.hpp"
 #include "pluginTypes/resourceTexture/ResourceTexturePluginCapability.hpp"
@@ -159,13 +161,11 @@ bool add_wheel_dependencies_to_sys_path(const PluginDescriptor& descriptor,
             continue;
 
         const fs::path dep_dir = plugin_dir / "__whl_extracted__" / it->path().stem().string();
-        if (!fs::exists(dep_dir)) {
-            std::string extract_error;
-            if (!extract_zip_to_directory(it->path(), dep_dir, extract_error)) {
-                // TRN %1% is the dependency file, %2% the error detail.
-                error = GUI::format(_u8L("Failed to extract plugin .whl dependency %1%: %2%"), it->path().string(), extract_error);
-                return false;
-            }
+        std::string    extract_error;
+        if (!ensure_wheel_extracted(it->path(), dep_dir, extract_error)) {
+            // TRN %1% is the dependency file, %2% the error detail.
+            error = GUI::format(_u8L("Failed to extract plugin .whl dependency %1%: %2%"), it->path().string(), extract_error);
+            return false;
         }
 
         std::string syspath_error;
@@ -467,112 +467,12 @@ bool load(const PluginDescriptor&                          descriptor,
 
 bool install_packages(const std::vector<std::string>& pkgs, std::string& error)
 {
-    if (pkgs.empty())
-        return true;
-
-    const std::string uv_path = PythonInterpreter::bundled_uv_path();
-    if (uv_path.empty()) {
-        error = "Bundled uv executable not found. Python package installation is unavailable.";
-        return false;
-    }
-
-    const std::string python_executable = PythonInterpreter::bundled_python_executable();
-    if (python_executable.empty()) {
-        error = "Bundled Python executable not found. Python package installation is unavailable.";
-        return false;
-    }
-
-    const std::string target_dir = PythonInterpreter::shared_packages_dir();
-
-    namespace fs = boost::filesystem;
-    boost::system::error_code ec;
-    fs::create_directories(target_dir, ec);
-    if (ec) {
-        error = "Failed to create package target directory: " + ec.message();
-        return false;
-    }
-
-    std::vector<std::string> args = {"pip", "install", "--python", python_executable, "--no-python-downloads", "--target", target_dir};
-    args.insert(args.end(), pkgs.begin(), pkgs.end());
-
-    BOOST_LOG_TRIVIAL(info) << "Installing Python packages via uv for " << python_executable << ": "
-                            << boost::algorithm::join(pkgs, ", ");
-
-    try {
-        namespace process = boost::process;
-
-        process::ipstream std_err;
-        process::child    child(uv_path, process::args(args),
-#ifdef _WIN32
-                                // uv.exe (and the python.exe it spawns) are console-subsystem programs.
-                                // OrcaSlicer is a GUI app with no console of its own, so without this flag
-                                // Windows allocates a fresh console window for the child that flashes on
-                                // screen during startup plugin loading. Matches ProcessRunner/MediaPlayCtrl.
-                                process::windows::create_no_window,
-#endif
-                                process::std_err > std_err);
-
-        std::string err_output;
-        std::thread stderr_reader([&std_err, &err_output]() {
-            std::string line;
-            while (std::getline(std_err, line)) {
-                err_output += line + '\n';
-            }
-        });
-
-        // Wait up to 120 seconds for package install to complete.
-        //
-        // NOTE: we poll child.running() instead of calling child.wait_for().
-        // On macOS (which lacks sigtimedwait) boost.process v1 implements the
-        // timed waits with a sigwait()-based fallback that deadlocks inside a
-        // multi-threaded process: SIGCHLD is delivered to an arbitrary thread
-        // and consumed by an async handler, so the worker thread's sigwait()
-        // never returns and the timeout never fires — the plugin load hangs
-        // forever (the "Loading" status never clears). child.running() uses
-        // waitpid(WNOHANG), which behaves correctly on every platform.
-        // (boost.process v2, in Boost >= 1.86, implements timed waits via Asio
-        // and is unaffected — revisit this when the bundled Boost is upgraded.)
-        constexpr auto kInstallTimeout = std::chrono::seconds(120);
-        const auto     deadline        = std::chrono::steady_clock::now() + kInstallTimeout;
-
-        std::error_code run_ec;
-        while (child.running(run_ec)) {
-            if (run_ec) {
-                stderr_reader.join();
-                error = "Failed to query uv process status: " + run_ec.message();
-                BOOST_LOG_TRIVIAL(error) << error;
-                return false;
-            }
-            if (std::chrono::steady_clock::now() >= deadline) {
-                std::error_code term_ec;
-                child.terminate(term_ec);
-                child.wait(term_ec);
-                stderr_reader.join();
-                error = "uv pip install timed out after 120s";
-                BOOST_LOG_TRIVIAL(error) << error;
-                return false;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        stderr_reader.join();
-
-        const int exit_code = child.exit_code();
-        if (exit_code != 0) {
-            if (!err_output.empty())
-                error = "uv pip install failed (exit code " + std::to_string(exit_code) + "): " + err_output;
-            else
-                error = "uv pip install failed with exit code " + std::to_string(exit_code);
-            BOOST_LOG_TRIVIAL(error) << error;
-            return false;
-        }
-
-        BOOST_LOG_TRIVIAL(info) << "Python packages installed successfully";
-        return true;
-    } catch (const std::exception& ex) {
-        error = std::string("Failed to run uv: ") + ex.what();
-        BOOST_LOG_TRIVIAL(error) << error;
-        return false;
-    }
+    // Absorbed from the women fork: the naive in-place `uv pip install --target` ran without a
+    // lock, without pinned constraints and without staging, so a crash or a concurrent host
+    // could leave the shared package directory half-populated. install_packages_transactionally()
+    // owns a profile-level OS lock, stages into a sibling directory, pins what is already
+    // installed, and publishes with a rename swap that recovers on the next startup.
+    return install_packages_transactionally(pkgs, error);
 }
 
 bool inspect_local_plugin_package(const boost::filesystem::path& filepath,
@@ -695,6 +595,16 @@ bool install_plugin(const boost::filesystem::path& filepath,
         plugin_descriptor.plugin_key = cloud_uuid;
     else
         assign_local_plugin_key(plugin_descriptor, source_path);
+
+    // Keep the old local package and its config until the new code has actually
+    // activated. The manager completes or rolls back this durable transaction.
+    if (!is_cloud_install && fs::exists(final_dir)) {
+        plugin_descriptor.plugin_root = final_dir.string();
+        plugin_descriptor.entry_path  = dest_file.string();
+        plugin_descriptor.set_metadata_valid(true);
+        plugin_descriptor.clear_error();
+        return replace_local_plugin_package(source_path, plugin_descriptor, error);
+    }
 
     // Backup existing installation if present.
     if (fs::exists(final_dir, ec)) {

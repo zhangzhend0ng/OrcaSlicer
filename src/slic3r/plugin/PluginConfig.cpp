@@ -1,4 +1,5 @@
 #include "PluginConfig.hpp"
+#include "PluginAtomicFile.hpp"
 
 #include <algorithm>
 #include <boost/format.hpp>
@@ -249,26 +250,58 @@ bool PluginConfig::save()
         return false;
     }
 
-    // Write to a PID-suffixed file and rename it into place, so a crash mid-write cannot truncate an
-    // existing config. Same approach as AppConfig::save().
-    const std::string path_pid = (boost::format("%1%.%2%") % path % get_current_pid()).str();
-
-    boost::nowide::ofstream file;
-    file.open(path_pid, std::ios::out | std::ios::trunc);
-    file << root.dump(1, '\t') << std::endl;
-    file.close();
-    if (file.fail()) {
-        BOOST_LOG_TRIVIAL(error) << "PluginConfig: failed to write " << path_pid << "; keeping the existing config";
-        return false;
-    }
-
-    if (const std::error_code rename_ec = rename_file(path_pid, path)) {
-        BOOST_LOG_TRIVIAL(error) << "PluginConfig: failed to move " << path_pid << " onto " << path << ": " << rename_ec.message();
+    // Publish a complete file in one rename (scratch directory + MOVEFILE_REPLACE_EXISTING), so a
+    // crash mid-write cannot truncate an existing config. Absorbed from the women fork's
+    // PluginAtomicFile; replaces the earlier PID-suffix rename of AppConfig::save() shape.
+    if (const std::error_code write_ec = write_file_atomically(path, root.dump(1, '\t') + "\n")) {
+        BOOST_LOG_TRIVIAL(error) << "PluginConfig: failed to write " << path << "; keeping the existing config: " << write_ec.message();
         return false;
     }
 
     m_dirty = false;
     return true;
+}
+
+nlohmann::json PluginConfig::snapshot_plugin_config(const std::string& plugin_key) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto snapshot = nlohmann::json::array();
+    for (const auto& entry : m_document.serialize_entries())
+        if (entry.is_object() && string_field(entry, KEY_PLUGIN) == plugin_key)
+            snapshot.push_back(entry);
+    return snapshot;
+}
+
+bool PluginConfig::restore_plugin_config(const std::string& plugin_key, const nlohmann::json& snapshot)
+{
+    if (plugin_key.empty() || !snapshot.is_array())
+        return false;
+    for (const auto& entry : snapshot)
+        if (!entry.is_object() || string_field(entry, KEY_PLUGIN) != plugin_key)
+            return false;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        // Recovery must not overwrite a corrupt file and discard unrelated entries.
+        try {
+            if (boost::filesystem::exists(plugin_config_file())) {
+                boost::nowide::ifstream input(plugin_config_file().c_str());
+                nlohmann::json persisted;
+                input >> persisted;
+                if (!persisted.is_object() || !persisted.contains(CapabilityConfigDocument::KeyEntries) ||
+                    !persisted[CapabilityConfigDocument::KeyEntries].is_array())
+                    return false;
+            }
+        } catch (...) { return false; }
+        auto entries = nlohmann::json::array();
+        for (const auto& entry : m_document.serialize_entries())
+            if (!entry.is_object() || string_field(entry, KEY_PLUGIN) != plugin_key)
+                entries.push_back(entry);
+        for (const auto& entry : snapshot)
+            entries.push_back(entry);
+        m_document = CapabilityConfigDocument::from_entries(entries);
+        m_dirty    = true;
+    }
+    return save();
 }
 
 bool PluginConfig::store_capability_config(const PluginCapabilityId& id, const nlohmann::json& config)

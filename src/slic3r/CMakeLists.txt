@@ -647,6 +647,13 @@ set(SLIC3R_GUI_SOURCES
     plugin/CloudPluginService.hpp
     plugin/PluginFsUtils.cpp
     plugin/PluginFsUtils.hpp
+    plugin/PluginArchiveCompat.hpp
+    plugin/PluginAtomicFile.hpp
+    plugin/PluginFileLock.hpp
+    plugin/PluginInstallTransaction.cpp
+    plugin/PluginInstallTransaction.hpp
+    plugin/PluginDependencyInstaller.cpp
+    plugin/PluginDependencyInstaller.hpp
     plugin/PluginConfig.cpp
     plugin/PluginConfig.hpp
     plugin/PluginLoader.cpp

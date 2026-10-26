@@ -1,5 +1,7 @@
 #include "PluginFsUtils.hpp"
 
+#include "PluginArchiveCompat.hpp"
+#include "PluginAtomicFile.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/miniz_extension.hpp"
 
@@ -16,8 +18,12 @@
 
 #include <nlohmann/json.hpp>
 
+#include <array>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <memory>
+#include <mutex>
 #include <utility>
 #include <algorithm>
 #include <cctype>
@@ -26,6 +32,8 @@
 #include <sstream>
 #include <unordered_set>
 #include <vector>
+
+#include <openssl/evp.h>
 
 #ifdef WIN32
 #include <boost/locale/encoding_utf.hpp>
@@ -653,12 +661,15 @@ bool is_safe_relative_path(const boost::filesystem::path& path)
     return true;
 }
 
-bool extract_zip_to_directory(const boost::filesystem::path& zip_path, const boost::filesystem::path& destination, std::string& error)
+namespace {
+
+// Extract privately and publish only after every entry has passed CRC/path checks.
+bool extract_zip_contents(const boost::filesystem::path& zip_path, const boost::filesystem::path& destination, std::string& error)
 {
     namespace fs = boost::filesystem;
 
     boost::system::error_code ec;
-    fs::create_directories(destination, ec);
+    fs::create_directories(extended_path(destination), ec);
     if (ec) {
         error = "Failed to create plugin staging directory: " + ec.message();
         return false;
@@ -702,7 +713,7 @@ bool extract_zip_to_directory(const boost::filesystem::path& zip_path, const boo
 
         const fs::path output_path = destination / relative_path;
         if (stat.m_is_directory || mz_zip_reader_is_file_a_directory(&reader.archive, stat.m_file_index)) {
-            fs::create_directories(output_path, ec);
+            fs::create_directories(extended_path(output_path), ec);
             if (ec) {
                 error = "Failed to create plugin zip directory " + output_path.string() + ": " + ec.message();
                 return false;
@@ -710,26 +721,19 @@ bool extract_zip_to_directory(const boost::filesystem::path& zip_path, const boo
             continue;
         }
 
-        fs::create_directories(output_path.parent_path(), ec);
+        fs::create_directories(extended_path(output_path.parent_path()), ec);
         if (ec) {
             error = "Failed to create plugin zip parent directory " + output_path.parent_path().string() + ": " + ec.message();
             return false;
         }
 
-        if (fs::exists(output_path, ec) && fs::is_directory(output_path, ec)) {
-            error = "Plugin zip file conflicts with an existing directory: " + output_path.string();
+        if (fs::exists(extended_path(output_path), ec)) {
+            error = "Plugin zip file conflicts with an existing entry: " + output_path.string();
             return false;
         }
 
-        const std::string encoded_output_path = encode_path(output_path.string().c_str());
-        mz_bool extracted = mz_zip_reader_extract_to_file(&reader.archive, stat.m_file_index, encoded_output_path.c_str(), 0);
-#ifdef WIN32
-        if (!extracted) {
-            const std::wstring wide_output_path = boost::locale::conv::utf_to_utf<wchar_t>(output_path.generic_string());
-            extracted = mz_zip_reader_extract_to_file_w(&reader.archive, stat.m_file_index, wide_output_path.c_str(), 0);
-        }
-#endif
-        if (!extracted) {
+        // Shared with the rest of the archive code: long-path capable and binary-safe.
+        if (!extract_zip_entry_to_file(&reader.archive, stat.m_file_index, output_path)) {
             error = "Failed to extract plugin zip entry " + relative_key + ": " +
                     MZ_Archive::get_errorstr(mz_zip_get_last_error(&reader.archive));
             return false;
@@ -737,6 +741,196 @@ bool extract_zip_to_directory(const boost::filesystem::path& zip_path, const boo
     }
 
     return true;
+}
+
+constexpr const char* WHEEL_CACHE_RECORD = ".orca-wheel-cache.json";
+std::mutex wheel_extraction_mutex;
+
+struct ExtractionDirectory {
+    boost::filesystem::path path;
+    ~ExtractionDirectory()
+    {
+        if (!path.empty()) {
+            boost::system::error_code ignored;
+            boost::filesystem::remove_all(extended_path(path), ignored);
+        }
+    }
+};
+
+std::string wheel_sha256(const boost::filesystem::path& path)
+{
+    std::ifstream input(std::filesystem::path(extended_path(path).native()), std::ios::binary);
+    if (!input)
+        throw std::runtime_error("Failed to read wheel for cache validation");
+    std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+    if (!ctx || EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1)
+        throw std::runtime_error("Failed to initialize wheel digest");
+    std::array<char, 64 * 1024> buffer;
+    while (input) {
+        input.read(buffer.data(), buffer.size());
+        if (input.gcount() > 0 && EVP_DigestUpdate(ctx.get(), buffer.data(), size_t(input.gcount())) != 1)
+            throw std::runtime_error("Failed to update wheel digest");
+    }
+    if (!input.eof())
+        throw std::runtime_error("Failed to finish reading wheel for cache validation");
+    std::array<unsigned char, EVP_MAX_MD_SIZE> bytes;
+    unsigned int length = 0;
+    if (EVP_DigestFinal_ex(ctx.get(), bytes.data(), &length) != 1)
+        throw std::runtime_error("Failed to finish wheel digest");
+    constexpr char hex[] = "0123456789abcdef";
+    std::string digest;
+    for (unsigned int i = 0; i < length; ++i) {
+        digest += hex[bytes[i] >> 4];
+        digest += hex[bytes[i] & 15];
+    }
+    return digest;
+}
+
+bool complete_wheel_cache(const boost::filesystem::path& destination, const std::string& digest)
+{
+    namespace fs = boost::filesystem;
+    try {
+        if (!fs::is_directory(fs::symlink_status(extended_path(destination))))
+            return false;
+        const fs::path marker = destination / WHEEL_CACHE_RECORD;
+        if (!fs::is_regular_file(fs::symlink_status(extended_path(marker))))
+            return false;
+        std::ifstream input(std::filesystem::path(extended_path(marker).native()), std::ios::binary);
+        const auto record = nlohmann::json::parse(input);
+        if (record.at("schema") != 1 || record.at("archive_sha256") != digest || !record.at("files").is_object())
+            return false;
+        // Python may add __pycache__; only files published by extraction are required.
+        for (const auto& item : record.at("files").items()) {
+            const fs::path relative(item.key());
+            if (!is_safe_archive_entry_path(relative) || item.key().find(':') != std::string::npos ||
+                item.key() == WHEEL_CACHE_RECORD || !item.value().is_number_unsigned())
+                return false;
+            fs::path path = destination;
+            for (const auto& part : relative) {
+                path /= part;
+                if (fs::is_symlink(fs::symlink_status(extended_path(path))))
+                    return false;
+            }
+            if (!fs::is_regular_file(extended_path(path)) || fs::file_size(extended_path(path)) != item.value().get<uint64_t>())
+                return false;
+        }
+        return !record.at("files").empty();
+    } catch (const std::exception&) {
+        // Legacy, interrupted, or damaged records are repaired from the original wheel.
+        return false;
+    }
+}
+
+bool extract_and_publish(const boost::filesystem::path& zip_path,
+                         const boost::filesystem::path& destination,
+                         const std::string* wheel_digest,
+                         std::string& error)
+{
+    namespace fs = boost::filesystem;
+    if (destination.empty() || destination.filename().empty() || destination.filename() == "." || destination.filename() == "..") {
+        error = "Invalid plugin extraction destination";
+        return false;
+    }
+    const auto status = fs::symlink_status(extended_path(destination));
+    if (fs::exists(status) && !fs::is_directory(status)) {
+        error = "Plugin extraction destination is not a regular directory";
+        return false;
+    }
+    const fs::path parent = fs::absolute(destination).parent_path();
+    fs::create_directories(extended_path(parent));
+    ExtractionDirectory staging;
+    // create_directory is exclusive; a collision never gives us ownership of another path.
+    for (unsigned int attempt = 0; attempt < 32; ++attempt) {
+        const fs::path candidate = parent / fs::unique_path(".orca-wheel-stage-%%%%-%%%%-%%%%");
+        if (fs::create_directory(extended_path(candidate))) {
+            staging.path = candidate;
+            break;
+        }
+    }
+    if (staging.path.empty()) {
+        error = "Failed to allocate plugin extraction staging directory";
+        return false;
+    }
+    if (!extract_zip_contents(zip_path, staging.path, error))
+        return false;
+    if (wheel_digest) {
+        if (wheel_sha256(zip_path) != *wheel_digest) {
+            error = "Wheel changed while it was being extracted";
+            return false;
+        }
+        const fs::path marker = staging.path / WHEEL_CACHE_RECORD;
+        if (fs::exists(extended_path(marker))) {
+            error = "Wheel uses a reserved cache record name";
+            return false;
+        }
+        nlohmann::json files = nlohmann::json::object();
+        for (fs::recursive_directory_iterator it(extended_path(staging.path)), end; it != end; ++it)
+            if (fs::is_regular_file(it->symlink_status()))
+                files[fs::relative(it->path(), extended_path(staging.path)).generic_string()] = fs::file_size(it->path());
+        std::ofstream output(std::filesystem::path(extended_path(marker).native()), std::ios::binary | std::ios::trunc);
+        output << nlohmann::json{{"schema", 1}, {"archive_sha256", *wheel_digest}, {"files", std::move(files)}}.dump();
+        output.close();
+        if (!output) {
+            error = "Failed to write wheel completion record";
+            return false;
+        }
+    }
+
+    // Retain any old directory until the complete replacement is ready. A failed
+    // extraction cannot modify it. A failed publication restores it when possible.
+    fs::path backup;
+    if (fs::exists(extended_path(destination))) {
+        backup = parent / fs::unique_path(".orca-wheel-previous-%%%%-%%%%-%%%%");
+        fs::rename(extended_path(destination), extended_path(backup));
+    }
+    boost::system::error_code publish_error;
+    fs::rename(extended_path(staging.path), extended_path(destination), publish_error);
+    if (publish_error) {
+        error = "Failed to publish extracted plugin directory: " + publish_error.message();
+        if (!backup.empty()) {
+            boost::system::error_code restore_error;
+            fs::rename(extended_path(backup), extended_path(destination), restore_error);
+            if (restore_error)
+                error += "; previous cache retained at " + backup.string() + ": " + restore_error.message();
+        }
+        return false;
+    }
+    staging.path.clear();
+    if (!backup.empty()) {
+        boost::system::error_code cleanup_error;
+        fs::remove_all(extended_path(backup), cleanup_error);
+        if (cleanup_error)
+            BOOST_LOG_TRIVIAL(warning) << "Previous wheel cache cleanup failed: " << cleanup_error.message();
+    }
+    return true;
+}
+
+} // namespace
+
+bool extract_zip_to_directory(const boost::filesystem::path& zip_path, const boost::filesystem::path& destination, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(wheel_extraction_mutex);
+    error.clear();
+    try {
+        return extract_and_publish(zip_path, destination, nullptr, error);
+    } catch (const std::exception& exception) {
+        error = "Plugin extraction failed: " + std::string(exception.what());
+        return false;
+    }
+}
+
+// Reuse only a complete cache for the current wheel; rebuild legacy or damaged caches.
+bool ensure_wheel_extracted(const boost::filesystem::path& wheel, const boost::filesystem::path& destination, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(wheel_extraction_mutex);
+    error.clear();
+    try {
+        const std::string digest = wheel_sha256(wheel);
+        return complete_wheel_cache(destination, digest) || extract_and_publish(wheel, destination, &digest, error);
+    } catch (const std::exception& exception) {
+        error = "Wheel cache validation failed: " + std::string(exception.what());
+        return false;
+    }
 }
 
 bool read_install_state(const boost::filesystem::path& plugin_dir, PluginDescriptor& entry)
@@ -865,12 +1059,7 @@ bool write_install_state(const boost::filesystem::path& plugin_dir, const Plugin
         capabilities.push_back(nlohmann::json{{name, enabled}});
     json["capabilities"] = std::move(capabilities);
 
-    boost::nowide::ofstream f(sidecar_path.string());
-    if (!f)
-        return false;
-
-    f << json.dump(2);
-    return static_cast<bool>(f);
+    return !write_file_atomically(sidecar_path.string(), json.dump(2) + "\n");
 }
 
 bool write_install_state(const boost::filesystem::path& plugin_dir, const PluginDescriptor& entry, bool enabled,

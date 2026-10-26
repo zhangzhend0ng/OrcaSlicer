@@ -104,6 +104,10 @@ public:
     bool store_capability_config(const PluginCapabilityId& id, const nlohmann::json& config);
     bool erase_capability_config(const PluginCapabilityId& id);
 
+    // Replacement rollback restores this package only, preserving other packages.
+    nlohmann::json snapshot_plugin_config(const std::string& plugin_key) const;
+    bool restore_plugin_config(const std::string& plugin_key, const nlohmann::json& entries);
+
     std::optional<CapabilityConfigEntry> get_config(const PluginCapabilityId& id) const;
     bool has_config(const PluginCapabilityId& id) const;
 

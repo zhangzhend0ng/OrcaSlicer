@@ -2,6 +2,7 @@
 #include "GeneratedConfig.hpp"
 #include "libslic3r/Utils.hpp"
 #include "PluginAuditManager.hpp"
+#include "PluginDependencyInstaller.hpp"
 #include "PythonPluginBridge.hpp"
 #include <boost/filesystem/path.hpp>
 #include <pytypedefs.h>
@@ -472,6 +473,13 @@ bool PythonInterpreter::initialize()
     m_plugin_module_owned.clear();
 
     try {
+        // Finish an interrupted dependency publication before CPython starts or
+        // creates/exposes an empty shared package directory. No GIL is held here.
+        if (!plugin_loader::recover_dependency_install(m_last_error)) {
+            BOOST_LOG_TRIVIAL(error) << m_last_error;
+            return false;
+        }
+
         // Set Python home to the bundled Python installation
         // This is critical for finding the standard library (encodings module, etc.)
 
@@ -1106,10 +1114,9 @@ PyObject* PythonInterpreter::load_module_from_whl(const std::string& file_path,
 
     fs::path extract_dir = whl_path.parent_path() / "__whl_extracted__" / pkg_name;
 
-    if (!fs::exists(extract_dir)) {
-        if (!extract_zip_to_directory(whl_path, extract_dir, error))
-            return nullptr;
-    }
+    // Cache-validated: a replaced .whl must not keep loading its previously extracted code.
+    if (!ensure_wheel_extracted(whl_path, extract_dir, error))
+        return nullptr;
 
     return load_module_from_directory(extract_dir.string(), pkg_name, error, plugin_paths, plugin_modules);
 }

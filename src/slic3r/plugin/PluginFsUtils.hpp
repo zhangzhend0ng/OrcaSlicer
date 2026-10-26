@@ -159,6 +159,9 @@ bool is_safe_relative_path(const boost::filesystem::path& path);
 bool is_valid_plugin_id(const std::string& id);
 bool extract_zip_to_directory(const boost::filesystem::path& zip_path, const boost::filesystem::path& destination, std::string& error);
 
+// Reuse only a complete cache for the current wheel; rebuild legacy or damaged caches.
+bool ensure_wheel_extracted(const boost::filesystem::path& wheel, const boost::filesystem::path& destination, std::string& error);
+
 // Read PEP 723 inline script metadata from a .py plugin file.
 // Populates metadata.dependencies and local identity fallbacks.
 // Returns true on success (including when no PEP 723 block is found — deps will be empty).

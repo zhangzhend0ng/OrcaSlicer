@@ -7,7 +7,9 @@
 
 #include "PluginFsUtils.hpp"
 #include "PluginHooks.hpp"
+#include "PluginInstallTransaction.hpp"
 #include "PluginAuditManager.hpp"
+#include "host/PluginHostUi.hpp"
 #include "PyPluginTrampoline.hpp"
 #include "PythonInterpreter.hpp"
 #include "PythonPluginBridge.hpp"
@@ -82,6 +84,33 @@ bool PluginManager::initialize()
         m_shutting_down.store(false, std::memory_order_release);
     }
 
+    // Only one embedded runtime may mutate a profile's packages/configuration.
+    // The OS releases this lock even if activation terminates the process.
+    std::unique_ptr<PluginFileLock> profile_lock;
+    try {
+        const auto root = std::filesystem::u8path(get_orca_plugins_dir());
+        std::filesystem::create_directories(root);
+        profile_lock = std::make_unique<PluginFileLock>(root / ".runtime.lock");
+    } catch (const std::exception& ex) {
+        BOOST_LOG_TRIVIAL(error) << "Plugin profile is busy or invalid: " << ex.what();
+        return false;
+    }
+
+    // Bring every capability's stored config into memory before replacement recovery: rollback
+    // restores per-plugin snapshots through this store. Deliberately unconditional and
+    // independent of which plugins are installed: an entry outlives uninstall/unsubscribe, so a
+    // plugin that comes back later finds its settings intact. A missing or malformed file just
+    // leaves the store empty (see PluginConfig::load), never blocking startup.
+    m_config.load();
+
+    // Finish or roll back any replacement journal left by a crash mid-install. Runs before
+    // discovery can merge the half-replaced package and before any load can activate it.
+    std::string recovery_error;
+    if (!recover_plugin_replacements(m_config, recovery_error)) {
+        BOOST_LOG_TRIVIAL(error) << "Plugin replacement recovery failed: " << recovery_error;
+        return false;
+    }
+
     // Initialize the Python interpreter eagerly on the main thread. CPython must be initialized
     // from the main thread; calling Py_InitializeFromConfig from a background thread (e.g. the
     // load_plugin worker) causes heap corruption in CPython internals.
@@ -93,19 +122,12 @@ bool PluginManager::initialize()
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_initialized)
-            return true;
-        m_initialized = true;
+        m_profile_lock = std::move(profile_lock);
+        m_initialized  = true;
     }
 
     // Re-arm the async Script runtime in case shutdown() ran earlier in this process.
     ScriptAsyncRuntime::instance().reset();
-
-    // Bring every capability's stored config into memory. Deliberately unconditional and
-    // independent of which plugins are installed: an entry outlives uninstall/unsubscribe, so a
-    // plugin that comes back later finds its settings intact. A missing or malformed file just
-    // leaves the store empty (see PluginConfig::load), never blocking startup.
-    m_config.load();
 
     // Install the libslic3r hooks (capability resolver, slicing-pipeline dispatcher).
     // Uninstalled in shutdown() before the interpreter finalizes.
@@ -177,6 +199,12 @@ void PluginManager::shutdown()
     if (m_config.dirty())
         m_config.save();
 
+    // A load that crashed mid-replacement keeps its journal; finish the rollback now that every
+    // plugin object is gone. Failure only retains the journal for the next startup.
+    std::string recovery_error;
+    if (!recover_plugin_replacements(m_config, recovery_error))
+        BOOST_LOG_TRIVIAL(error) << "Pending plugin replacement kept for next startup: " << recovery_error;
+
     // Drop the lifecycle subscriptions taken out during initialize(). Without this a second
     // initialize() in the same process re-subscribes the same callbacks on top of the old ones,
     // and every load would then write the install-state sidecar once per duplicate.
@@ -184,7 +212,8 @@ void PluginManager::shutdown()
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_initialized = false;
+        m_initialized   = false;
+        m_profile_lock.reset();
     }
 
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": PluginManager shutdown exit";
@@ -915,6 +944,8 @@ void PluginManager::load_plugin(const std::string& plugin_key, bool skip_deps, s
             fail_unexpected(_u8L("Unexpected plugin load failure"));
         }
 
+        settle_plugin_replacement(plugin_id);
+
         if (!m_shutting_down.load(std::memory_order_acquire))
             run_on_load_callbacks(plugin_id);
 
@@ -939,6 +970,14 @@ void PluginManager::load_plugin_impl(const std::string& plugin_key, bool skip_de
     PluginDescriptor descriptor;
     if (!try_get_plugin_descriptor(plugin_key, descriptor)) {
         fail(GUI::format(_u8L("Plugin manifest not found: %1%"), plugin_key));
+        return;
+    }
+
+    // A replacement whose rollback did not complete must not be activated again: its candidate
+    // files may be gone. Block the load until recovery succeeds.
+    std::string replacement_error;
+    if (!can_activate_plugin_replacement(descriptor.plugin_root, replacement_error)) {
+        fail(replacement_error);
         return;
     }
 
@@ -1017,6 +1056,38 @@ void PluginManager::load_plugin_impl(const std::string& plugin_key, bool skip_de
     }
 
     BOOST_LOG_TRIVIAL(info) << "[load_plugin_impl] SUCCESS plugin=" << plugin_key;
+}
+
+void PluginManager::settle_plugin_replacement(const std::string& key)
+{
+    PluginDescriptor descriptor;
+    if (!try_get_plugin_descriptor(key, descriptor) || descriptor.is_cloud_plugin()) return;
+    try {
+        if (!has_pending_plugin_replacement(descriptor.plugin_root)) return;
+        std::string error = get_plugin_load_error(key);
+        if (is_plugin_loaded(key)) {
+            if (write_loaded_plugin_install_state(key) && m_config.save() &&
+                finish_plugin_replacement(descriptor.plugin_root, true, m_config, error)) return;
+            if (error.empty()) error = "Cannot persist activated plugin state";
+            unload_plugin(key);
+        }
+        PluginHostUi::close_windows_for_plugin(key);
+        std::string recovery_error;
+        if (finish_plugin_replacement(descriptor.plugin_root, false, m_config, recovery_error)) {
+            std::string scan_error;
+            merge_discovered_plugins(discover_plugin_packages({get_orca_plugins_dir()}, scan_error), false);
+            error += "\nPrevious plugin package and configuration restored; run it again or restart to load it.";
+        } else {
+            error += "\nRecovery needs attention: " + recovery_error;
+        }
+        set_plugin_error(key, error);
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_load_errors[key] = std::move(error);
+    } catch (const std::exception& ex) {
+        // Do not let a malformed journal escape the worker and lose its load slot.
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_load_errors[key] = std::string("Plugin replacement recovery failed: ") + ex.what();
+    }
 }
 
 bool PluginManager::unload_plugin(const std::string& plugin_key)
@@ -1160,7 +1231,7 @@ void PluginManager::set_capability_enabled(const PluginCapabilityId& id, bool en
         run_on_capability_unload_callbacks(changed);
 }
 
-void PluginManager::write_loaded_plugin_install_state(const std::string& plugin_key)
+bool PluginManager::write_loaded_plugin_install_state(const std::string& plugin_key)
 {
     std::lock_guard<std::mutex> state_lock(m_install_state_mutex);
 
@@ -1171,7 +1242,7 @@ void PluginManager::write_loaded_plugin_install_state(const std::string& plugin_
 
         const Plugin* plugin = find_plugin_locked(plugin_key);
         if (plugin == nullptr || !plugin->is_loaded())
-            return;
+            return false;
 
         descriptor = plugin->descriptor;
         for (const auto& capability : plugin->capabilities)
@@ -1180,9 +1251,9 @@ void PluginManager::write_loaded_plugin_install_state(const std::string& plugin_
     }
 
     if (descriptor.plugin_root.empty())
-        return;
+        return false;
 
-    write_install_state(boost::filesystem::path(descriptor.plugin_root), descriptor, /*enabled=*/true, capabilities);
+    return write_install_state(boost::filesystem::path(descriptor.plugin_root), descriptor, /*enabled=*/true, capabilities);
 }
 
 void PluginManager::mark_plugin_install_state_disabled(const std::string& plugin_key)
@@ -1437,14 +1508,63 @@ bool PluginManager::install_plugin(const boost::filesystem::path& filepath, Plug
     }
 
     // A local overwrite must not leave the old module holding the package file or its Python
-    // namespace while the installer replaces the package on disk.
+    // namespace while the installer replaces the package on disk. Validate before unloading a
+    // usable package: keep the pre-update enable choices — unloading only for replacement is not
+    // a user's Disable — and refuse while a load is mid-flight or a capability is borrowed.
     if (!plugin_descriptor.is_cloud_plugin()) {
-        const std::string local_plugin_key = make_local_plugin_key(filepath.stem().string());
-        if (is_plugin_loaded(local_plugin_key))
+        const std::string local_plugin_key = plugin_descriptor.plugin_key.empty() ? make_local_plugin_key(filepath.stem().string()) :
+                                                                                        plugin_descriptor.plugin_key;
+        if (is_plugin_load_in_progress(local_plugin_key)) {
+            error = "Plugin is loading; wait before replacing it";
+            set_plugin_error(local_plugin_key, error);
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": " << error;
+            return false;
+        }
+        for (const auto& cap : get_plugin_capabilities(local_plugin_key, PluginCapabilityType::Unknown, false)) {
+            if (cap && cap->ref_count() != 0) {
+                error = "Plugin is in use; stop its active work before replacing it";
+                set_plugin_error(local_plugin_key, error);
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": " << error;
+                return false;
+            }
+        }
+        PluginDescriptor old;
+        if (try_get_plugin_descriptor(local_plugin_key, old)) {
+            if (has_pending_plugin_replacement(old.plugin_root)) {
+                error = "Previous replacement still needs activation or recovery";
+                set_plugin_error(local_plugin_key, error);
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": " << error;
+                return false;
+            }
+            // The durable replacement journal derives its candidate state from the current
+            // sidecar; preserve it across the unload so enable choices survive the swap.
+            PluginInstallState state;
+            if (!read_install_state(boost::filesystem::path(old.plugin_root), state)) {
+                error = "Cannot read previous plugin install state";
+                set_plugin_error(local_plugin_key, error);
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": " << error;
+                return false;
+            }
+            if (is_plugin_loaded(local_plugin_key) &&
+                (!unload_plugin(local_plugin_key) || !write_install_state(boost::filesystem::path(old.plugin_root), state))) {
+                error = "Cannot preserve previous plugin install state";
+                set_plugin_error(local_plugin_key, error);
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": " << error;
+                return false;
+            }
+        } else if (is_plugin_loaded(local_plugin_key)) {
             unload_plugin(local_plugin_key);
+        }
     }
 
     if (!plugin_loader::install_plugin(filepath, cloud_user_id, plugin_descriptor, error)) {
+        // A published replacement journal owns its files; roll it back so the previous package
+        // and its configuration come back for the next discovery/load.
+        if (!plugin_descriptor.is_cloud_plugin() && !plugin_descriptor.plugin_root.empty()) {
+            std::string recovery_error;
+            if (!finish_plugin_replacement(plugin_descriptor.plugin_root, false, m_config, recovery_error))
+                error += "\nRecovery needs attention: " + recovery_error;
+        }
         if (!plugin_descriptor.plugin_key.empty())
             set_plugin_error(plugin_descriptor.plugin_key, error);
         BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": " << error;
@@ -1994,6 +2114,12 @@ bool PluginManager::delete_plugin(const std::string& plugin_key, std::string& er
         error = GUI::format(_u8L("Plugin not found: %1%"), plugin_key);
         return false;
     }
+
+    // Deleting a package whose replacement is still pending would destroy the rollback files;
+    // finish that rollback first so the restored original is what gets deleted.
+    if (!descriptor.is_cloud_plugin() && has_pending_plugin_replacement(descriptor.plugin_root) &&
+        !finish_plugin_replacement(descriptor.plugin_root, false, m_config, error))
+        return false;
 
     if (!delete_installed_plugin_package(descriptor, error)) {
         set_plugin_error(plugin_key, error);

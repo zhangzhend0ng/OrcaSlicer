@@ -23,6 +23,7 @@
 
 #include "CloudPluginService.hpp"
 #include "PluginDescriptor.hpp"
+#include "PluginFileLock.hpp"
 #include "PluginLoader.hpp"
 #include "PluginConfig.hpp"
 
@@ -126,6 +127,7 @@ public:
 
     // Reject new plugin loads. Called early in app teardown, before shutdown() drains.
     void set_shutting_down();
+    bool is_shutting_down() const { return m_shutting_down.load(std::memory_order_acquire); }
 
     void discover_plugins(bool async = false, bool clear = false);
     // Manually trigger a manifest-only rescan. Blocks until discovery is complete.
@@ -298,10 +300,14 @@ private:
     void clear_callbacks();
 
     // Writes the sidecar for a loaded plugin (enabled=true plus the current per-capability flags).
-    void write_loaded_plugin_install_state(const std::string& plugin_key);
+    // True when the durable install state was persisted.
+    bool write_loaded_plugin_install_state(const std::string& plugin_key);
     void mark_plugin_install_state_disabled(const std::string& plugin_key);
     // Revoke permissions after a package replacement so the new package must request them again.
     void revoke_plugin_permissions(const std::string& plugin_key);
+    // Completes or rolls back a pending replace_local_plugin_package() journal after the load
+    // worker has finished: commit only when the new package actually activated.
+    void settle_plugin_replacement(const std::string& key);
 
     bool finalize_cloud_plugin_removal(const PluginDescriptor& plugin, bool keep_local, std::string& error);
     bool delete_installed_plugin_package(const PluginDescriptor& plugin, std::string& error);
@@ -343,6 +349,10 @@ private:
 
     std::string m_cloud_user_id;
     std::atomic<bool> m_shutting_down{false};
+
+    // Only one embedded runtime may mutate this profile's packages/configuration. The OS releases
+    // this lock even if activation terminates the process. Held from initialize() to shutdown().
+    std::unique_ptr<PluginFileLock> m_profile_lock;
 };
 
 // ── Async Script execution ──────────────────────────────────────────────────────────────────
