@@ -298,3 +298,73 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - **plugin_core ctest 3/3**：file_lock ✓、wheel_cache_recovery ✓（26s 全场景）、dependency_environment ✓（真 uv 离线装包 + UV_*/PYTHON*/PIP* 保全 + 失败安装耐久）。
 - **SDK 链冒烟**：generate_plugin_sdk.py → 活体导出 10 模块 → 内建 verify 过（输出 sync-scratch/sdk_smoke_step2）。
 - 产品码零触碰（tests/scripts/tools/docs only），slic3rutils/libslic3r 门禁不受影响（未重跑；上轮基线仍有效）。
+
+## 10-27 women 续收·批 A：装载等待域考卷 + 观察者语义硬化 + 契约文档
+
+开工 fetch：orca/main 555321215e→13a40b47a2（`src/slic3r/plugin/` 无新增；e021ccb316 缺插件通知修复触 GUI_App/Plater/NotificationManager/PluginsDialog——我方树已有该通知面（refresh_missing_plugin_block），**记为后续吸收候选**，不并入本轮）；women feature_plugin_system 仍 @0aa325e101；upstream main 已 fetch。
+
+### 吸收面
+- **tests/plugin_core 三考卷**（women 同名件改编到我方键基 PluginManager API，逐轴映射见文件头注）：
+  - runtime_wait.cpp（no-app/console 双模式：未装包拒绝、失败错误保全+槽位释放、观察者排队/内联派发、卸载重装、shutdown 作废排队观察者、解释器停机）
+  - unload_overlap.cpp（7 场景：overlap/bulk_overlap/shutdown/bulk_shutdown/replacement/delete/shutdown_gil；弃 women 的 destructor/reentrant 两场景——前者依赖 LocalPluginRuntime，后者依赖我方无有的 config 变更订阅）
+  - observer_queue.cpp（真实 wxAppConsole 队列上的观察者顺序；registry 接线由考卷自装镜像 GUI_App 生产接线）
+- scripts/test_plugin_runtime_wait.py / test_plugin_unload_overlap.py / test_plugin_observer_queue.py（编排器，tempfile 原生路径防 MSYS 转换伪影）。
+- docs/plugins 四篇：LOAD_HANG_RECOVERY.md（重写为我方可执行契约，women 本机取证链不带入）、GCODE_LOCAL.md / SLICING_LOCAL.md（裁 women UI/考卷/smoke 引用）、HOST_API_AUDIT.md（只保方法+我方结构性差异）。
+- 接线：plugin_core/CMakeLists 复用 runner_extras（wx include 补两点式——setup.h 在 LIB_DIR/CONFIGURATION 下）。
+
+### 考卷暴露并修复的产品缺口（PluginManager，全部先红后绿实证）
+1. **排队观察者不被 shutdown 作废**：run_on_*_callbacks 的 work item 捕获 m_dispatch_epoch（shutdown 顶点自增），过期自弃——解释器终结后泵队列不再重建资源/触达新运行时（runtime_wait console 尾段/observer_queue 终段翻红驱动）。
+2. **卸载交叠无防护**：unload 先移注册表后 teardown，同键重装可入、旧代 save 覆盖新代配置（overlap 场景 OBSERVED reload=1 实证）。修复：m_teardown_in_progress 集 + CV；load_plugin 同键拒绝（记错误）；install/delete 卸载期拒绝；shutdown 排水（bulk 卸载 erase 用平行 removed_keys——曾因 move 掏空 descriptor 留空键致 shutdown 死锁，考卷抓出后修）。
+3. **持 GIL 调 shutdown 死锁**：排水等待持调用方 GIL，on_unload 无法推进（shutdown_gil 300s 超时实证）。修复：GilReleaserForShutdown（PyGILState_Check 条件 SaveThread/RestoreThread）。
+4. **过期能力事件毁注册表**：worker disable 排队 + 主线程 re-enable 内联后，泵队列把已启用能力的注册表项删掉（observer_queue 第 4 段字面命中原断言）。修复：能力级观察者派发时校验当前 enable 状态，反向/缺席事件自弃。
+
+### 语义差异裁定（考卷断言适配，非裁剪保护面）
+- 我方 sidecar 写入 rides 排队观察者（women 同步提交）："commit-before-observer" 轴改为"pump 后提交"；装后即关的 enable 提交被 epoch 作废 → sidecar 停 false（产品可辩护：不承诺自启）。
+- 我方单进程 FIFO 队列（women 按 runtime 代际作废）：unload/disable 计数断言按 FIFO 语义适配，entries 隔离/关机不重建等保护面保留。
+- manager.shutdown() 不终结解释器（GUI_App 所有）：考卷显式补 PythonInterpreter::shutdown()。
+- GIL-held wait 轴弃（无持有 GIL 等待 load 的可达产品路径）。
+
+### 不吸收项
+- **runtime_paths.cpp**：我方无 PluginRuntimePaths 参数化纯函数库；等价实现（find_bundled_python_home）为编译期平台分支+编译期兜底，"空返回/跨平台布局"断言不可达，且我方无 CWD 探测（program_location 基）——结构性差异，SKIP。
+- **prepare/verify_local_plugin_gui_smoke.py + GUI_TESTING.md**：darwin-only 硬门（codesign/.app/cua-driver），模式族含 texture/dualhost women 域；隔离 App+安装/重启/禁用生命周期语义与我方 tests/e2e（CDP 链）重复，异常路径为 macOS 机特定取证——SKIP 整链。
+
+## 10-27 women 续收·批 B：plugin_benchmark bulk 三件套
+
+- tests/plugin_benchmark/bulk_main.cpp + bulk_package.py、scripts/benchmark_plugin_bulk.py 原样吸收；bulk_main 一处点状适配（Slic3r::Polygon 限定——我方头集合下 ClipperLib::Polygon 歧义，women 不触发）。
+- scripts/test_plugin_bulk_tools.py：14 用例全过；一处适配（cmake 路径断言指向我方 tests/plugin_benchmark/CMakeLists.txt——women 在 cmake/OrcaPluginBenchmark.cmake 且该文件同时定义其未收 main.cpp 目标）。
+- 新建 tests/plugin_benchmark/CMakeLists.txt：orca_plugin_bulk_benchmark EXCLUDE_FROM_ALL（同 women），接线为独立目录（add_subdirectory 进 tests/），自含 staging（镜像 runner_extras，注释指认原件）；ctest 只挂 bulk_tools 纯 Python 契约测试。
+- **main.cpp 不收**（TextureDisplacementConsumer，既定）；**scripts/test_plugin_benchmark_tools.py 不收**（校验未吸收的 benchmark_plugin_host.py 驱动）。
+- 原生 bulk 实跑需离线 numpy-2.2.6 wheelhouse（本机 uv/pip 缓存均无），不进 ctest（women 同样不挂）；按需实跑法见 benchmark_plugin_bulk.py --help。
+
+## 10-27 women 续收·批 C：host/PluginDockLayout.hpp 翻案吸收
+
+- 重新评估推翻"Local 家族整体 DEFER"中的该件：**94 行 header-only 纯函数库**（仅 <string>/<vector>），无 Plater/DockPanel 依赖——满足任务预设的吸收条件。
+- 我方消费点实证：dock 面板名 plugin: 前缀（DockPanel.cpp plugin_pane_name）匹配其过滤锚；**保存侧真缺口**——项目重置路径 Plater.cpp SavePerspective 会抹掉尚未创建的插件面板记录（women 函数注释描述的同型坑）。接线：保存点经 plugin_preserve_uncreated_panes 合并未创建面板及其 dock 尺寸。读取侧我方已有等价 aui_pane_layout_entry（Plater.cpp:11533，转义处理略弱于 women 版——women 版处理 \| 反转义；考卷全打 women hpp 上，未动我方旧件）。
+- tests/plugin_core/dock_layout.cpp 原样吸收（41 行，一次过）；接线为独立小二进制（同 file_lock 模式）+ 直接 ctest。
+- gui_dock_restart/gui_dock_teardown 等维持不收（需 DockLocal + GUI spike 栈）。
+
+## 10-27 上游批 D：plugin-network-permissions 权限批收口（7 提交）
+
+系列=6c791532c6/2410112046/6a0223f055/9739d3a9c4/f3f872281e/f1011098ca/1086b771b5（非线性序：1086 在 241011 之前；终态取 orca/main@555321215e 文本）。我方 AuditManager 与上游系列前基线全面分叉（全文件级差异）→ **语义级移植**，非补丁。大前提（注册期全类别权限请求 API g_pending_permissions + request_permissions 弹窗链）我方树已具备，实际增量：
+
+- **PluginAuditManager**：网络归一/匹配族（normalize_network_url/network_permission_matches 公共 static + host_from_authority/network_host_from_target/ipv6 括号剥离等私有件，逐字取终版）；fs 树授权（"<dir>/*" 尾通配，canonical 双侧比较拒 symlink 逃逸，".."/中缀 * 不展开）；悬空 symlink 末端 fail-closed（ends_in_dangling_symlink 进 is_inside_allowed_root）；has_permission→4 参（类别+by_event）；decide_audited_event 网络判据接入（targetless 事件由任意网络授权覆盖，canonical host 授权 host-wide、旧全 URL 授权保持精确——6a 紧固语义）；relative 通配请求经 absolute_tree_grant 归一入 sidecar；request_network_permissions 公共 API（归一后委托 request_permissions）；PermissionMessagePrompt 测试钩子（**钩子分支必须先于 wxTheApp 守卫**——顺序错时无 wxApp 测试全拒，考卷 626 翻红抓出）；Http/Socket 弹窗文案换同意范围说明版。
+- **PythonPluginBridge**：request_permissions 增 network= kwarg（归一 scheme://host 记入 HTTP 桶，socket 事件同享）；docstring 补通配段。
+- **PluginFsUtils**：seed_install_metadata 公共化（sidecar 元数据映射单一来源），PluginManager mark_plugin_install_state_disabled 改用之（Manager 侧仅此 8 行，与 557 批 hunks 天然分离——权限批不触 557 区域）。
+- **考卷**：test_plugin_audit.cpp 新增 8 用例（wildcard×4/树 canonical/悬空链接/targetless 网络/网络归一单元）+ 既有用例期望更新 1 处（"A freshly approved operation"：connect 授权覆盖 targetless send，期望由 connect\nsend 改 connect——系列自带语义更新，首轮漏带翻红后按上游终版补齐）。
+- **probe**：sandboxes/orca_network_permission_probe_plugin.py 收入（取 6c791532c6 版；上游后于 4afd257371 删除该手工探针——我方 sandboxes 语义留存，台账知会）。
+
+### 残差再评估（任务点名四项）
+- **cefdd9b609 长路径**：PluginFsUtils 片**已被 women 批覆盖**（同站点 extended_path 全用，diff 证实）；剩 miniz_extension/utils.hpp 公共化+三测试属引擎域（libslic3r），随上游合入线，维持 DEFERRED。
+- **c023632a7d**：AppConfig/InstanceLock/Preset/PresetBundle/Config ~600 行引擎域重制，preset 引擎 fork 定制重，独立批，维持 DEFERRED（PluginConfig 原子写已由 women 批覆盖）。
+- **6626377abc 测试面残差**：仍为 printerAgent/cloud include 与 conf 字面量簇（10-25 勘误维持），无新增可收。
+- **4441bcc065 用例间 Python 生命周期**：我方 catch_discover_tests 逐用例单进程门禁姿势已结构性等价覆盖，记 ABSORBED-BY-EQUIVALENT。
+
+### 门禁（A/B/C/D 合并收口，共享触碰面；各批考卷独立计数）
+- 触碰目标 clean rebuild：libslic3r_gui 删 obj 目录全量重编 0 错；ALL_BUILD exit 0；13 个伞成员目标逐一显式构建全过（含 EXCLUDE_FROM_ALL 的 orca_plugin_bulk_benchmark；一处 Plater include 路径错与 bulk 的 Polygon 歧义当轮修）。
+- **plugin_core ctest 7/7**：file_lock、dock_layout（新）、wheel_cache_recovery、dependency_environment、runtime_wait（新）、unload_overlap（新，7 场景）、observer_queue（新）。
+- **plugin_benchmark:bulk_tools 1/1**（14 unittest 用例）。
+- **libslic3r 320/320**。
+- **slic3rutils 286/292**：6 败=482/483/486（静态资产族基线）+591/633（bed-fit 族基线）+462 SnapLogClient（**flaky**：3 连跑 1 绿，非本批触碰域）。
+- **fff_print 36/52**：16 败全落 arrange bed-fit/tree 存量族（13 hook+2 init+tree_support 本轮翻转）；本批零 libslic3r 触碰、fff_print 二进制不含本批改动，归因存量漂移（10-26 步骤一已记"上游 arrange 差异族需独立批收口"）。
+- **tests/e2e**：slice golden 逐字节一致（0aa3c58f7c5a0614…）✓；**lifecycle 阻塞于环境态**：PluginsDialog webview 不现，stash A/B 判定**基线二进制（无本批改动）同点同败**——本机 WebView2 NAV_ERR_OTHER INVALID_STATE（主页可导航、设备/对话框 webview 失败，手动裸启同症状），非本批回归。残留：机器态恢复（重登/重启或 WebView2 runtime 排查）后复跑 lifecycle 收口。
+- **API surface**：dump 重跑（port sha256 前缀 d9081826f3686525，存 mcp sync-scratch/api_surface/run_perm_batch_1027）→ diff --expect expected_snapshot_557.json **VERDICT: PERFECT**（network= kwarg 落在既有 request_permissions 多桶签名 mismatch 条目内，0 未期望偏差；期望快照无需更新）。
