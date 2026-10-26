@@ -166,3 +166,13 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 
 - E：本机无 mac 硬件，未做（补全路径：有硬件后 build_release_macos.sh -a universal + scan_app_archs.sh --strict + Intel 侧启动冒烟）。
 - F 未动（时间被 B/C/D 占满）：printerAgent 域整体决策、cloud 桩域收口、6626377abc 残差/a62fb17e03/cefdd9b609 三 DEFER 再评估、SnapLogClient flaky 移交，全部顺延。
+
+### 平行分叉评估（10-26：womendoushihaoyin/OrcaSlicer feature_plugin_system）
+
+用户指定对比分支已 fetch 为远端 `women`。**结论：平行独立移植，不建议合并，建议按"矿脉"选择性吸收**（与 orca/main 同等对待，非整支跟进）。
+
+- **形态**：单提交 0aa325e101（2026-10-23，401 文件 +64623/-570），基线 Snapmaker main @1bff8daec7（#1069 dartCli）；与我方 merge-base = abd25fc161（#1061）。同源上游插件系统祖先（pluginTypes 四族/PythonPluginBridge/audit 俱在）但深度重构：plugin/ 树 vs orca/main 差 65 文件 ±5000 行，不对应任何上游单点。
+- **上游新鲜度落后我方**：零 557feba649 代际标记（无 ScriptAsyncRuntime/PresetTransaction/launch_script_capability/invoke_script_execute），即无 preset 可变事务 API、无异步 Script 运行时、无 9f85357ade 关机防护；preset 侧为自研只读 PresetView 模型（is_user/label/config_keys/config_value/selected），与上游 557 的写侧事务设计分道。
+- **架构差异**：核心拆 LocalPluginRuntime/RuntimeCore/Store/StoreCore（我方/上游单 PluginManager+Bridge）；能力子模块注册从 bridge 下放到各能力 .cpp；host/ 多出 HostCore/Mesh/Slicing/ConfigLocal/DockLocal(+Layout)/PagesLocal/AppInfoIdentity；audit 为简化 fs-root 允拒模型（上游权限授权系双方都未全带）；双方均无 printerAgent 能力件。
+- **对方独有、具吸收价值的候选**（未定决策，待逐项评估后立批）：PluginDependencyInstaller（uv 事务装包，offline/wheelhouse 宿主策略，无 Python API）、PluginInstallTransaction/FileLock/AtomicFile/ArchiveCompat 安装基建、tests/plugin_core 55 文件（file_lock/dependency_crash/recovery/dock_layout/gui_dock_restart 等工程轴用例）+ plugin_contracts/plugin_benchmark、docs/plugins 32 篇契约文档、tools/plugin_sdk + scripts/verify_*。
+- **试合冲突面**（tmp/merge-probe 已测并回滚）：62 冲突（34 add/add plugin/、19 GUI、libslic3r Print/Model/Format/TextureDisplacement 与 web dialog）——直接合入不可行，任何采纳都须按吸收批逐文件走。
