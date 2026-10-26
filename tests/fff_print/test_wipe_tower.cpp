@@ -30,6 +30,10 @@ static void init_degenerate_raft_print(Print& print)
         { "enable_prime_tower", true },
         { "raft_layers", 1 },
         { "support_filament", 2 },
+        // use_relative_e_distances defaults to true and gcode_flavor to Marlin, whose
+        // validate() requires a per-layer "G92 E0" reset -- without this the fixtures
+        // die at validation instead of exercising the wipe tower paths they guard.
+        { "layer_change_gcode", "G92 E0" },
         { "machine_start_gcode", "" }
         });
 
@@ -67,6 +71,9 @@ static void init_multi_extruder_print(Print& print, const std::string& adhesiven
         { "enable_prime_tower",             true },
         { "filament_adhesiveness_category", adhesiveness_categories },
         { "wipe_tower_filament",            wall_filament },
+        // See init_degenerate_raft_print: validate() requires the per-layer extruder
+        // reset with relative E distances on the default Marlin flavor.
+        { "layer_change_gcode",             "G92 E0" },
         { "machine_start_gcode",            "" }
         });
 
