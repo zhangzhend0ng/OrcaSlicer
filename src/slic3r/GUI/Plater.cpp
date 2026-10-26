@@ -122,6 +122,7 @@
 #include "GUI_ObjectList.hpp"
 // TRIM: __WXGTK__ LinuxDisplayBackend include not carried (fork has no LinuxDisplayBackend)
 #include "AuiPaneLayout.hpp"
+#include <slic3r/plugin/host/PluginDockLayout.hpp>
 #include "GUI_Utils.hpp"
 #include "GUI_Factories.hpp"
 #include "wxExtensions.hpp"
@@ -13377,6 +13378,11 @@ void Plater::priv::reset(bool apply_presets_change)
             sidebar.Show();
         }
         auto layout = m_aui_mgr.SavePerspective();
+        // A project reset can run during startup, before delayed plugin dock panels are created;
+        // the fresh perspective would drop their saved records and lose their layout for good.
+        // Existing panes (including explicit hidden state) always win; only absent plugin panes
+        // and their dock sizes are merged back from the previously saved layout.
+        layout = wxString::FromUTF8(plugin_preserve_uncreated_panes(layout.utf8_string(), wxGetApp().app_config->get("window_layout")));
         wxGetApp().app_config->set("window_layout", layout.utf8_string());
     }
 }

@@ -13,6 +13,13 @@ target_include_directories(orca_plugin_lock_test PRIVATE ${PROJECT_SOURCE_DIR}/s
 target_compile_features(orca_plugin_lock_test PRIVATE cxx_std_17)
 set_property(TARGET orca_plugin_lock_test PROPERTY FOLDER "tests")
 
+# The dock-layout string contract (AUI perspective parse/merge) is likewise a
+# plain standalone binary over the header-only PluginDockLayout.hpp.
+add_executable(orca_plugin_dock_layout_test dock_layout.cpp)
+target_include_directories(orca_plugin_dock_layout_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_features(orca_plugin_dock_layout_test PRIVATE cxx_std_17)
+set_property(TARGET orca_plugin_dock_layout_test PROPERTY FOLDER "tests")
+
 # libslic3r_gui references symbols implemented in the app DLL's private TUs;
 # every runner that links it resolves them the same way slic3rutils_tests and
 # orca_stubgen do (compile the defining sources straight in).
@@ -143,6 +150,8 @@ if (Python3_Interpreter_FOUND)
     add_test(NAME plugin_core:file_lock
         COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/test_plugin_file_lock.py"
                 --binary $<TARGET_FILE:orca_plugin_lock_test>)
+    add_test(NAME plugin_core:dock_layout
+        COMMAND $<TARGET_FILE:orca_plugin_dock_layout_test>)
     add_test(NAME plugin_core:wheel_cache_recovery
         COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/test_plugin_wheel_cache_recovery.py"
                 --native $<TARGET_FILE:orca_plugin_wheel_cache_recovery_test>
@@ -159,7 +168,7 @@ if (Python3_Interpreter_FOUND)
     add_test(NAME plugin_core:observer_queue
         COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/test_plugin_observer_queue.py"
                 --binary $<TARGET_FILE:orca_plugin_observer_queue_test>)
-    set_tests_properties(plugin_core:file_lock plugin_core:wheel_cache_recovery plugin_core:dependency_environment
+    set_tests_properties(plugin_core:file_lock plugin_core:dock_layout plugin_core:wheel_cache_recovery plugin_core:dependency_environment
         plugin_core:runtime_wait plugin_core:unload_overlap plugin_core:observer_queue
         PROPERTIES TIMEOUT 600)
 endif()
