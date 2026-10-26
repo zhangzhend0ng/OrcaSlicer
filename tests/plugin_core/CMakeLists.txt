@@ -41,7 +41,16 @@ function(orca_plugin_core_runner_extras target)
         ${PROJECT_SOURCE_DIR}/src
         ${PROJECT_SOURCE_DIR}/src/slic3r
         ${PROJECT_SOURCE_DIR}/src/sentry_wrapper
+        # The wait/overlap/observer runners drive the real wx console queue
+        # (<wx/app.h>); the others never include wx headers. Same two-part wx
+        # include setup as tests/slic3rutils (setup.h lives under
+        # LIB_DIR/CONFIGURATION, not the base include dir).
+        ${wxWidgets_INCLUDE_DIRS}
     )
+    if (WIN32 AND wxWidgets_LIB_DIR AND wxWidgets_CONFIGURATION)
+        target_include_directories(${target} PRIVATE
+            "${wxWidgets_LIB_DIR}/${wxWidgets_CONFIGURATION}")
+    endif ()
     target_link_libraries(${target} PRIVATE libslic3r_gui pybind11::embed)
     # Pin every config variant: with only the plain property the VS multi-config
     # generator appends \Release under it while copy_dlls() stages into the plain
@@ -88,6 +97,24 @@ add_executable(orca_plugin_dependency_environment_test
     ${_plugin_core_private_tus})
 orca_plugin_core_runner_extras(orca_plugin_dependency_environment_test)
 
+# Load-wait / unload-overlap / observer-order contract runners (women
+# runtime_wait / unload_overlap / observer_queue, adapted to the key-based
+# PluginManager API; see the file headers for the per-axis adaptations).
+add_executable(orca_plugin_runtime_wait_test
+    runtime_wait.cpp
+    ${_plugin_core_private_tus})
+orca_plugin_core_runner_extras(orca_plugin_runtime_wait_test)
+
+add_executable(orca_plugin_unload_overlap_test
+    unload_overlap.cpp
+    ${_plugin_core_private_tus})
+orca_plugin_core_runner_extras(orca_plugin_unload_overlap_test)
+
+add_executable(orca_plugin_observer_queue_test
+    observer_queue.cpp
+    ${_plugin_core_private_tus})
+orca_plugin_core_runner_extras(orca_plugin_observer_queue_test)
+
 # The real-rename crash injector is macOS-only (dyld interposition), as in the
 # women tree; the runner and fault library stay out of the default build.
 if (APPLE)
@@ -123,6 +150,16 @@ if (Python3_Interpreter_FOUND)
     add_test(NAME plugin_core:dependency_environment
         COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/test_plugin_dependency_environment.py"
                 --binary $<TARGET_FILE:orca_plugin_dependency_environment_test>)
+    add_test(NAME plugin_core:runtime_wait
+        COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/test_plugin_runtime_wait.py"
+                --binary $<TARGET_FILE:orca_plugin_runtime_wait_test>)
+    add_test(NAME plugin_core:unload_overlap
+        COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/test_plugin_unload_overlap.py"
+                --binary $<TARGET_FILE:orca_plugin_unload_overlap_test>)
+    add_test(NAME plugin_core:observer_queue
+        COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/scripts/test_plugin_observer_queue.py"
+                --binary $<TARGET_FILE:orca_plugin_observer_queue_test>)
     set_tests_properties(plugin_core:file_lock plugin_core:wheel_cache_recovery plugin_core:dependency_environment
+        plugin_core:runtime_wait plugin_core:unload_overlap plugin_core:observer_queue
         PROPERTIES TIMEOUT 600)
 endif()

@@ -48,6 +48,23 @@ namespace {
 // A cancelled load records no error and fires no failure path — it just unwinds.
 const char* const LOAD_CANCELLED = "__plugin_load_cancelled__";
 
+// shutdown() may be entered with the GIL held (a Python-adjacent caller, or a host test that
+// mirrors one). Every drain inside — discovery/load completion, and a Python teardown running on
+// another thread — needs the GIL to make progress, so the caller's GIL is dropped for the whole
+// shutdown body and restored on exit. Python work inside re-acquires the GIL itself.
+class GilReleaserForShutdown {
+    PyThreadState* m_state = nullptr;
+public:
+    GilReleaserForShutdown() {
+        if (PyGILState_Check())
+            m_state = PyEval_SaveThread();
+    }
+    ~GilReleaserForShutdown() {
+        if (m_state)
+            PyEval_RestoreThread(m_state);
+    }
+};
+
 } // namespace
 
 void Plugin::release_module()
@@ -170,6 +187,15 @@ void PluginManager::shutdown()
 
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": PluginManager shutdown enter";
 
+    // Drain GIL-free: see GilReleaserForShutdown above.
+    GilReleaserForShutdown gil_releaser;
+
+    // Invalidate lifecycle observers that are still queued in the wx pending-event queue: their
+    // captures belong to the runtime being torn down (and after Py_Finalize they could rebuild
+    // resources from dead Python objects). Notifications emitted during this shutdown capture the
+    // new epoch and dispatch normally.
+    m_dispatch_epoch.fetch_add(1, std::memory_order_acq_rel);
+
     // Detach the libslic3r hooks first so nothing dispatches into Python while (or after) plugins
     // unload. The lifecycle-event hook also drains callbacks already in progress before returning;
     // the remaining hook seams retain their existing shutdown requirements.
@@ -185,6 +211,13 @@ void PluginManager::shutdown()
     // Wait for any in-progress plugin loads. Cancelled loads keep their slot until their worker
     // has actually unwound, so this cannot return while one is still executing Python.
     wait_for_all_plugin_loads();
+
+    // Same for unloads started by another thread: their Python teardown must be finished before
+    // shutdown proceeds to finalize anything (and the caller below may Py_Finalize).
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_teardown_cv.wait(lock, [this]() { return m_teardown_in_progress.empty(); });
+    }
 
     unload_all_plugins();
     PythonPluginBridge::instance().clear_pending_captures();
@@ -846,6 +879,7 @@ void PluginManager::load_plugin(const std::string& plugin_key, bool skip_deps, s
     bool load_in_progress = false;
     bool load_slot_claimed = false;
     bool shutting_down     = false;
+    bool teardown_in_progress = false;
     std::string invalid_error;
     std::vector<std::string> loaded_capability_names;
 
@@ -867,8 +901,12 @@ void PluginManager::load_plugin(const std::string& plugin_key, bool skip_deps, s
         }
 
         load_in_progress = m_load_in_progress.count(plugin_id) > 0;
+        // The registry entry is moved out before its Python teardown runs, so a key in teardown
+        // looks unloaded; without this check a same-key reload would enter and race the old
+        // generation's on_unload (including its config saves).
+        teardown_in_progress = m_teardown_in_progress.count(plugin_id) > 0;
         shutting_down   = m_shutting_down.load(std::memory_order_acquire);
-        if (exists && !invalid && !already_loaded && !load_in_progress && !shutting_down) {
+        if (exists && !invalid && !already_loaded && !load_in_progress && !teardown_in_progress && !shutting_down) {
             m_load_in_progress.insert(plugin_id);
             m_load_errors.erase(plugin_id);
             load_slot_claimed = true;
@@ -891,6 +929,16 @@ void PluginManager::load_plugin(const std::string& plugin_key, bool skip_deps, s
 
     if (load_in_progress)
         return;
+
+    if (teardown_in_progress) {
+        std::string message = GUI::format(_u8L("Plugin is still being unloaded: %1%"), plugin_id);
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_load_errors[plugin_id] = message;
+        }
+        BOOST_LOG_TRIVIAL(info) << message;
+        return;
+    }
 
     if (shutting_down) {
         BOOST_LOG_TRIVIAL(info) << "Plugin load rejected — shutting down: " << plugin_id;
@@ -1110,6 +1158,7 @@ bool PluginManager::unload_plugin(const std::string& plugin_key)
         Plugin* plugin = find_plugin_locked(plugin_key);
         if (plugin != nullptr && plugin->is_loaded()) {
             found = true;
+            m_teardown_in_progress.insert(plugin_key);
 
             // Take the live parts out of the entry via Plugin's own move assignment; the
             // descriptor stays behind, so the package remains discovered. Everything
@@ -1139,6 +1188,11 @@ bool PluginManager::unload_plugin(const std::string& plugin_key)
     // (skipped during shutdown), so the auto-load list survives app exit.
     BOOST_LOG_TRIVIAL(info) << "Unloaded plugin: " << plugin_key;
 
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_teardown_in_progress.erase(plugin_key);
+    }
+    m_teardown_cv.notify_all();
     return true;
 }
 
@@ -1160,6 +1214,7 @@ void PluginManager::unload_all_plugins()
             plugin.descriptor                = std::move(kept_descriptor);
             removed.push_back(std::move(taken));
             removed_keys.push_back(plugin.descriptor.plugin_key);
+            m_teardown_in_progress.insert(plugin.descriptor.plugin_key);
             capabilities.insert(capabilities.end(), removed.back().capabilities.begin(), removed.back().capabilities.end());
         }
     }
@@ -1173,8 +1228,16 @@ void PluginManager::unload_all_plugins()
     // starving a later plugin while an earlier plugin uses the full cancellation grace period.
     cancel_and_wait_for_capabilities(capabilities);
 
-    for (Plugin& plugin : removed)
-        plugin_loader::unload(plugin);
+    // removed[i].descriptor was deliberately left empty by the move-out above (the descriptor
+    // stays with the registry entry), so the keys come from the parallel removed_keys vector.
+    for (size_t i = 0; i < removed.size(); ++i) {
+        plugin_loader::unload(removed[i]);
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_teardown_in_progress.erase(removed_keys[i]);
+        }
+        m_teardown_cv.notify_all();
+    }
 }
 
 void PluginManager::unload_cloud_plugins()
@@ -1266,12 +1329,8 @@ void PluginManager::mark_plugin_install_state_disabled(const std::string& plugin
 
     const boost::filesystem::path root(descriptor.plugin_root);
     PluginInstallState state;
-    if (!read_install_state(root, state)) {
-        state.installed_from    = descriptor.is_cloud_plugin() ? "cloud" : "local";
-        state.installed_version = !descriptor.installed_version.empty() ? descriptor.installed_version : descriptor.version;
-        state.plugin_name       = descriptor.name;
-        state.cloud_uuid        = descriptor.cloud_uuid();
-    }
+    if (!read_install_state(root, state))
+        seed_install_metadata(state, descriptor);
     state.enabled = false;
     if (!write_install_state(root, state))
         return;
@@ -1356,7 +1415,9 @@ std::vector<PluginManager::CapabilityLifecycleFn> PluginManager::copy_capability
 // CallAfter, since calling wx off the main thread is UB.
 void PluginManager::run_on_load_callbacks(const std::string& plugin_key)
 {
-    auto work = [callbacks = copy_callbacks(CallbackType::Load), plugin_key] {
+    auto work = [this, epoch = m_dispatch_epoch.load(std::memory_order_acquire), callbacks = copy_callbacks(CallbackType::Load), plugin_key] {
+        if (m_dispatch_epoch.load(std::memory_order_acquire) != epoch)
+            return; // queued before a shutdown; the runtime it was queued for is gone
         for (auto& fn : callbacks) {
             try {
                 fn(plugin_key);
@@ -1375,7 +1436,9 @@ void PluginManager::run_on_load_callbacks(const std::string& plugin_key)
 
 void PluginManager::run_on_unload_callbacks(const std::string& plugin_key)
 {
-    auto work = [callbacks = copy_callbacks(CallbackType::Unload), plugin_key] {
+    auto work = [this, epoch = m_dispatch_epoch.load(std::memory_order_acquire), callbacks = copy_callbacks(CallbackType::Unload), plugin_key] {
+        if (m_dispatch_epoch.load(std::memory_order_acquire) != epoch)
+            return; // queued before a shutdown; the runtime it was queued for is gone
         for (auto& fn : callbacks) {
             try {
                 fn(plugin_key);
@@ -1394,7 +1457,15 @@ void PluginManager::run_on_unload_callbacks(const std::string& plugin_key)
 
 void PluginManager::run_on_capability_load_callbacks(const PluginCapabilityId& id)
 {
-    auto work = [callbacks = copy_capability_callbacks(CallbackType::Load), id] {
+    auto work = [this, epoch = m_dispatch_epoch.load(std::memory_order_acquire), callbacks = copy_capability_callbacks(CallbackType::Load), id] {
+        if (m_dispatch_epoch.load(std::memory_order_acquire) != epoch)
+            return; // queued before a shutdown; the runtime it was queued for is gone
+        // A load notification still pending while the capability was disabled again (or its
+        // plugin went away) is stale: dispatching it would rebuild state for something that is
+        // no longer enabled.
+        const auto capability = get_plugin_capability(id);
+        if (!capability || !capability->is_enabled())
+            return;
         for (auto& fn : callbacks) {
             try {
                 fn(id);
@@ -1414,7 +1485,15 @@ void PluginManager::run_on_capability_load_callbacks(const PluginCapabilityId& i
 
 void PluginManager::run_on_capability_unload_callbacks(const PluginCapabilityId& id)
 {
-    auto work = [callbacks = copy_capability_callbacks(CallbackType::Unload), id] {
+    auto work = [this, epoch = m_dispatch_epoch.load(std::memory_order_acquire), callbacks = copy_capability_callbacks(CallbackType::Unload), id] {
+        if (m_dispatch_epoch.load(std::memory_order_acquire) != epoch)
+            return; // queued before a shutdown; the runtime it was queued for is gone
+        // An unload notification still pending while the capability was re-enabled is stale:
+        // dispatching it would tear down registry state for something that is enabled again.
+        // One whose capability (or plugin) is gone entirely was superseded by that removal.
+        const auto capability = get_plugin_capability(id, /*only_enabled=*/false);
+        if (!capability || capability->is_enabled())
+            return;
         for (auto& fn : callbacks) {
             try {
                 fn(id);
@@ -1511,12 +1590,23 @@ bool PluginManager::install_plugin(const boost::filesystem::path& filepath, Plug
     // namespace while the installer replaces the package on disk. Validate before unloading a
     // usable package: keep the pre-update enable choices — unloading only for replacement is not
     // a user's Disable — and refuse while a load is mid-flight or a capability is borrowed.
+    bool teardown_running = false;
     if (!plugin_descriptor.is_cloud_plugin()) {
         const std::string local_plugin_key = plugin_descriptor.plugin_key.empty() ? make_local_plugin_key(filepath.stem().string()) :
                                                                                         plugin_descriptor.plugin_key;
         if (is_plugin_load_in_progress(local_plugin_key)) {
             error = "Plugin is loading; wait before replacing it";
             set_plugin_error(local_plugin_key, error);
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": " << error;
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            teardown_running = m_teardown_in_progress.count(local_plugin_key) > 0;
+        }
+        if (teardown_running) {
+            error = "Plugin is being unloaded; wait for it to finish before replacing it";
+            set_plugin_error(local_plugin_key, error); // locks m_mutex itself; called outside the guard above
             BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": " << error;
             return false;
         }
@@ -2113,6 +2203,14 @@ bool PluginManager::delete_plugin(const std::string& plugin_key, std::string& er
     if (!try_get_plugin_descriptor(plugin_key, descriptor)) {
         error = GUI::format(_u8L("Plugin not found: %1%"), plugin_key);
         return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_teardown_in_progress.count(plugin_key) > 0) {
+            error = "Plugin is being unloaded; wait for it to finish before deleting it";
+            return false;
+        }
     }
 
     // Deleting a package whose replacement is still pending would destroy the rollback files;

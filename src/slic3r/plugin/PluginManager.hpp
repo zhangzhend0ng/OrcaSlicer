@@ -350,6 +350,20 @@ private:
     std::string m_cloud_user_id;
     std::atomic<bool> m_shutting_down{false};
 
+    // Keys whose loaded plugin was moved out of the registry but whose Python teardown
+    // (plugin_loader::unload, including the capability on_unload bodies) is still running on
+    // another thread. Same-key loads, package replacement and deletion wait until the teardown
+    // finishes, and shutdown() drains this set before it tears anything else down.
+    std::set<std::string> m_teardown_in_progress;
+    mutable std::condition_variable m_teardown_cv;
+
+    // Bumped at the top of shutdown(). Lifecycle-callback work items capture the epoch when they
+    // are queued and drop themselves if the epoch moved on, so an observer still sitting in the wx
+    // pending-event queue when the manager (or the interpreter behind it) shut down never runs
+    // against the torn-down — or a re-initialized — runtime. Items dispatched during shutdown
+    // itself (the bulk-unload notifications) capture the new epoch and still run.
+    std::atomic<uint64_t> m_dispatch_epoch{0};
+
     // Only one embedded runtime may mutate this profile's packages/configuration. The OS releases
     // this lock even if activation terminates the process. Held from initialize() to shutdown().
     std::unique_ptr<PluginFileLock> m_profile_lock;
