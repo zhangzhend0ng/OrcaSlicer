@@ -15,6 +15,7 @@
 #include <slic3r/GUI/BackgroundSlicingProcess.hpp>
 #include <slic3r/GUI/GUI.hpp>
 #include <slic3r/GUI/GUI_App.hpp>
+#include <slic3r/GUI/GUI_ObjectList.hpp>
 #include <slic3r/GUI/OpenGLManager.hpp>
 #include <slic3r/GUI/PartPlate.hpp>
 #include <slic3r/GUI/Plater.hpp>
@@ -75,6 +76,17 @@ void require_main_thread(const char* function_name)
 {
     if (!wxIsMainThread())
         throw std::runtime_error(std::string(function_name) + "() must be called from the UI thread");
+}
+
+// Rebuild the object-settings page the way a re-selection does: changed_object() invalidates
+// the print, but an external (plugin) write does not change the selection, so the left panel's
+// per-object parameter list would keep showing the stale view until the user re-clicks the
+// object. part_selection_changed() is the same refresh the GUI runs after its own object-
+// settings edits.
+void refresh_object_settings_page()
+{
+    if (GUI::ObjectList* obj_list = GUI::wxGetApp().obj_list())
+        obj_list->part_selection_changed();
 }
 
 void export_3mf_copy(GUI::Plater& plater, const std::string& path)
@@ -239,8 +251,10 @@ void host_bindings::register_app(py::module_& host)
                     results.append(py::make_tuple(key, false, ex.what()));
                 }
             }
-            if (any_applied)
+            if (any_applied) {
                 plater.changed_object(object_idx);
+                refresh_object_settings_page();
+            }
             return results;
         }, py::arg("object_idx"), py::arg("values"),
            "Apply per-object process overrides (Orca config keys, string-serialized values). "
@@ -264,8 +278,10 @@ void host_bindings::register_app(py::module_& host)
                 results.append(py::make_tuple(key, was_set));
                 any_erased = any_erased || was_set;
             }
-            if (any_erased)
+            if (any_erased) {
                 plater.changed_object(object_idx);
+                refresh_object_settings_page();
+            }
             return results;
         }, py::arg("object_idx"), py::arg("keys"),
            "Remove per-object process overrides. Returns [(key, was_set), ...]; "
