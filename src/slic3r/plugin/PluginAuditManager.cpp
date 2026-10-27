@@ -11,6 +11,7 @@
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/optional.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -1152,18 +1153,52 @@ bool fs_grant_covers(const std::string& grant, const std::string& target)
     return is_inside_allowed_root(boost::filesystem::path(target), root);
 }
 
-// True when `granted` already covers `target`. Only the filesystem buckets accept a tree grant:
-// an event grant ("FsRead:open") and the non-filesystem buckets (URLs, socket addresses,
-// commands) are matched verbatim, as before.
+// True when `granted` already covers `target`. The filesystem buckets accept a tree grant,
+// and so does the process bucket for a target that names an executable: subprocess.Popen's
+// audit target on Windows is the whole command line (list2cmdline output), whose tail varies
+// per invocation (per-session paths), so verbatim matching could never cover a follow-up run.
+// A process tree grant ("<dir>/*") matches the command line's first token — the executable
+// path, quoted or bare — the same way an fs tree grant matches a file under its directory.
+// Event grants ("FsRead:open") and the network buckets (URLs, socket addresses) stay verbatim.
+boost::optional<std::string> process_target_executable(const std::string& target)
+{
+    if (target.empty())
+        return boost::none;
+    // Command line built by list2cmdline: the executable is the first token, quoted when it
+    // contains spaces. Anything that does not start like a path (drive letter or root) is not
+    // an executable path — leave it to verbatim matching.
+    const size_t end = target[0] == '"' ? target.find('"', 1) : target.find(' ');
+    if (end == std::string::npos || end == 0)
+        return boost::none;
+    std::string candidate = target.substr(target[0] == '"' ? 1 : 0, end - (target[0] == '"' ? 1 : 0));
+    if (candidate.size() < 3 || (candidate[1] != ':' && candidate[0] != '\\' && candidate[0] != '/'))
+        return boost::none;
+    return candidate;
+}
+
+bool process_grant_covers(const std::string& grant, const std::string& target)
+{
+    boost::filesystem::path root;
+    if (!tree_grant_root(grant, root))
+        return false;
+    const boost::optional<std::string> executable = process_target_executable(target);
+    if (!executable)
+        return false;
+    return is_inside_allowed_root(boost::filesystem::path(*executable), root);
+}
+
 bool has_permission(AuditEventCategory category, bool by_event, const std::vector<std::string>& granted,
                     const std::string& target)
 {
     const bool fs_bucket =
         !by_event && (category == AuditEventCategory::FsRead || category == AuditEventCategory::FsReadWrite);
+    const bool process_bucket = !by_event && category == AuditEventCategory::ProcessCreate;
     for (const auto& grant : granted) {
         if (grant == target)
             return true;
         if (fs_bucket && fs_grant_covers(grant, target))
+            return true;
+        if (process_bucket && process_grant_covers(grant, target))
             return true;
     }
     return false;
