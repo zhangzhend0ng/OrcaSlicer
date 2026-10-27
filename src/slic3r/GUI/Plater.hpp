@@ -53,6 +53,7 @@ class Print;
 class SLAPrint;
 //BBS: add partplatelist and SlicingStatusEvent
 class PartPlateList;
+class BackgroundSlicingProcess;
 class SlicingStatusEvent;
 enum SLAPrintObjectStep : unsigned int;
 enum class ConversionType : int;
@@ -711,6 +712,10 @@ public:
     bool has_incompatible_mixed_filament_in_use() const;
 
     bool is_export_gcode_scheduled() const;
+
+    // The plugin host reads slicing state and schedules exports through this
+    // (schedule_plate_gcode_export / slice_state bindings).
+    BackgroundSlicingProcess& background_process();
 
     const Selection& get_selection() const;
     int get_selected_object_idx();
