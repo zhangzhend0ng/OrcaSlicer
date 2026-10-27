@@ -1,0 +1,57 @@
+{"probe": "batch2", "name": "timer-entry", "ok": true, "detail": "binding-presence smoke (non-UI thread)"}
+{"probe": "batch2", "name": "binding:get_effective_config", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:reset_object_config", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:export_object_3mf", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:slice_state", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:is_export_gcode_scheduled", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:slice_progress", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "lifecycle-entry", "ok": true, "detail": "event=ObjectAdded attempt=4"}
+{"probe": "batch2", "name": "plate-has-object", "ok": true, "detail": "1 object(s)"}
+{"probe": "batch2", "name": "binding:get_effective_config", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:reset_object_config", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:export_object_3mf", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:slice_state", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:is_export_gcode_scheduled", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:slice_progress", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "T1 get_effective_config(0)", "ok": true, "detail": "dict"}
+{"probe": "batch2", "name": "T1 dict-size", "ok": true, "detail": "614 keys; layer_height='0.08'"}
+{"probe": "batch2", "name": "T1 negative idx=-1", "ok": true, "detail": "raised ValueError (want ValueError): object index out of range"}
+{"probe": "batch2", "name": "T1/T2 pick-key", "ok": true, "detail": "sparse_infill_density='15%'"}
+{"probe": "batch2", "name": "T2 apply override", "ok": true, "detail": "list"}
+{"probe": "batch2", "name": "T2 effective-after-apply", "ok": true, "detail": "dict"}
+{"probe": "batch2", "name": "T2 override-visible", "ok": true, "detail": "sparse_infill_density='77%' (want '77%')"}
+{"probe": "batch2", "name": "T2 reset", "ok": true, "detail": "list"}
+{"probe": "batch2", "name": "T2 reset-was-set", "ok": true, "detail": "[('sparse_infill_density', True)]"}
+{"probe": "batch2", "name": "T2 effective-after-reset", "ok": true, "detail": "dict"}
+{"probe": "batch2", "name": "T2 reverted", "ok": true, "detail": "sparse_infill_density='15%' (want '15%')"}
+{"probe": "batch2", "name": "T2 reset-idempotent", "ok": true, "detail": "list"}
+{"probe": "batch2", "name": "T2 second-reset-noop", "ok": true, "detail": "[('sparse_infill_density', False)]"}
+{"probe": "batch2", "name": "T2 empty-keys", "ok": true, "detail": "list"}
+{"probe": "batch2", "name": "T4 slicing-observed(T2-reslice)", "ok": false, "detail": "states=idle (n=119)"}
+{"probe": "batch2", "name": "T3 export allowed path", "ok": true, "detail": "str"}
+{"probe": "batch2", "name": "T3 file-written", "ok": true, "detail": "C:\\Users\\snapmaker\\AppData\\Roaming\\Snapmaker_Orca\\orca_plugins\\stratum\\batch2_export_probe.3mf bytes=10561"}
+{"probe": "batch2", "name": "T3 zip-members-detail", "ok": true, "detail": "model=True config=True members=6"}
+{"probe": "batch2", "name": "T3 zip-members", "ok": true, "detail": "list"}
+{"probe": "batch2", "name": "T3 negative ext .stl", "ok": true, "detail": "raised ValueError (want ValueError): export_object_3mf() needs a path ending in .3mf"}
+{"probe": "batch2", "name": "T3 negative idx", "ok": true, "detail": "raised ValueError (want ValueError): object index out of range"}
+{"probe": "batch2", "name": "T4 slice_state()", "ok": true, "detail": "str"}
+{"probe": "batch2", "name": "T4 state-value", "ok": true, "detail": "'idle'"}
+{"probe": "batch2", "name": "T4 is_export_gcode_scheduled()", "ok": true, "detail": "bool"}
+{"probe": "batch2", "name": "T4 sched-bool", "ok": true, "detail": "False"}
+{"probe": "batch2", "name": "T4 slice_progress()", "ok": true, "detail": "int"}
+{"probe": "batch2", "name": "T4 progress-int", "ok": true, "detail": "-1"}
+{"probe": "batch2", "name": "context-liveness", "ok": true, "detail": "audit hook denied as expected: Plugin attempted audited operation \"open\" without permission: denied path: C:\\Users\\snapmaker\\AppData\\Roaming\\Snapmaker_Orca\\orca_plugins\\stratum\\tmp\\conf\\batch2_ctx_probe.txt"}
+{"probe": "batch2", "name": "T3 allow in-context", "ok": true, "detail": "str"}
+{"probe": "batch2", "name": "T3 allow-file", "ok": true, "detail": "C:\\Users\\snapmaker\\AppData\\Roaming\\Snapmaker_Orca\\orca_plugins\\stratum\\batch2_export_ctx.3mf"}
+{"probe": "batch2", "name": "T4-slice scheduled", "ok": true, "detail": "C:\\Users\\snapmaker\\AppData\\Roaming\\Snapmaker_Orca\\orca_plugins\\stratum\\batch2_probe.gcode"}
+{"probe": "batch2", "name": "T4-slice states-seen", "ok": true, "detail": "exporting,idle,idle,idle,idle,idle,idle (n=7)"}
+{"probe": "batch2", "name": "T4-slice exporting-observed", "ok": true, "detail": "states=['exporting', 'idle'] (plain 'slicing' is not expected in an export-scheduled job — see the T2-reslice sample)"}
+{"probe": "batch2", "name": "T4-slice final-idle", "ok": true, "detail": "final=idle sched=False"}
+{"probe": "batch2", "name": "T4-slice gcode-written", "ok": true, "detail": "bytes=850313"}
+{"probe": "batch2", "name": "timer-entry", "ok": true, "detail": "binding-presence smoke (non-UI thread)"}
+{"probe": "batch2", "name": "binding:get_effective_config", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:reset_object_config", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:export_object_3mf", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:slice_state", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:is_export_gcode_scheduled", "ok": true, "detail": ""}
+{"probe": "batch2", "name": "binding:slice_progress", "ok": true, "detail": ""}

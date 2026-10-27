@@ -635,6 +635,21 @@ if (WIN32)
     if (MSVC)
         install(TARGETS Snapmaker_Orca_app_gui RUNTIME DESTINATION ".")
     endif ()
+    # python312.dll (embedded CPython interpreter linked by Snapmaker_Orca.dll)
+    # and the OCCT STEP reader chain (TKSTEP*, loaded by TKDESTEP) are copied
+    # into the build tree but are not part of the output_dlls_* set. Without
+    # them next to the exe the launcher's LoadLibrary("Snapmaker_Orca.dll")
+    # fails with error 126 (module not found) — observed on the 2.4.1 package.
+    # Installed from the build tree's ${build_type} dir: the exact DLL set the
+    # freshly built app was smoke-tested against.
+    foreach(_pack_dll python312.dll TKSTEP.dll TKSTEP209.dll TKSTEPAttr.dll TKSTEPBase.dll TKXDESTEP.dll)
+        set(_pack_dll_path "${CMAKE_CURRENT_BINARY_DIR}/${build_type}/${_pack_dll}")
+        if (EXISTS "${_pack_dll_path}")
+            list(APPEND output_dlls_${build_type} "${_pack_dll_path}")
+        else ()
+            message(WARNING "packaging: ${_pack_dll} not found in ${CMAKE_CURRENT_BINARY_DIR}/${build_type}; the installed app may fail to start (LoadLibrary error 126)")
+        endif ()
+    endforeach ()
     install(FILES ${output_dlls_${build_type}} DESTINATION ".")
     # MESA llvmpipe software-OpenGL fallback: the snapmaker-orca.exe shim loads
     # <install>/mesa/opengl32.dll before Snapmaker_Orca.dll whenever the system
