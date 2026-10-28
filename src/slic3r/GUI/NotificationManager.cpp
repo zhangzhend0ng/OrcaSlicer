@@ -2090,6 +2090,14 @@ void NotificationManager::close_notification_of_type(const NotificationType type
 	}
 }
 
+bool NotificationManager::has_notification_of_type(const NotificationType type) const
+{
+	for (const std::unique_ptr<PopNotification> &notification : m_pop_notifications)
+		if (notification->get_type() == type && !notification->is_finished())
+			return true;
+	return false;
+}
+
 void NotificationManager::close_notification_of_type_and_text(const NotificationType type, const std::string& text)
 {
     for (std::unique_ptr<PopNotification>& notification : m_pop_notifications)
