@@ -368,3 +368,28 @@ build-port 开发启动的 snapmaker-orca.exe 在插件加载后 ~15-40s 自发�
 - **fff_print 36/52**：16 败全落 arrange bed-fit/tree 存量族（13 hook+2 init+tree_support 本轮翻转）；本批零 libslic3r 触碰、fff_print 二进制不含本批改动，归因存量漂移（10-26 步骤一已记"上游 arrange 差异族需独立批收口"）。
 - **tests/e2e**：slice golden 逐字节一致（0aa3c58f7c5a0614…）✓；**lifecycle 阻塞于环境态**：PluginsDialog webview 不现，stash A/B 判定**基线二进制（无本批改动）同点同败**——本机 WebView2 NAV_ERR_OTHER INVALID_STATE（主页可导航、设备/对话框 webview 失败，手动裸启同症状），非本批回归。残留：机器态恢复（重登/重启或 WebView2 runtime 排查）后复跑 lifecycle 收口。
 - **API surface**：dump 重跑（port sha256 前缀 d9081826f3686525，存 mcp sync-scratch/api_surface/run_perm_batch_1027）→ diff --expect expected_snapshot_557.json **VERDICT: PERFECT**（network= kwarg 落在既有 request_permissions 多桶签名 mismatch 条目内，0 未期望偏差；期望快照无需更新）。
+
+## 10-28 上游批 E：漏审勘误 + 五连收（lifecycle / uv / MSVC / notices / pybind）
+
+开工 fetch @orca/main 3322f6101c（10-28）。**勘误（10-26 漏审）**："women 第一步"批开工复查声称 09aa0114b4→555321215e "src/slic3r/plugin/ 无新增"不实——该窗口实有 5 个 plugin/ 提交（75252a70f7 / 5817a76da6 / 6c36861a6b / 9cb9f9694f / 88890b9bb1），台账均无决策记录（"开工 fetch 复查"防线本身的执行缺口，非范围声明变化）。本轮一并补齐决策，含批 A 已记候选的 e021ccb316 与两新提交 0b4e7e9e2a / 3a0517831f。
+
+| 上游提交 | 决策 | 落点/理由 |
+|---|---|---|
+| 75252a70f7 退出期有界停机（#16765） | **ABSORBED f60a3327fe** | PythonInterpreter 核心：shared_timed_mutex + 3s try_lock_for（卡死 plugin 调用不再拖住关机）、abandon()（不 finalize 留给进程退出）、join_non_daemon_threads（threading atexit 钩子先跑，闲 concurrent.futures worker 有界收束）；2 个 lifecycle 考卷逐字收。PluginManager.hpp is_shutting_down 已由 women 批带入（ABSORBED-BY-EQUIVALENT）；printerAgent trampoline 片 + test_plugin_printer_agent 考卷 SKIP（裁剪域） |
+| 0b4e7e9e2a uv 路径不可读（#16888） | **ABSORBED 5430e0fc9e** | error_code 重载（未识别卷不抛）+ 查找前移至 scoped_interpreter 之前（防半活解释器）；插入位随 women 的 recover_dependency_install 前奏 ADAPT |
+| 6c36861a6b MSVC enum（#16870） | **ABSORBED 8957f8b26f** | 上游正解（enum 提命名空间域）替换 557 批 C 的 state{0} 字面权宜——同一 MSVC 局部类 NSDMI 坑的根治 |
+| e021ccb316 预设切换缺件通知（#16897） | **ABSORBED d033003aad** | ADAPT：GUI_App 三订阅插在 Pages cap-unload 块后（fork 无 printer_agent 块）；on_config_change 无 config_change_notification 锚点，插在 update_scheduled 闸前；其余逐字（行数足迹与上游一致：+58/-1 六文件） |
+| 5817a76da6 pybind include 修剪（#16839） | **ABSORBED 5f2fdb6124 + 伴随修 c0a83e9a55** | PluginJsonPy.hpp 逐字抽取（我方转换器块与上游逐字节一致）；PluginManager.hpp 转前置声明（PyObject*/pybind11::object 两处正文使用恰被覆盖）。伴随修：ScriptPluginCapability.hpp 补 pybind11 include——557 批 port 副本靠 embed.h 传递提供，摘面后 clean rebuild 抓出（C2653），全树同类扫描无第二真实位点 |
+| 88890b9bb1 Boost≥1.87（#15835） | PluginLoader 片 **ABSORBED-ADAPTED 8c64567f53**；引擎侧 SKIP | fork 捆绑 deps 无系统 Boost 模式，BoostProcessCompat shim 不引入；women 重写后 PluginLoader 的 boost::process 零使用，死 include 直接删除；Bonjour/Serial 等非插件树 |
+| 3a0517831f preset-save 未解析插件告警（#16929） | **DEFERRED——独立批** | 10-28 新落特性：save_plugin_collection→for_each_plugin_capability 重构 + unresolved_plugin_capabilities + Tab::save_preset→bool + UnsavedChangesDialog/GUI_Utils 告警流（15 文件 +411/-66），骑 fork 深分叉 GUI 面，按 557 先例独立周期；插件面仅 PluginConfig 1 行注释 |
+| 9cb9f9694f nlohmann 出宽头（#16843） | **SKIP** | 引擎 + fork 分叉 GUI 头重构（CustomGCode/ThumbnailData/DeviceCore 等 33 文件），非 plugin 树本体；port 头自洽 |
+
+门禁：
+- **clean rebuild（F3 纪律：整 .dir 删除重编）**：libslic3r_gui 全量重编 0 错；slic3rutils_tests 0 错；plugin_core 8 工程 0 错；app 重链 OK（Snapmaker_Orca.dll @10-28 14:18）。构建坑：`cmake --build --target a b` 多目标与 VS 生成器不合（第二个目标 MSB1009），逐目标直编 .vcxproj 是既定姿势；plugin_core 目录无 ALL_BUILD，逐工程编。
+- **plugin_core ctest 7/7**（runtime_wait / unload_overlap 全绿 = 75252a70f7 与 women 批 A 生命周期语义相容实证）。
+- **slic3rutils 357/363**，6 败全归因基线族：#121 SnapLogClient bt_queue（flaky 复验：3 连跑败/绿/败，已知移交项）；#141/#142/#145 静态资产/模式断言族；#252 slicing-pipeline config dispatch（"Objects could not fit on the bed" arrange 夹具族，5 项断言先过）；#294 init_print 夹具族。**2 个新考卷全绿**（#212 不终结线程有界放弃 / #213 闲 futures worker 收束）。注：套件总数 363（较 10-27 记录的 292 增长来自批 A-D 考卷注册面），基线族按失败签名对族非按序号。
+- libslic3r / fff_print：本批零 src/libslic3r 触碰、两套件二进制不含本批改动，未重跑（前基线有效）。
+- API surface：零绑定注册触碰（转换器函数同名搬运、内部 enum 改名），按 women 批先例未重跑 dump。
+- **e2e lifecycle：BLOCKED-BY-SEED/ENV（残留）**——以用户实机 conf 作 seed 触发 RR_DATA_EMPTY 向导（隔离 datadir 内 only_default_printers 恒真）+ app 转后台，绝对坐标点击误中向导，PluginsDialog 20s 不现。今日无 NAV_ERR（home/device webview 加载正常），boot 期新增订阅回调无崩溃（app 全程存活 58s）。补全路径：制作隔离首启完整 profile 的专用 seed + 交互桌面；与 10-27 批 D 同残留类。
+
+分支纪律：本批落在纯吸收线 origin/port/python-plugins-absorption-2026-10-27（7 提交：六吸收 + 一伴随修），完成后合回 port/python-plugins（该线另有 4 个功能/修复提交待合并协调）。
