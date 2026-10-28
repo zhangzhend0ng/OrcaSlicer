@@ -13,19 +13,20 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include "pybind11/pytypes.h"
 #include <slic3r/plugin/PythonPluginInterface.hpp>
 #include <string>
 #include <unordered_set>
 #include <vector>
-
-#include <pybind11/embed.h>
 
 #include "CloudPluginService.hpp"
 #include "PluginDescriptor.hpp"
 #include "PluginFileLock.hpp"
 #include "PluginLoader.hpp"
 #include "PluginConfig.hpp"
+
+struct _object;
+using PyObject = _object;
+namespace pybind11 { class object; }
 
 namespace Slic3r {
 
