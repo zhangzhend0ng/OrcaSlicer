@@ -6,13 +6,17 @@
 #include <pybind11/cast.h>
 #include <pybind11/pybind11.h>
 
+#include <array>
+#include <cmath>
 #include <cstddef>
+#include <optional>
 #include <libslic3r/Preset.hpp>
 #include <libslic3r/PresetBundle.hpp>
 #include <libslic3r/Utils.hpp>
 
 #include <memory>
 
+#include <slic3r/GUI/Event.hpp>
 #include <slic3r/GUI/GUI.hpp>
 #include <slic3r/GUI/GUI_App.hpp>
 #include <slic3r/GUI/MainFrame.hpp>
@@ -652,6 +656,105 @@ std::vector<std::string> list_bundle_ids()
     return ids;
 }
 
+// ── Flushing volumes (fork addition): the wipe/flush matrix of the print
+//    config as plain small-matrix data (N x N floats, row-major, N derived as
+//    the GUI does by sqrt of the matrix length). The write path runs the same
+//    tail Sidebar::auto_calc_flushing_volumes ends with (Plater.cpp:10002-10008).
+py::dict get_flush_volumes()
+{
+    if (!wxIsMainThread())
+        throw std::runtime_error("get_flush_volumes() must be called from the UI thread");
+    DynamicPrintConfig& project_config = GUI::wxGetApp().preset_bundle->project_config;
+    const std::vector<double>& matrix = project_config.option<ConfigOptionFloats>("flush_volumes_matrix")->values;
+    const std::vector<double>& vector = project_config.option<ConfigOptionFloats>("flush_volumes_vector")->values;
+    const int n = static_cast<int>(std::lround(std::sqrt(static_cast<double>(matrix.size()))));
+    if (static_cast<size_t>(n) * n != matrix.size())
+        throw std::runtime_error("get_flush_volumes: the stored flush matrix is not a square matrix");
+    py::dict out;
+    out["n"]          = n;
+    py::list matrix_list;
+    for (double v : matrix) matrix_list.append(v);
+    py::list vector_list;
+    for (double v : vector) vector_list.append(v);
+    out["matrix"]     = matrix_list;
+    out["vector"]     = vector_list;
+    out["multiplier"] = project_config.opt_float("flush_multiplier");
+    return out;
+}
+
+void set_flush_volumes(const std::optional<std::vector<double>>& matrix, const std::optional<std::vector<double>>& vector,
+                       const std::optional<double>& multiplier)
+{
+    if (!wxIsMainThread())
+        throw std::runtime_error("set_flush_volumes() must be called from the UI thread");
+    DynamicPrintConfig& project_config = GUI::wxGetApp().preset_bundle->project_config;
+    const size_t n2 = project_config.option<ConfigOptionFloats>("flush_volumes_matrix")->values.size();
+
+    auto validate_values = [](const std::vector<double>& values) {
+        for (double v : values)
+            // NaN-safe: !(v >= 0) rejects negatives and NaN; 1e7 mm^3 is far past any real flush.
+            if (!(v >= 0. && v <= 1e7))
+                throw py::value_error("set_flush_volumes: values must be finite volumes in [0, 1e7] mm^3");
+    };
+    if (matrix.has_value()) {
+        if (matrix->size() != n2)
+            throw py::value_error("set_flush_volumes: expected a matrix of " + std::to_string(n2) +
+                                  " values (row-major N x N like get_flush_volumes() reports), got " +
+                                  std::to_string(matrix->size()));
+        validate_values(*matrix);
+    }
+    if (vector.has_value()) {
+        const size_t n = static_cast<size_t>(std::lround(std::sqrt(static_cast<double>(n2))));
+        if (vector->size() != n)
+            throw py::value_error("set_flush_volumes: expected a vector of " + std::to_string(n) +
+                                  " values, got " + std::to_string(vector->size()));
+        validate_values(*vector);
+    }
+    if (multiplier.has_value() && !(*multiplier > 0. && *multiplier <= 100.))
+        throw py::value_error("set_flush_volumes: multiplier must be in (0, 100]");
+
+    if (matrix.has_value())
+        project_config.option<ConfigOptionFloats>("flush_volumes_matrix")->values = *matrix;
+    if (vector.has_value())
+        project_config.option<ConfigOptionFloats>("flush_volumes_vector")->values = *vector;
+    if (multiplier.has_value())
+        project_config.set_key_value("flush_multiplier", new ConfigOptionFloat(*multiplier));
+
+    // Sidebar::auto_calc_flushing_volumes tail: persist the selection snapshot,
+    // mark the project dirty from presets and schedule the background process.
+    PresetBundle& bundle = *GUI::wxGetApp().preset_bundle;
+    bundle.export_selections(*GUI::wxGetApp().app_config);
+    GUI::Plater* plater = GUI::wxGetApp().plater();
+    if (plater != nullptr) {
+        plater->update_project_dirty_from_presets();
+        wxPostEvent(plater, SimpleEvent(EVT_SCHEDULE_BACKGROUND_PROCESS));
+    }
+}
+
+// The pure color-distance flush estimate the sidebar's auto calculation uses
+// (libslic3r FlushVolCalculator) — no state, callable from any thread.
+int flush_volume_between(py::tuple from, py::tuple to, int min_flush, int max_flush)
+{
+    auto rgba_of = [](py::tuple t) {
+        if (t.size() != 4)
+            throw py::value_error("flush_volume_between: colors are (a, r, g, b) tuples of 0-255");
+        std::array<unsigned char, 4> out{};
+        for (size_t i = 0; i < 4; ++i) {
+            const long v = PyLong_AsLong(t[i].ptr());
+            if (v < 0 || v > 255)
+                throw py::value_error("flush_volume_between: color components are 0-255");
+            out[i] = static_cast<unsigned char>(v);
+        }
+        return out;
+    };
+    const auto src = rgba_of(from);
+    const auto dst = rgba_of(to);
+    if (!(min_flush >= 0) || max_flush < min_flush)
+        throw py::value_error("flush_volume_between: need 0 <= min_flush <= max_flush");
+    Slic3r::FlushVolCalculator calculator(min_flush, max_flush);
+    return calculator.calc_flush_vol(src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3]);
+}
+
 } // namespace
 
 void host_bindings::register_presets(py::module_& host)
@@ -664,6 +767,23 @@ void host_bindings::register_presets(py::module_& host)
     bundles.def("list_ids", &list_bundle_ids,
                 "IDs of user preset folders under <data_dir>/user that reload_local() accepts, "
                 "including folders created after startup.");
+
+    // Flushing volumes (fork addition): the print config's N x N flush matrix,
+    // the GUI wipe-dialog's data, plus the stock color-distance calculator.
+    host.def("get_flush_volumes", &get_flush_volumes,
+        "The project's flushing volumes: {n, matrix (row-major N x N), vector, multiplier}. "
+        "UI thread only.");
+    host.def("set_flush_volumes", &set_flush_volumes,
+        py::arg("matrix") = py::none(), py::arg("vector") = py::none(), py::arg("multiplier") = py::none(),
+        "Overwrite parts of the flushing volumes (all optional): matrix must match "
+        "get_flush_volumes()'s N x N size, vector its N, multiplier in (0, 100]. Runs the "
+        "auto-calculation's persistence tail (selection snapshot export, dirty mark, "
+        "background reslice). UI thread only.");
+    host.def("flush_volume_between", &flush_volume_between,
+        py::arg("from_rgba"), py::arg("to_rgba"), py::arg("min_flush"), py::arg("max_flush"),
+        "The stock flush estimate between two filament colors — the same "
+        "color-distance calculation Sidebar's auto-calculation uses. Pure function, "
+        "any thread. Returns mm^3.");
 
     py::enum_<Preset::Type>(host, "PresetType")
         .value("Invalid", Preset::TYPE_INVALID)

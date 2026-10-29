@@ -4,6 +4,8 @@
 #include <slic3r/plugin/PluginAuditManager.hpp>
 #include <slic3r/plugin/PluginManager.hpp>
 
+#include <libslic3r/Utils.hpp> // data_dir()
+
 #include <stdexcept>
 
 namespace Slic3r {
@@ -30,6 +32,16 @@ void PluginHost::RegisterBindings(pybind11::module_& module)
 {
     auto host = module.def_submodule("host", "Host application API");
 
+    // Fork governance face: the revision of this build's host API. Plugins feature-detect
+    // against it (e.g. `getattr(orca.host, "API_VERSION", 0) >= 1` guards the plate domain
+    // and the plater action methods; >= 2 adds model editing and STL export; >= 3 adds the
+    // modeling domain: primitives, plane cut, text/SVG volumes; >= 4 adds editing
+    // completion: simplify, netfabb-style repair, extruder assignment; >= 5 adds facet
+    // painting; >= 6 adds flushing volumes). Bump on every additive or breaking surface
+    // change; the api-surface snapshot gate in the ledger is the authoritative record
+    // either way. No upstream counterpart — upstream's surface carries no revision marker.
+    host.attr("API_VERSION") = pybind11::int_(6);
+
     // Value types first so the docstring signatures of later registrars
     // resolve to the bound Python names.
     host_bindings::register_geometry(host);
@@ -37,6 +49,7 @@ void PluginHost::RegisterBindings(pybind11::module_& module)
     host_bindings::register_presets(host);
     host_bindings::register_model(host);
     host_bindings::register_app(host);
+    host_bindings::register_plates(host);
     host_bindings::register_plugin(host);
 
     // UI: native dialogs and interactive HTML windows for plugins.

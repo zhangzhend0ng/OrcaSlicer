@@ -2533,6 +2533,12 @@ void GUI_App::init_plugin_gui_wiring()
                 });
             if (capability.type == PluginCapabilityType::Pages && wxTheApp && !wxGetApp().is_closing() && wxGetApp().mainframe)
                 wxGetApp().mainframe->plugin_pages().on_cap_register(capability);
+            // Fork addition: exporter capabilities appear in the File > Export menu.
+            if (capability.type == PluginCapabilityType::Exporter && wxTheApp && !wxGetApp().is_closing() && wxGetApp().mainframe)
+                wxGetApp().CallAfter([]() {
+                    if (MainFrame* frame = wxGetApp().mainframe)
+                        frame->rebuild_plugin_export_items();
+                });
         });
     plugin_mgr.subscribe_on_capability_unload_callback(
         [refresh_plugins_dialog](const PluginCapabilityId& capability) {
@@ -2540,6 +2546,11 @@ void GUI_App::init_plugin_gui_wiring()
             // Single-capability toggle-off: the whole-plugin path never fires this callback.
             if (capability.type == PluginCapabilityType::Pages && wxTheApp && !wxGetApp().is_closing() && wxGetApp().mainframe)
                 wxGetApp().mainframe->plugin_pages().on_cap_deregister(capability);
+            if (capability.type == PluginCapabilityType::Exporter && wxTheApp && !wxGetApp().is_closing() && wxGetApp().mainframe)
+                wxGetApp().CallAfter([]() {
+                    if (MainFrame* frame = wxGetApp().mainframe)
+                        frame->rebuild_plugin_export_items();
+                });
         });
     // A plugin that finished loading, or went away, can resolve or raise a missing-plugin notice. A fresh
     // load fires no capability-load callback, and nothing above re-checks on unload or disable.

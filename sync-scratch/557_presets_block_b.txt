@@ -1,0 +1,141 @@
+        .value("Model", Preset::TYPE_MODEL);
+
+    py::class_<PresetUpdateResult>(preset, "PresetUpdateResult",
+                                   "Outcome of one committed preset transaction. target_name is the preset that was "
+                                   "edited; selection_changed says whether begin_update() switched the active preset; "
+                                   "for filament, slot_number is the 1-based target slot, slot_assignment_changed "
+                                   "says whether selecting the requested preset reassigned that slot, and shared_slots "
+                                   "lists every 1-based slot whose assigned preset is the edited (shared) one. keys "
+                                   "lists the settings applied, in order, and dirty says whether the edited preset "
+                                   "now differs from its saved state.")
+        .def_readonly("type", &PresetUpdateResult::type)
+        .def_readonly("target_name", &PresetUpdateResult::target_name)
+        .def_readonly("selection_changed", &PresetUpdateResult::selection_changed)
+        .def_readonly("slot_number", &PresetUpdateResult::slot_number)
+        .def_readonly("slot_assignment_changed", &PresetUpdateResult::slot_assignment_changed)
+        .def_readonly("shared_slots", &PresetUpdateResult::shared_slots)
+        .def_readonly("keys", &PresetUpdateResult::keys)
+        .def_readonly("dirty", &PresetUpdateResult::dirty)
+        .def_property_readonly("category", [](const PresetUpdateResult& result) { return preset_tab_name(result.type); })
+        .def("__repr__", [](const PresetUpdateResult& result) {
+            return std::string("<PresetUpdateResult ") + preset_tab_name(result.type) + " \"" + result.target_name
+                   + "\" keys=" + std::to_string(result.keys.size()) + ">";
+        });
+
+    py::class_<PresetTransaction>(preset, "PresetTransaction",
+                                  "A staged, single-target preset edit returned by begin_update(). set() stages a "
+                                  "serialized value without mutating the preset; commit() validates and applies the "
+                                  "whole batch through the normal setting-change path. begin_update() blocks the "
+                                  "background Script worker until any selection or unsaved-edit dialog is answered, "
+                                  "while the UI thread stays responsive; set() and commit() run synchronously on the "
+                                  "same worker. Nothing is saved to disk: the edited preset stays dirty until the user "
+                                  "saves it.")
+        .def_readonly("type", &PresetTransaction::type)
+        .def_readonly("target_name", &PresetTransaction::target_name)
+        .def_readonly("selection_changed", &PresetTransaction::selection_changed)
+        .def_property_readonly("slot_number", [](const PresetTransaction& transaction) {
+            return transaction.filament ? transaction.slot_number : -1;
+        })
+        .def_property_readonly("category", [](const PresetTransaction& transaction) { return preset_tab_name(transaction.type); })
+        .def_property_readonly("staged_keys", [](const PresetTransaction& transaction) {
+            std::vector<std::string> keys;
+            keys.reserve(transaction.staged.size());
+            for (const auto& entry : transaction.staged)
+                keys.push_back(entry.first);
+            return keys;
+        })
+        .def("set", &PresetTransaction::set, py::arg("key"), py::arg("value"),
+             "Stage one setting change. key must be a setting of the target preset category and value its "
+             "serialized string form; staging validates neither, so commit() is where an invalid key or value "
+             "fails. Staging the same key twice in one transaction raises ValueError (conflicting duplicate "
+             "writes are rejected). After commit() the transaction is closed.")
+        .def("commit", &PresetTransaction::commit,
+             "Validate and apply every staged setting through the same path as editing it in the GUI, then return "
+             "a PresetUpdateResult. An invalid key or value raises ValueError; a changed target or filament slot "
+             "mapping raises RuntimeError; a failure leaves none of the staged settings applied. The edited preset "
+             "becomes dirty until the user saves it.");
+
+    py::class_<PresetEditor>(preset, "PresetEditor",
+                             "Handle to a category of currently edited preset. It is not a snapshot: it always "
+                             "resolves the preset the matching tab edits now, so it stays usable across preset "
+                             "switches. update() edits the preset in place; the change is not saved to disk.")
+        .def_readonly("type", &PresetEditor::type)
+        .def(
+            "begin_update",
+            [](const PresetEditor& editor, const std::string& preset_name) {
+                if (editor.type == Preset::TYPE_FILAMENT)
+                    throw std::invalid_argument("begin_update on the filament editor takes "
+                                                "(slot_number, preset_name=\"\"); use orca.host.preset.filament.begin_update(slot_number, ...)");
+                return begin_preset_update(editor.type, preset_name);
+            },
+            py::arg("preset_name") = "",
+            "Resolve and bind this category's target preset and return a PresetTransaction. With no preset_name the "
+            "currently active preset is targeted; a preset_name must be a preset this category can select, and is "
+            "selected through the normal preset-selection flow (which prompts about unsaved edits). The call blocks "
+            "the background Script worker until any such dialog is answered, leaving the UI thread responsive. A "
+            "selection the user cancels raises RuntimeError; an unavailable or invalid target raises ValueError. "
+            "Either failure creates no transaction and stages no setting. Call it from the background Script worker, "
+            "never from the UI thread. This form is for process and printer; filament takes "
+            "begin_update(slot_number, preset_name=\"\").")
+        .def(
+            "begin_update",
+            [](const PresetEditor& editor, int slot_number, const std::string& preset_name) {
+                if (editor.type != Preset::TYPE_FILAMENT)
+                    throw std::invalid_argument("The slot_number form of begin_update() is only available on "
+                                                "orca.host.preset.filament; call begin_update(preset_name=\"\") on this editor");
+                return begin_filament_update(slot_number, preset_name);
+            },
+            py::arg("slot_number"), py::arg("preset_name") = "",
+            "Resolve and bind a filament preset by 1-based slot and return a PresetTransaction. Omitting preset_name "
+            "targets the preset assigned to the slot; supplying a different name selects it for the slot through the "
+            "normal flow (prompting about unsaved edits) and, once that succeeds, records the new slot assignment with "
+            "the same Plater side effects the sidebar selection performs (project/selection refresh, dynamic filament "
+            "list, conditional support-filament flushing recalc and the slot's AMS sync badge). A requested preset "
+            "this slot's dropdown does not offer is rejected before that flow, so it raises no prompt; the slot's own "
+            "current assignment stays targetable even when the dropdown hides it. A selection the user cancels raises "
+            "RuntimeError and changes neither the slot assignment nor any setting. An out-of-range, empty or "
+            "unresolved slot is rejected, and a mixed-color virtual slot is rejected whether or not preset_name is "
+            "given. The transaction edits the shared preset, so every slot assigned to it is affected. The call "
+            "blocks the background Script worker until the selection settles, leaving the UI thread responsive; call "
+            "it from that worker, never from the UI thread.")
+        .def(
+            "update",
+            [](const PresetEditor& editor, const std::string& key, const std::string& value) {
+                update_edited_preset(editor.type, key, value);
+            },
+            py::arg("key"), py::arg("value"),
+            "Set one setting of the currently edited preset and run the same committed-change path as "
+            "editing the setting in the GUI; the edited preset becomes dirty until saved/exported. "
+            "key must be a setting of this preset category and value its serialized string form, "
+            "otherwise ValueError is raised and nothing is written. A setting edited through a field "
+            "runs that field's validation even before its page has been opened; one the GUI edits "
+            "outside a field (such as compatible printers) also recomputes preset compatibility. "
+            "Equivalent to begin_update() with the active preset as target, then set(key, value) "
+            "and commit(); like begin_update() this call blocks the background Script worker.")
+        .def(
+            "update",
+            [](const PresetEditor& editor, int slot_number, const std::string& key, const std::string& value) {
+                if (editor.type != Preset::TYPE_FILAMENT)
+                    throw std::invalid_argument("The slot_number form of update() is only available on "
+                                                "orca.host.preset.filament; call update(key, value) on this editor");
+                update_filament_slot(slot_number, key, value);
+            },
+            py::arg("slot_number"), py::arg("key"), py::arg("value"),
+            "Set one setting of the filament preset assigned to a 1-based filament slot. When that preset "
+            "is not the one currently edited the call switches to it through the normal preset-selection "
+            "flow, so an unsaved edited preset still prompts the user and a declined prompt cancels the "
+            "call with an error and no change. An out-of-range, empty or unresolved slot is rejected with "
+            "a clear error, as is a mixed-color virtual slot, which has no single preset to edit. Other "
+            "preset editors accept only update(key, value); this form raises "
+            "ValueError on them. Equivalent to begin_update(slot_number) with an omitted preset_name "
+            "(the slot's current assignment is kept), then set(key, value) and commit(); like "
+            "begin_update() this call blocks the background Script worker.");
+
+    // The three preset categories edited by the main tabs. `process` is the print/process preset,
+    // `printer` the machine preset and `filament` the currently edited filament preset (its
+    // 3-argument form addresses a 1-based filament slot); each only accepts its own settings, so a
+    // printer setting passed to `process` is rejected instead of written silently.
+    preset.attr("process")  = py::cast(PresetEditor{Preset::TYPE_PRINT});
+    preset.attr("printer")  = py::cast(PresetEditor{Preset::TYPE_PRINTER});
+    preset.attr("filament") = py::cast(PresetEditor{Preset::TYPE_FILAMENT});
+

@@ -629,10 +629,17 @@ set(SLIC3R_GUI_SOURCES
     plugin/host/PluginHost.hpp
     plugin/host/PluginHostBindings.hpp
     plugin/host/PluginHostApp.cpp
+    plugin/host/PluginHostEditing.cpp
+    plugin/host/PluginHostEditing.hpp
     plugin/host/PluginHostGeometry.cpp
     plugin/host/PluginHostMesh.cpp
     plugin/host/PluginHostMesh.hpp
     plugin/host/PluginHostModel.cpp
+    plugin/host/PluginHostModeling.cpp
+    plugin/host/PluginHostModeling.hpp
+    plugin/host/PluginHostPainting.cpp
+    plugin/host/PluginHostPainting.hpp
+    plugin/host/PluginHostPlates.cpp
     plugin/host/PluginHostPresets.cpp
     plugin/host/PluginHostSlicing.cpp
     plugin/host/PluginHostUi.cpp
@@ -668,6 +675,12 @@ set(SLIC3R_GUI_SOURCES
     plugin/PluginAuditManager.hpp
     plugin/PluginResolver.cpp
     plugin/PluginResolver.hpp
+    plugin/pluginTypes/exporter/ExporterPluginCapability.hpp
+    plugin/pluginTypes/exporter/ExporterPluginCapability.cpp
+    plugin/pluginTypes/exporter/ExporterPluginCapabilityTrampoline.hpp
+    plugin/pluginTypes/importer/ImporterPluginCapability.hpp
+    plugin/pluginTypes/importer/ImporterPluginCapability.cpp
+    plugin/pluginTypes/importer/ImporterPluginCapabilityTrampoline.hpp
     plugin/pluginTypes/pages/PagesPluginCapability.hpp
     plugin/pluginTypes/pages/PagesPluginCapability.cpp
     plugin/pluginTypes/pages/PagesPluginCapabilityTrampoline.hpp

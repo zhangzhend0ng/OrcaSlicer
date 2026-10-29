@@ -1,0 +1,4649 @@
+{
+  "source": "live-embedded-orca",
+  "modules": {
+    "orca": [
+      {
+        "name": "Analysis",
+        "kind": "PluginType"
+      },
+      {
+        "name": "DeviceDiscovered",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "DeviceOffline",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "DeviceOnline",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "DeviceSelected",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "Error",
+        "kind": "LifecycleEvtCode"
+      },
+      {
+        "name": "ExecutionResult",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.ExecutionResult) -> None",
+              "__init__(self: orca.ExecutionResult, arg0: orca.PluginResult, arg1: str, arg2: str) -> None"
+            ],
+            "doc": "__init__(*args, **kwargs)\nOverloaded function.\n\n1. __init__(self: orca.ExecutionResult) -> None\n\n2. __init__(self: orca.ExecutionResult, arg0: orca.PluginResult, arg1: str, arg2: str) -> None\n"
+          },
+          {
+            "name": "data",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "failure",
+            "kind": "staticmethod",
+            "signatures": [
+              "failure(status: orca.PluginResult, message: str, data: str = '') -> orca.ExecutionResult"
+            ],
+            "doc": "failure(status: orca.PluginResult, message: str, data: str = '') -> orca.ExecutionResult\n"
+          },
+          {
+            "name": "message",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "skipped",
+            "kind": "staticmethod",
+            "signatures": [
+              "skipped(message: str = '') -> orca.ExecutionResult"
+            ],
+            "doc": "skipped(message: str = '') -> orca.ExecutionResult\n"
+          },
+          {
+            "name": "status",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "success",
+            "kind": "staticmethod",
+            "signatures": [
+              "success(message: str = '', data: str = '') -> orca.ExecutionResult"
+            ],
+            "doc": "success(message: str = '', data: str = '') -> orca.ExecutionResult\n"
+          }
+        ]
+      },
+      {
+        "name": "Exporter",
+        "kind": "PluginType"
+      },
+      {
+        "name": "FatalError",
+        "kind": "PluginResult"
+      },
+      {
+        "name": "GCodeExportFinished",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "GCodeExportStarted",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "Importer",
+        "kind": "PluginType"
+      },
+      {
+        "name": "LifecycleEvent",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "DeviceDiscovered",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "DeviceOffline",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "DeviceOnline",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "DeviceSelected",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "GCodeExportFinished",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "GCodeExportStarted",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "NewProject",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ObjectAdded",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ObjectChanged",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ObjectDeleted",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ObjectRenamed",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ObjectTransformed",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "PlateCreated",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "PlateDeleted",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "PlateRenamed",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "PlateSelected",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "PresetSaved",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "PresetSelected",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "PrintJobFinished",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "PrintJobStarted",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "PrintStateChanged",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ProjectAfterSave",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ProjectBeforeSave",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ProjectClosed",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ProjectDirtyChanged",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "ProjectOpened",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "SendJobFinished",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "SendJobStarted",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "SliceGeometryFinished",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "SliceStarted",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "SlicingJobComplete",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "UploadFinished",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "UploadStarted",
+            "kind": "LifecycleEvent"
+          },
+          {
+            "name": "__eq__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__eq__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__eq__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__hash__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__hash__(self: object, /) -> int"
+            ],
+            "doc": "__hash__(self: object, /) -> int\n"
+          },
+          {
+            "name": "__index__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__index__(self: orca.LifecycleEvent, /) -> int"
+            ],
+            "doc": "__index__(self: orca.LifecycleEvent, /) -> int\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.LifecycleEvent, value: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.LifecycleEvent, value: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__int__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__int__(self: orca.LifecycleEvent, /) -> int"
+            ],
+            "doc": "__int__(self: orca.LifecycleEvent, /) -> int\n"
+          },
+          {
+            "name": "__ne__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__ne__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__ne__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: object, /) -> str"
+            ],
+            "doc": "__repr__(self: object, /) -> str\n"
+          },
+          {
+            "name": "__str__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__str__(self: object, /) -> str"
+            ],
+            "doc": "__str__(self: object, /) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": "name(self: object, /) -> str\n"
+          },
+          {
+            "name": "value",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "LifecycleEventContext",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.LifecycleEventContext) -> None"
+            ],
+            "doc": "__init__(self: orca.LifecycleEventContext) -> None\n"
+          },
+          {
+            "name": "code",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "device_id",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "dirty",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "id",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "index",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "job_id",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "msg",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "previous_name",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "source",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "LifecycleEvtCode",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "Error",
+            "kind": "LifecycleEvtCode"
+          },
+          {
+            "name": "Ok",
+            "kind": "LifecycleEvtCode"
+          },
+          {
+            "name": "Warn",
+            "kind": "LifecycleEvtCode"
+          },
+          {
+            "name": "__eq__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__eq__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__eq__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__hash__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__hash__(self: object, /) -> int"
+            ],
+            "doc": "__hash__(self: object, /) -> int\n"
+          },
+          {
+            "name": "__index__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__index__(self: orca.LifecycleEvtCode, /) -> int"
+            ],
+            "doc": "__index__(self: orca.LifecycleEvtCode, /) -> int\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.LifecycleEvtCode, value: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.LifecycleEvtCode, value: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__int__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__int__(self: orca.LifecycleEvtCode, /) -> int"
+            ],
+            "doc": "__int__(self: orca.LifecycleEvtCode, /) -> int\n"
+          },
+          {
+            "name": "__ne__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__ne__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__ne__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: object, /) -> str"
+            ],
+            "doc": "__repr__(self: object, /) -> str\n"
+          },
+          {
+            "name": "__str__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__str__(self: object, /) -> str"
+            ],
+            "doc": "__str__(self: object, /) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": "name(self: object, /) -> str\n"
+          },
+          {
+            "name": "value",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "NewProject",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "ObjectAdded",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "ObjectChanged",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "ObjectDeleted",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "ObjectRenamed",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "ObjectTransformed",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "Ok",
+        "kind": "LifecycleEvtCode"
+      },
+      {
+        "name": "Pages",
+        "kind": "PluginType"
+      },
+      {
+        "name": "PlateCreated",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PlateDeleted",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PlateRenamed",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PlateSelected",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PluginContext",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.PluginContext) -> None"
+            ],
+            "doc": "__init__(self: orca.PluginContext) -> None\n"
+          },
+          {
+            "name": "orca_version",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "PluginResult",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "FatalError",
+            "kind": "PluginResult"
+          },
+          {
+            "name": "RecoverableError",
+            "kind": "PluginResult"
+          },
+          {
+            "name": "Skipped",
+            "kind": "PluginResult"
+          },
+          {
+            "name": "Success",
+            "kind": "PluginResult"
+          },
+          {
+            "name": "__eq__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__eq__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__eq__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__hash__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__hash__(self: object, /) -> int"
+            ],
+            "doc": "__hash__(self: object, /) -> int\n"
+          },
+          {
+            "name": "__index__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__index__(self: orca.PluginResult, /) -> int"
+            ],
+            "doc": "__index__(self: orca.PluginResult, /) -> int\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.PluginResult, value: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.PluginResult, value: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__int__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__int__(self: orca.PluginResult, /) -> int"
+            ],
+            "doc": "__int__(self: orca.PluginResult, /) -> int\n"
+          },
+          {
+            "name": "__ne__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__ne__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__ne__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: object, /) -> str"
+            ],
+            "doc": "__repr__(self: object, /) -> str\n"
+          },
+          {
+            "name": "__str__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__str__(self: object, /) -> str"
+            ],
+            "doc": "__str__(self: object, /) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": "name(self: object, /) -> str\n"
+          },
+          {
+            "name": "value",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "PluginType",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "Analysis",
+            "kind": "PluginType"
+          },
+          {
+            "name": "Exporter",
+            "kind": "PluginType"
+          },
+          {
+            "name": "Importer",
+            "kind": "PluginType"
+          },
+          {
+            "name": "Pages",
+            "kind": "PluginType"
+          },
+          {
+            "name": "PrinterConnection",
+            "kind": "PluginType"
+          },
+          {
+            "name": "ResourceTexture",
+            "kind": "PluginType"
+          },
+          {
+            "name": "Script",
+            "kind": "PluginType"
+          },
+          {
+            "name": "SlicingPipeline",
+            "kind": "PluginType"
+          },
+          {
+            "name": "Unknown",
+            "kind": "PluginType"
+          },
+          {
+            "name": "Visualization",
+            "kind": "PluginType"
+          },
+          {
+            "name": "__eq__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__eq__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__eq__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__hash__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__hash__(self: object, /) -> int"
+            ],
+            "doc": "__hash__(self: object, /) -> int\n"
+          },
+          {
+            "name": "__index__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__index__(self: orca.PluginType, /) -> int"
+            ],
+            "doc": "__index__(self: orca.PluginType, /) -> int\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.PluginType, value: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.PluginType, value: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__int__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__int__(self: orca.PluginType, /) -> int"
+            ],
+            "doc": "__int__(self: orca.PluginType, /) -> int\n"
+          },
+          {
+            "name": "__ne__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__ne__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__ne__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: object, /) -> str"
+            ],
+            "doc": "__repr__(self: object, /) -> str\n"
+          },
+          {
+            "name": "__str__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__str__(self: object, /) -> str"
+            ],
+            "doc": "__str__(self: object, /) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": "name(self: object, /) -> str\n"
+          },
+          {
+            "name": "value",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "PresetSaved",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PresetSelected",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PrintJobFinished",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PrintJobStarted",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PrintStateChanged",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PrinterConnection",
+        "kind": "PluginType"
+      },
+      {
+        "name": "ProjectAfterSave",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "ProjectBeforeSave",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "ProjectClosed",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "ProjectDirtyChanged",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "ProjectOpened",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "PythonPluginBase",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.PythonPluginBase) -> None"
+            ],
+            "doc": "__init__(self: orca.PythonPluginBase) -> None\n"
+          },
+          {
+            "name": "get_config",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_config(self: orca.PythonPluginBase) -> str"
+            ],
+            "doc": "get_config(self: orca.PythonPluginBase) -> str\n\nReturn this capability's stored config as a JSON string \u2014 json.loads() it to use.\n\"{}\" if it has never been saved, so the parsed result is always indexable.\n"
+          },
+          {
+            "name": "get_config_ui",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_config_ui(self: orca.PythonPluginBase) -> str"
+            ],
+            "doc": "get_config_ui(self: orca.PythonPluginBase) -> str\n\nOverride to return the custom configuration UI as an HTML string. Only called when\nhas_config_ui() is True; an empty result falls back to the default JSON editor.\nInside the page, use window.orca.getConfig()/saveConfig() to reach this same config.\n"
+          },
+          {
+            "name": "get_config_version",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_config_version(self: orca.PythonPluginBase) -> str"
+            ],
+            "doc": "get_config_version(self: orca.PythonPluginBase) -> str\n\nReturn the plugin version that last wrote this capability's config, so a newer\nrelease can spot a stale config and migrate it. Empty string if never saved.\n"
+          },
+          {
+            "name": "get_default_config",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_default_config(self: orca.PythonPluginBase) -> str"
+            ],
+            "doc": "get_default_config(self: orca.PythonPluginBase) -> str\n\nOverride to return the config that the Config tab's \"Restore defaults\" action writes\nback, as a dict. Optional: without it the action stores an empty config, which already\nrestores the defaults of a capability that keeps its stored config sparse and applies\nits own defaults on read. Override it to write an explicit starting config instead.\nCalling it returns that config as a JSON string.\n"
+          },
+          {
+            "name": "get_name",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_name(self: orca.PythonPluginBase) -> str"
+            ],
+            "doc": "get_name(self: orca.PythonPluginBase) -> str\n"
+          },
+          {
+            "name": "get_type",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_type(self: orca.PythonPluginBase) -> orca.PluginType"
+            ],
+            "doc": "get_type(self: orca.PythonPluginBase) -> orca.PluginType\n"
+          },
+          {
+            "name": "has_config_ui",
+            "kind": "instancemethod",
+            "signatures": [
+              "has_config_ui(self: orca.PythonPluginBase) -> bool"
+            ],
+            "doc": "has_config_ui(self: orca.PythonPluginBase) -> bool\n\nOverride to return True to replace the host's default JSON editor with your own HTML\nUI, returned by get_config_ui(). Every capability is configurable and appears in the\nPlugins dialog's Config tab regardless; this only chooses how its config is edited.\n"
+          },
+          {
+            "name": "on_lifecycle_event",
+            "kind": "instancemethod",
+            "signatures": [
+              "on_lifecycle_event(self: orca.PythonPluginBase, arg0: orca.LifecycleEvent, arg1: orca.LifecycleEventContext) -> None"
+            ],
+            "doc": "on_lifecycle_event(self: orca.PythonPluginBase, arg0: orca.LifecycleEvent, arg1: orca.LifecycleEventContext) -> None\n\nOverride to react to an application lifecycle moment (LifecycleEvent) and its\nLifecycleEventContext payload. Available on every capability type.\n"
+          },
+          {
+            "name": "on_load",
+            "kind": "instancemethod",
+            "signatures": [
+              "on_load(self: orca.PythonPluginBase) -> None"
+            ],
+            "doc": "on_load(self: orca.PythonPluginBase) -> None\n"
+          },
+          {
+            "name": "on_unload",
+            "kind": "instancemethod",
+            "signatures": [
+              "on_unload(self: orca.PythonPluginBase) -> None"
+            ],
+            "doc": "on_unload(self: orca.PythonPluginBase) -> None\n"
+          },
+          {
+            "name": "save_config",
+            "kind": "instancemethod",
+            "signatures": [
+              "save_config(self: orca.PythonPluginBase, config: str) -> bool"
+            ],
+            "doc": "save_config(self: orca.PythonPluginBase, config: str) -> bool\n\nPersist this capability's config, given as a JSON string (e.g. json.dumps(cfg)).\nThe plugin key, capability name and version are supplied by the host. Returns False if\nthe string is not valid JSON, or if the config file could not be written.\n"
+          }
+        ]
+      },
+      {
+        "name": "RecoverableError",
+        "kind": "PluginResult"
+      },
+      {
+        "name": "ResourceTexture",
+        "kind": "PluginType"
+      },
+      {
+        "name": "Script",
+        "kind": "PluginType"
+      },
+      {
+        "name": "SendJobFinished",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "SendJobStarted",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "Skipped",
+        "kind": "PluginResult"
+      },
+      {
+        "name": "SliceGeometryFinished",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "SliceStarted",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "SlicingJobComplete",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "SlicingPipeline",
+        "kind": "PluginType"
+      },
+      {
+        "name": "Success",
+        "kind": "PluginResult"
+      },
+      {
+        "name": "Unknown",
+        "kind": "PluginType"
+      },
+      {
+        "name": "UploadFinished",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "UploadStarted",
+        "kind": "LifecycleEvent"
+      },
+      {
+        "name": "Visualization",
+        "kind": "PluginType"
+      },
+      {
+        "name": "Warn",
+        "kind": "LifecycleEvtCode"
+      },
+      {
+        "name": "base",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.base) -> None"
+            ],
+            "doc": "__init__(self: orca.base) -> None\n"
+          },
+          {
+            "name": "register_capabilities",
+            "kind": "instancemethod",
+            "signatures": [
+              "register_capabilities(self: orca.base) -> None"
+            ],
+            "doc": "register_capabilities(self: orca.base) -> None\n"
+          }
+        ]
+      },
+      {
+        "name": "host",
+        "kind": "module",
+        "module": "orca.host"
+      },
+      {
+        "name": "pages",
+        "kind": "module",
+        "module": "orca.pages"
+      },
+      {
+        "name": "plugin",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "plugin(arg0: object) -> object"
+        ],
+        "doc": "plugin(arg0: object) -> object\n\nMark the single plugin package class (the orca.base subclass) for this file.\n"
+      },
+      {
+        "name": "register_capability",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "register_capability(arg0: object) -> None"
+        ],
+        "doc": "register_capability(arg0: object) -> None\n\nRegister a PluginCapability subclass while OrcaSlicer loads your module.\n"
+      },
+      {
+        "name": "request_permissions",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "request_permissions(fs_read: collections.abc.Sequence[str] = [], fs_readwrite: collections.abc.Sequence[str] = [], network_http: collections.abc.Sequence[str] = [], network_socket: collections.abc.Sequence[str] = [], process: collections.abc.Sequence[str] = [], threading: bool = False, network: collections.abc.Sequence[str] = []) -> None"
+        ],
+        "doc": "request_permissions(fs_read: collections.abc.Sequence[str] = [], fs_readwrite: collections.abc.Sequence[str] = [], network_http: collections.abc.Sequence[str] = [], network_socket: collections.abc.Sequence[str] = [], process: collections.abc.Sequence[str] = [], threading: bool = False, network: collections.abc.Sequence[str] = []) -> None\n\nRequest permissions while OrcaSlicer loads your module.\n\nEach bucket takes the target strings the plugin expects the corresponding audit event to\nreport: filesystem paths for fs_read and fs_readwrite, URLs for network_http, socket addresses\nfor network_socket, and commands for process. threading=True requests permission to start\nthreads. Targets already granted to the plugin are not asked for again.\n\nA filesystem target may end in \"/*\" to grant a whole directory tree, for example\n\"/path/to/folder/*\". That covers the folder itself and every path beneath it, at any depth.\n\"*\" is the only wildcard and is recognized only as the final path component; a \"*\" anywhere\nelse in a target is an ordinary character. Wildcards apply to fs_read and fs_readwrite only,\nand a grant in one of those buckets never authorizes the other direction. Tree grants are\nmatched on canonical paths, so a symlink below the granted folder does not extend the grant\noutside it. Paths the host denies by name or keyword stay denied even when a wildcard covers\nthem.\n\nThe host presents one request to the user after register_capabilities() returns and before any\ncapability instance is created. Denying the request aborts the plugin load.\n"
+      },
+      {
+        "name": "resource_texture",
+        "kind": "module",
+        "module": "orca.resource_texture"
+      },
+      {
+        "name": "script",
+        "kind": "module",
+        "module": "orca.script"
+      },
+      {
+        "name": "slicing",
+        "kind": "module",
+        "module": "orca.slicing"
+      }
+    ],
+    "orca.host": [
+      {
+        "name": "BoundingBox",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "center",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "defined",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "max",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "min",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "radius",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "size",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "ExPolygon",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.host.ExPolygon, contour: object, holes: object = None) -> None"
+            ],
+            "doc": "__init__(self: orca.host.ExPolygon, contour: object, holes: object = None) -> None\n\nConstruct from a Polygon/ndarray contour and optional list of hole Polygons/ndarrays. Orientation is normalized (contour CCW, holes CW).\n"
+          },
+          {
+            "name": "area",
+            "kind": "instancemethod",
+            "signatures": [
+              "area(self: orca.host.ExPolygon) -> float"
+            ],
+            "doc": "area(self: orca.host.ExPolygon) -> float\n"
+          },
+          {
+            "name": "contains",
+            "kind": "instancemethod",
+            "signatures": [
+              "contains(self: orca.host.ExPolygon, point: orca.host.Point) -> bool"
+            ],
+            "doc": "contains(self: orca.host.ExPolygon, point: orca.host.Point) -> bool\n"
+          },
+          {
+            "name": "contour",
+            "kind": "property",
+            "doc": "Outer contour (CCW). Read returns a live Polygon ref; assign a Polygon/ndarray to replace it."
+          },
+          {
+            "name": "diff_ex",
+            "kind": "instancemethod",
+            "signatures": [
+              "diff_ex(self: orca.host.ExPolygon, other: orca.host.ExPolygon) -> list[orca.host.ExPolygon]"
+            ],
+            "doc": "diff_ex(self: orca.host.ExPolygon, other: orca.host.ExPolygon) -> list[orca.host.ExPolygon]\n\nThis minus `other`. Returns [ExPolygon].\n"
+          },
+          {
+            "name": "douglas_peucker",
+            "kind": "instancemethod",
+            "signatures": [
+              "douglas_peucker(self: orca.host.ExPolygon, tolerance: typing.SupportsFloat) -> None"
+            ],
+            "doc": "douglas_peucker(self: orca.host.ExPolygon, tolerance: typing.SupportsFloat) -> None\n"
+          },
+          {
+            "name": "holes",
+            "kind": "property",
+            "doc": "Hole contours (CW) as [Polygon] references (in-place editable). set_holes replaces them."
+          },
+          {
+            "name": "intersection_ex",
+            "kind": "instancemethod",
+            "signatures": [
+              "intersection_ex(self: orca.host.ExPolygon, other: orca.host.ExPolygon) -> list[orca.host.ExPolygon]"
+            ],
+            "doc": "intersection_ex(self: orca.host.ExPolygon, other: orca.host.ExPolygon) -> list[orca.host.ExPolygon]\n\nIntersection with `other`. Returns [ExPolygon].\n"
+          },
+          {
+            "name": "is_valid",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_valid(self: orca.host.ExPolygon) -> bool"
+            ],
+            "doc": "is_valid(self: orca.host.ExPolygon) -> bool\n"
+          },
+          {
+            "name": "num_contours",
+            "kind": "instancemethod",
+            "signatures": [
+              "num_contours(self: orca.host.ExPolygon) -> int"
+            ],
+            "doc": "num_contours(self: orca.host.ExPolygon) -> int\n"
+          },
+          {
+            "name": "offset",
+            "kind": "instancemethod",
+            "signatures": [
+              "offset(self: orca.host.ExPolygon, delta: typing.SupportsInt) -> list[orca.host.ExPolygon]"
+            ],
+            "doc": "offset(self: orca.host.ExPolygon, delta: typing.SupportsInt) -> list[orca.host.ExPolygon]\n\nClipper offset by `delta` scaled units (negative shrinks). Returns [ExPolygon].\n"
+          },
+          {
+            "name": "rotate",
+            "kind": "instancemethod",
+            "signatures": [
+              "rotate(self: orca.host.ExPolygon, angle: typing.SupportsFloat) -> None",
+              "rotate(self: orca.host.ExPolygon, angle: typing.SupportsFloat, center: orca.host.Point) -> None"
+            ],
+            "doc": "rotate(*args, **kwargs)\nOverloaded function.\n\n1. rotate(self: orca.host.ExPolygon, angle: typing.SupportsFloat) -> None\n\n2. rotate(self: orca.host.ExPolygon, angle: typing.SupportsFloat, center: orca.host.Point) -> None\n"
+          },
+          {
+            "name": "scale",
+            "kind": "instancemethod",
+            "signatures": [
+              "scale(self: orca.host.ExPolygon, factor: typing.SupportsFloat) -> None"
+            ],
+            "doc": "scale(self: orca.host.ExPolygon, factor: typing.SupportsFloat) -> None\n"
+          },
+          {
+            "name": "set_holes",
+            "kind": "instancemethod",
+            "signatures": [
+              "set_holes(self: orca.host.ExPolygon, holes: object) -> None"
+            ],
+            "doc": "set_holes(self: orca.host.ExPolygon, holes: object) -> None\n\nReplace all holes. Invalidates prior hole refs (C++ vector semantics).\n"
+          },
+          {
+            "name": "simplify",
+            "kind": "instancemethod",
+            "signatures": [
+              "simplify(self: orca.host.ExPolygon, tolerance: typing.SupportsFloat) -> list[orca.host.ExPolygon]"
+            ],
+            "doc": "simplify(self: orca.host.ExPolygon, tolerance: typing.SupportsFloat) -> list[orca.host.ExPolygon]\n\nReturn simplified geometry as [ExPolygon].\n"
+          },
+          {
+            "name": "translate",
+            "kind": "instancemethod",
+            "signatures": [
+              "translate(self: orca.host.ExPolygon, x: typing.SupportsFloat, y: typing.SupportsFloat) -> None"
+            ],
+            "doc": "translate(self: orca.host.ExPolygon, x: typing.SupportsFloat, y: typing.SupportsFloat) -> None\n"
+          },
+          {
+            "name": "union_ex",
+            "kind": "instancemethod",
+            "signatures": [
+              "union_ex(self: orca.host.ExPolygon, other: orca.host.ExPolygon) -> list[orca.host.ExPolygon]"
+            ],
+            "doc": "union_ex(self: orca.host.ExPolygon, other: orca.host.ExPolygon) -> list[orca.host.ExPolygon]\n\nUnion with another ExPolygon. Returns [ExPolygon].\n"
+          }
+        ]
+      },
+      {
+        "name": "ExtrusionEntity",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "role",
+            "kind": "property",
+            "doc": "Extrusion role as a human-readable string (e.g. \"Outer wall\", \"Sparse infill\")."
+          }
+        ]
+      },
+      {
+        "name": "ExtrusionEntityCollection",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "entities",
+            "kind": "property",
+            "doc": "Child entities. Each is handed to you as its concrete type only when that type is registered; a child whose concrete type is unregistered (e.g. a scarf-seam ExtrusionLoopSloped) surfaces as a bare ExtrusionEntity exposing only .role. Use flatten_paths() to robustly reach every ExtrusionPath leaf."
+          },
+          {
+            "name": "flatten_paths",
+            "kind": "instancemethod",
+            "signatures": [
+              "flatten_paths(self: object) -> list"
+            ],
+            "doc": "flatten_paths(self: object) -> list\n\nEvery leaf ExtrusionPath under this tree (collections recursed into, loops/multipaths decomposed).\n"
+          },
+          {
+            "name": "size",
+            "kind": "instancemethod",
+            "signatures": [
+              "size(self: orca.host.ExtrusionEntityCollection) -> int"
+            ],
+            "doc": "size(self: orca.host.ExtrusionEntityCollection) -> int\n"
+          }
+        ]
+      },
+      {
+        "name": "ExtrusionLoop",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "paths",
+            "kind": "property",
+            "doc": "The loop's constituent paths as [ExtrusionPath]."
+          }
+        ]
+      },
+      {
+        "name": "ExtrusionMultiPath",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "paths",
+            "kind": "property",
+            "doc": "The multipath's constituent paths as [ExtrusionPath]."
+          }
+        ]
+      },
+      {
+        "name": "ExtrusionPath",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "height",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "mm3_per_mm",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "points",
+            "kind": "instancemethod",
+            "signatures": [
+              "points(self: object) -> object"
+            ],
+            "doc": "points(self: object) -> object\n\nPath vertices as a read-only int64 (N,2) numpy view in scaled XY coords (polylines are 2D on this fork; upstream S reports (N,3)). Requires numpy.\n"
+          },
+          {
+            "name": "width",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "Layer",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "height",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "lower_layer",
+            "kind": "property",
+            "doc": "The layer below, or None."
+          },
+          {
+            "name": "lslices",
+            "kind": "instancemethod",
+            "signatures": [
+              "lslices(self: object) -> list"
+            ],
+            "doc": "lslices(self: object) -> list\n\nMerged per-layer islands as [ExPolygon] refs (in-place editable). Derived from the region slices; call make_slices() to re-derive after edits. Invalidated by make_slices().\n"
+          },
+          {
+            "name": "make_slices",
+            "kind": "instancemethod",
+            "signatures": [
+              "make_slices(self: orca.host.Layer) -> None"
+            ],
+            "doc": "make_slices(self: orca.host.Layer) -> None\n\nRe-derive lslices (merged islands) from the region slices and refresh the bbox cache \u2014 the C++ invariant-maintenance call after in-place slice edits.\n"
+          },
+          {
+            "name": "print_z",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "regions",
+            "kind": "instancemethod",
+            "signatures": [
+              "regions(self: object) -> list"
+            ],
+            "doc": "regions(self: object) -> list\n\nPer-region data as [LayerRegion].\n"
+          },
+          {
+            "name": "slice_z",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "upper_layer",
+            "kind": "property",
+            "doc": "The layer above, or None (graph navigation, like C++)."
+          }
+        ]
+      },
+      {
+        "name": "LayerRegion",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "config_value",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_value(self: orca.host.LayerRegion, key: str) -> object"
+            ],
+            "doc": "config_value(self: orca.host.LayerRegion, key: str) -> object\n\nSerialized value of this region's resolved config option, or None if absent.\n"
+          },
+          {
+            "name": "fill_surfaces",
+            "kind": "property",
+            "doc": "Surfaces prepared for infill (SurfaceCollection). Edit in place or via fill_surfaces.set(...)."
+          },
+          {
+            "name": "fills",
+            "kind": "property",
+            "doc": "Infill toolpaths (ExtrusionEntityCollection, read-only)."
+          },
+          {
+            "name": "layer",
+            "kind": "instancemethod",
+            "signatures": [
+              "layer(self: orca.host.LayerRegion) -> object"
+            ],
+            "doc": "layer(self: orca.host.LayerRegion) -> object\n\nOwning Layer, or None.\n"
+          },
+          {
+            "name": "perimeters",
+            "kind": "property",
+            "doc": "Perimeter toolpaths (ExtrusionEntityCollection, read-only)."
+          },
+          {
+            "name": "region",
+            "kind": "instancemethod",
+            "signatures": [
+              "region(self: orca.host.LayerRegion) -> orca.host.PrintRegion"
+            ],
+            "doc": "region(self: orca.host.LayerRegion) -> orca.host.PrintRegion\n\nThis region's PrintRegion (resolved per-region settings).\n"
+          },
+          {
+            "name": "slices",
+            "kind": "property",
+            "doc": "Sliced, typed surfaces (SurfaceCollection). Edit in place, or replace with slices.set(expolygons, surface_type). At Step.posSlice this is the primary mutation target; the split slice loop runs make_perimeters() afterward so edits cascade downstream."
+          }
+        ]
+      },
+      {
+        "name": "Model",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "bounding_box",
+            "kind": "instancemethod",
+            "signatures": [
+              "bounding_box(self: orca.host.Model) -> orca.host.BoundingBox"
+            ],
+            "doc": "bounding_box(self: orca.host.Model) -> orca.host.BoundingBox\n"
+          },
+          {
+            "name": "bounding_box_approx",
+            "kind": "instancemethod",
+            "signatures": [
+              "bounding_box_approx(self: orca.host.Model) -> orca.host.BoundingBox"
+            ],
+            "doc": "bounding_box_approx(self: orca.host.Model) -> orca.host.BoundingBox\n"
+          },
+          {
+            "name": "current_plate_index",
+            "kind": "instancemethod",
+            "signatures": [
+              "current_plate_index(self: orca.host.Model) -> int"
+            ],
+            "doc": "current_plate_index(self: orca.host.Model) -> int\n"
+          },
+          {
+            "name": "design_id",
+            "kind": "instancemethod",
+            "signatures": [
+              "design_id(self: orca.host.Model) -> str"
+            ],
+            "doc": "design_id(self: orca.host.Model) -> str\n"
+          },
+          {
+            "name": "designer",
+            "kind": "instancemethod",
+            "signatures": [
+              "designer(self: orca.host.Model) -> str"
+            ],
+            "doc": "designer(self: orca.host.Model) -> str\n"
+          },
+          {
+            "name": "id",
+            "kind": "instancemethod",
+            "signatures": [
+              "id(self: orca.host.Model) -> int"
+            ],
+            "doc": "id(self: orca.host.Model) -> int\n"
+          },
+          {
+            "name": "is_fdm_support_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_fdm_support_painted(self: orca.host.Model) -> bool"
+            ],
+            "doc": "is_fdm_support_painted(self: orca.host.Model) -> bool\n"
+          },
+          {
+            "name": "is_fuzzy_skin_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_fuzzy_skin_painted(self: orca.host.Model) -> bool"
+            ],
+            "doc": "is_fuzzy_skin_painted(self: orca.host.Model) -> bool\n"
+          },
+          {
+            "name": "is_mm_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_mm_painted(self: orca.host.Model) -> bool"
+            ],
+            "doc": "is_mm_painted(self: orca.host.Model) -> bool\n"
+          },
+          {
+            "name": "is_seam_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_seam_painted(self: orca.host.Model) -> bool"
+            ],
+            "doc": "is_seam_painted(self: orca.host.Model) -> bool\n"
+          },
+          {
+            "name": "material_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "material_count(self: orca.host.Model) -> int"
+            ],
+            "doc": "material_count(self: orca.host.Model) -> int\n"
+          },
+          {
+            "name": "max_z",
+            "kind": "instancemethod",
+            "signatures": [
+              "max_z(self: orca.host.Model) -> float"
+            ],
+            "doc": "max_z(self: orca.host.Model) -> float\n"
+          },
+          {
+            "name": "object",
+            "kind": "instancemethod",
+            "signatures": [
+              "object(self: orca.host.Model, arg0: typing.SupportsInt) -> orca.host.ModelObject"
+            ],
+            "doc": "object(self: orca.host.Model, arg0: typing.SupportsInt) -> orca.host.ModelObject\n"
+          },
+          {
+            "name": "object_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "object_count(self: orca.host.Model) -> int"
+            ],
+            "doc": "object_count(self: orca.host.Model) -> int\n"
+          },
+          {
+            "name": "objects",
+            "kind": "instancemethod",
+            "signatures": [
+              "objects(self: orca.host.Model) -> list"
+            ],
+            "doc": "objects(self: orca.host.Model) -> list\n"
+          }
+        ]
+      },
+      {
+        "name": "ModelInstance",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "assemble_matrix",
+            "kind": "instancemethod",
+            "signatures": [
+              "assemble_matrix(self: orca.host.ModelInstance) -> object"
+            ],
+            "doc": "assemble_matrix(self: orca.host.ModelInstance) -> object\n\nAssemble-view 4x4 float64 affine matrix (copy). Requires numpy.\n"
+          },
+          {
+            "name": "assemble_offset",
+            "kind": "instancemethod",
+            "signatures": [
+              "assemble_offset(self: orca.host.ModelInstance) -> tuple"
+            ],
+            "doc": "assemble_offset(self: orca.host.ModelInstance) -> tuple\n"
+          },
+          {
+            "name": "assemble_rotation",
+            "kind": "instancemethod",
+            "signatures": [
+              "assemble_rotation(self: orca.host.ModelInstance) -> tuple"
+            ],
+            "doc": "assemble_rotation(self: orca.host.ModelInstance) -> tuple\n"
+          },
+          {
+            "name": "bounding_box",
+            "kind": "instancemethod",
+            "signatures": [
+              "bounding_box(self: orca.host.ModelInstance) -> orca.host.BoundingBox"
+            ],
+            "doc": "bounding_box(self: orca.host.ModelInstance) -> orca.host.BoundingBox\n"
+          },
+          {
+            "name": "id",
+            "kind": "instancemethod",
+            "signatures": [
+              "id(self: orca.host.ModelInstance) -> int"
+            ],
+            "doc": "id(self: orca.host.ModelInstance) -> int\n"
+          },
+          {
+            "name": "is_assemble_initialized",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_assemble_initialized(self: orca.host.ModelInstance) -> bool"
+            ],
+            "doc": "is_assemble_initialized(self: orca.host.ModelInstance) -> bool\n"
+          },
+          {
+            "name": "is_left_handed",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_left_handed(self: orca.host.ModelInstance) -> bool"
+            ],
+            "doc": "is_left_handed(self: orca.host.ModelInstance) -> bool\n"
+          },
+          {
+            "name": "is_printable",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_printable(self: orca.host.ModelInstance) -> bool"
+            ],
+            "doc": "is_printable(self: orca.host.ModelInstance) -> bool\n"
+          },
+          {
+            "name": "matrix",
+            "kind": "instancemethod",
+            "signatures": [
+              "matrix(self: orca.host.ModelInstance) -> object"
+            ],
+            "doc": "matrix(self: orca.host.ModelInstance) -> object\n\nObject-to-world 4x4 float64 affine matrix (copy). Requires numpy.\n"
+          },
+          {
+            "name": "mirror",
+            "kind": "instancemethod",
+            "signatures": [
+              "mirror(self: orca.host.ModelInstance) -> tuple"
+            ],
+            "doc": "mirror(self: orca.host.ModelInstance) -> tuple\n"
+          },
+          {
+            "name": "offset",
+            "kind": "instancemethod",
+            "signatures": [
+              "offset(self: orca.host.ModelInstance) -> tuple"
+            ],
+            "doc": "offset(self: orca.host.ModelInstance) -> tuple\n"
+          },
+          {
+            "name": "offset_to_assembly",
+            "kind": "instancemethod",
+            "signatures": [
+              "offset_to_assembly(self: orca.host.ModelInstance) -> tuple"
+            ],
+            "doc": "offset_to_assembly(self: orca.host.ModelInstance) -> tuple\n"
+          },
+          {
+            "name": "printable",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "rotation",
+            "kind": "instancemethod",
+            "signatures": [
+              "rotation(self: orca.host.ModelInstance) -> tuple"
+            ],
+            "doc": "rotation(self: orca.host.ModelInstance) -> tuple\n"
+          },
+          {
+            "name": "scaling_factor",
+            "kind": "instancemethod",
+            "signatures": [
+              "scaling_factor(self: orca.host.ModelInstance) -> tuple"
+            ],
+            "doc": "scaling_factor(self: orca.host.ModelInstance) -> tuple\n"
+          }
+        ]
+      },
+      {
+        "name": "ModelObject",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "bounding_box",
+            "kind": "instancemethod",
+            "signatures": [
+              "bounding_box(self: orca.host.ModelObject) -> orca.host.BoundingBox"
+            ],
+            "doc": "bounding_box(self: orca.host.ModelObject) -> orca.host.BoundingBox\n"
+          },
+          {
+            "name": "config_keys",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_keys(self: orca.host.ModelObject) -> list[str]"
+            ],
+            "doc": "config_keys(self: orca.host.ModelObject) -> list[str]\n"
+          },
+          {
+            "name": "config_value",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_value(self: orca.host.ModelObject, arg0: str) -> object"
+            ],
+            "doc": "config_value(self: orca.host.ModelObject, arg0: str) -> object\n"
+          },
+          {
+            "name": "facets_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "facets_count(self: orca.host.ModelObject) -> int"
+            ],
+            "doc": "facets_count(self: orca.host.ModelObject) -> int\n"
+          },
+          {
+            "name": "has_custom_layering",
+            "kind": "instancemethod",
+            "signatures": [
+              "has_custom_layering(self: orca.host.ModelObject) -> bool"
+            ],
+            "doc": "has_custom_layering(self: orca.host.ModelObject) -> bool\n"
+          },
+          {
+            "name": "id",
+            "kind": "instancemethod",
+            "signatures": [
+              "id(self: orca.host.ModelObject) -> int"
+            ],
+            "doc": "id(self: orca.host.ModelObject) -> int\n"
+          },
+          {
+            "name": "input_file",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "instance",
+            "kind": "instancemethod",
+            "signatures": [
+              "instance(self: orca.host.ModelObject, arg0: typing.SupportsInt) -> orca.host.ModelInstance"
+            ],
+            "doc": "instance(self: orca.host.ModelObject, arg0: typing.SupportsInt) -> orca.host.ModelInstance\n"
+          },
+          {
+            "name": "instance_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "instance_count(self: orca.host.ModelObject) -> int"
+            ],
+            "doc": "instance_count(self: orca.host.ModelObject) -> int\n"
+          },
+          {
+            "name": "instances",
+            "kind": "instancemethod",
+            "signatures": [
+              "instances(self: orca.host.ModelObject) -> list"
+            ],
+            "doc": "instances(self: orca.host.ModelObject) -> list\n"
+          },
+          {
+            "name": "is_cut",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_cut(self: orca.host.ModelObject) -> bool"
+            ],
+            "doc": "is_cut(self: orca.host.ModelObject) -> bool\n"
+          },
+          {
+            "name": "is_fdm_support_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_fdm_support_painted(self: orca.host.ModelObject) -> bool"
+            ],
+            "doc": "is_fdm_support_painted(self: orca.host.ModelObject) -> bool\n"
+          },
+          {
+            "name": "is_fuzzy_skin_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_fuzzy_skin_painted(self: orca.host.ModelObject) -> bool"
+            ],
+            "doc": "is_fuzzy_skin_painted(self: orca.host.ModelObject) -> bool\n"
+          },
+          {
+            "name": "is_mm_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_mm_painted(self: orca.host.ModelObject) -> bool"
+            ],
+            "doc": "is_mm_painted(self: orca.host.ModelObject) -> bool\n"
+          },
+          {
+            "name": "is_multiparts",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_multiparts(self: orca.host.ModelObject) -> bool"
+            ],
+            "doc": "is_multiparts(self: orca.host.ModelObject) -> bool\n"
+          },
+          {
+            "name": "is_seam_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_seam_painted(self: orca.host.ModelObject) -> bool"
+            ],
+            "doc": "is_seam_painted(self: orca.host.ModelObject) -> bool\n"
+          },
+          {
+            "name": "materials_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "materials_count(self: orca.host.ModelObject) -> int"
+            ],
+            "doc": "materials_count(self: orca.host.ModelObject) -> int\n"
+          },
+          {
+            "name": "max_z",
+            "kind": "instancemethod",
+            "signatures": [
+              "max_z(self: orca.host.ModelObject) -> float"
+            ],
+            "doc": "max_z(self: orca.host.ModelObject) -> float\n"
+          },
+          {
+            "name": "mesh_errors_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "mesh_errors_count(self: orca.host.ModelObject) -> int"
+            ],
+            "doc": "mesh_errors_count(self: orca.host.ModelObject) -> int\n"
+          },
+          {
+            "name": "min_z",
+            "kind": "instancemethod",
+            "signatures": [
+              "min_z(self: orca.host.ModelObject) -> float"
+            ],
+            "doc": "min_z(self: orca.host.ModelObject) -> float\n"
+          },
+          {
+            "name": "module_name",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "parts_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "parts_count(self: orca.host.ModelObject) -> int"
+            ],
+            "doc": "parts_count(self: orca.host.ModelObject) -> int\n"
+          },
+          {
+            "name": "printable",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "raw_mesh_bounding_box",
+            "kind": "instancemethod",
+            "signatures": [
+              "raw_mesh_bounding_box(self: orca.host.ModelObject) -> orca.host.BoundingBox"
+            ],
+            "doc": "raw_mesh_bounding_box(self: orca.host.ModelObject) -> orca.host.BoundingBox\n"
+          },
+          {
+            "name": "volume",
+            "kind": "instancemethod",
+            "signatures": [
+              "volume(self: orca.host.ModelObject, arg0: typing.SupportsInt) -> orca.host.ModelVolume"
+            ],
+            "doc": "volume(self: orca.host.ModelObject, arg0: typing.SupportsInt) -> orca.host.ModelVolume\n"
+          },
+          {
+            "name": "volume_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "volume_count(self: orca.host.ModelObject) -> int"
+            ],
+            "doc": "volume_count(self: orca.host.ModelObject) -> int\n"
+          },
+          {
+            "name": "volumes",
+            "kind": "instancemethod",
+            "signatures": [
+              "volumes(self: orca.host.ModelObject) -> list"
+            ],
+            "doc": "volumes(self: orca.host.ModelObject) -> list\n"
+          }
+        ]
+      },
+      {
+        "name": "ModelVolume",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "bounding_box",
+            "kind": "instancemethod",
+            "signatures": [
+              "bounding_box(self: orca.host.ModelVolume) -> orca.host.BoundingBox"
+            ],
+            "doc": "bounding_box(self: orca.host.ModelVolume) -> orca.host.BoundingBox\n"
+          },
+          {
+            "name": "config_keys",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_keys(self: orca.host.ModelVolume) -> list[str]"
+            ],
+            "doc": "config_keys(self: orca.host.ModelVolume) -> list[str]\n"
+          },
+          {
+            "name": "config_value",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_value(self: orca.host.ModelVolume, arg0: str) -> object"
+            ],
+            "doc": "config_value(self: orca.host.ModelVolume, arg0: str) -> object\n"
+          },
+          {
+            "name": "extruder_id",
+            "kind": "instancemethod",
+            "signatures": [
+              "extruder_id(self: orca.host.ModelVolume) -> int"
+            ],
+            "doc": "extruder_id(self: orca.host.ModelVolume) -> int\n"
+          },
+          {
+            "name": "facets_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "facets_count(self: orca.host.ModelVolume) -> int"
+            ],
+            "doc": "facets_count(self: orca.host.ModelVolume) -> int\n"
+          },
+          {
+            "name": "id",
+            "kind": "instancemethod",
+            "signatures": [
+              "id(self: orca.host.ModelVolume) -> int"
+            ],
+            "doc": "id(self: orca.host.ModelVolume) -> int\n"
+          },
+          {
+            "name": "is_fdm_support_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_fdm_support_painted(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_fdm_support_painted(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_fuzzy_skin_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_fuzzy_skin_painted(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_fuzzy_skin_painted(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_manifold",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_manifold(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_manifold(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_mm_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_mm_painted(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_mm_painted(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_model_part",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_model_part(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_model_part(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_modifier",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_modifier(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_modifier(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_negative_volume",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_negative_volume(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_negative_volume(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_seam_painted",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_seam_painted(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_seam_painted(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_support_blocker",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_support_blocker(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_support_blocker(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_support_enforcer",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_support_enforcer(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_support_enforcer(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "is_support_modifier",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_support_modifier(self: orca.host.ModelVolume) -> bool"
+            ],
+            "doc": "is_support_modifier(self: orca.host.ModelVolume) -> bool\n"
+          },
+          {
+            "name": "matrix",
+            "kind": "instancemethod",
+            "signatures": [
+              "matrix(self: orca.host.ModelVolume) -> object"
+            ],
+            "doc": "matrix(self: orca.host.ModelVolume) -> object\n\nVolume-to-object 4x4 float64 affine matrix (copy). Requires numpy.\n"
+          },
+          {
+            "name": "mesh",
+            "kind": "instancemethod",
+            "signatures": [
+              "mesh(self: orca.host.ModelVolume) -> orca.host.TriangleMesh"
+            ],
+            "doc": "mesh(self: orca.host.ModelVolume) -> orca.host.TriangleMesh\n\nReturn the volume's TriangleMesh (local coordinates) for vertex/triangle access.\n"
+          },
+          {
+            "name": "mesh_errors_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "mesh_errors_count(self: orca.host.ModelVolume) -> int"
+            ],
+            "doc": "mesh_errors_count(self: orca.host.ModelVolume) -> int\n"
+          },
+          {
+            "name": "mirror",
+            "kind": "instancemethod",
+            "signatures": [
+              "mirror(self: orca.host.ModelVolume) -> tuple"
+            ],
+            "doc": "mirror(self: orca.host.ModelVolume) -> tuple\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "offset",
+            "kind": "instancemethod",
+            "signatures": [
+              "offset(self: orca.host.ModelVolume) -> tuple"
+            ],
+            "doc": "offset(self: orca.host.ModelVolume) -> tuple\n"
+          },
+          {
+            "name": "rotation",
+            "kind": "instancemethod",
+            "signatures": [
+              "rotation(self: orca.host.ModelVolume) -> tuple"
+            ],
+            "doc": "rotation(self: orca.host.ModelVolume) -> tuple\n"
+          },
+          {
+            "name": "scaling_factor",
+            "kind": "instancemethod",
+            "signatures": [
+              "scaling_factor(self: orca.host.ModelVolume) -> tuple"
+            ],
+            "doc": "scaling_factor(self: orca.host.ModelVolume) -> tuple\n"
+          },
+          {
+            "name": "type",
+            "kind": "instancemethod",
+            "signatures": [
+              "type(self: orca.host.ModelVolume) -> orca.host.ModelVolumeType"
+            ],
+            "doc": "type(self: orca.host.ModelVolume) -> orca.host.ModelVolumeType\n"
+          },
+          {
+            "name": "volume",
+            "kind": "instancemethod",
+            "signatures": [
+              "volume(self: orca.host.ModelVolume) -> float"
+            ],
+            "doc": "volume(self: orca.host.ModelVolume) -> float\n"
+          }
+        ]
+      },
+      {
+        "name": "ModelVolumeType",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "Invalid",
+            "kind": "ModelVolumeType"
+          },
+          {
+            "name": "ModelPart",
+            "kind": "ModelVolumeType"
+          },
+          {
+            "name": "NegativeVolume",
+            "kind": "ModelVolumeType"
+          },
+          {
+            "name": "ParameterModifier",
+            "kind": "ModelVolumeType"
+          },
+          {
+            "name": "SupportBlocker",
+            "kind": "ModelVolumeType"
+          },
+          {
+            "name": "SupportEnforcer",
+            "kind": "ModelVolumeType"
+          },
+          {
+            "name": "__eq__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__eq__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__eq__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__hash__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__hash__(self: object, /) -> int"
+            ],
+            "doc": "__hash__(self: object, /) -> int\n"
+          },
+          {
+            "name": "__index__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__index__(self: orca.host.ModelVolumeType, /) -> int"
+            ],
+            "doc": "__index__(self: orca.host.ModelVolumeType, /) -> int\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.host.ModelVolumeType, value: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.host.ModelVolumeType, value: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__int__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__int__(self: orca.host.ModelVolumeType, /) -> int"
+            ],
+            "doc": "__int__(self: orca.host.ModelVolumeType, /) -> int\n"
+          },
+          {
+            "name": "__ne__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__ne__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__ne__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: object, /) -> str"
+            ],
+            "doc": "__repr__(self: object, /) -> str\n"
+          },
+          {
+            "name": "__str__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__str__(self: object, /) -> str"
+            ],
+            "doc": "__str__(self: object, /) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": "name(self: object, /) -> str\n"
+          },
+          {
+            "name": "value",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "Plater",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "export_3mf_copy",
+            "kind": "instancemethod",
+            "signatures": [
+              "export_3mf_copy(self: orca.host.Plater, path: str) -> None"
+            ],
+            "doc": "export_3mf_copy(self: orca.host.Plater, path: str) -> None\n\nWrite the current project, unsaved changes included, to path as a 3MF copy. The project's file name and saved state are not changed, and the signed-in account is not written as the designer.\n"
+          },
+          {
+            "name": "inside_snapshot_capture",
+            "kind": "instancemethod",
+            "signatures": [
+              "inside_snapshot_capture(self: orca.host.Plater) -> bool"
+            ],
+            "doc": "inside_snapshot_capture(self: orca.host.Plater) -> bool\n"
+          },
+          {
+            "name": "is_presets_dirty",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_presets_dirty(self: orca.host.Plater) -> bool"
+            ],
+            "doc": "is_presets_dirty(self: orca.host.Plater) -> bool\n"
+          },
+          {
+            "name": "is_project_dirty",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_project_dirty(self: orca.host.Plater) -> bool"
+            ],
+            "doc": "is_project_dirty(self: orca.host.Plater) -> bool\n"
+          },
+          {
+            "name": "model",
+            "kind": "instancemethod",
+            "signatures": [
+              "model(self: orca.host.Plater) -> orca.host.Model"
+            ],
+            "doc": "model(self: orca.host.Plater) -> orca.host.Model\n"
+          },
+          {
+            "name": "project_path",
+            "kind": "instancemethod",
+            "signatures": [
+              "project_path(self: orca.host.Plater) -> str"
+            ],
+            "doc": "project_path(self: orca.host.Plater) -> str\n"
+          }
+        ]
+      },
+      {
+        "name": "Point",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__add__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__add__(self: orca.host.Point, arg0: orca.host.Point) -> orca.host.Point"
+            ],
+            "doc": "__add__(self: orca.host.Point, arg0: orca.host.Point) -> orca.host.Point\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.host.Point, x: typing.SupportsInt, y: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.host.Point, x: typing.SupportsInt, y: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__mul__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__mul__(self: orca.host.Point, arg0: typing.SupportsFloat) -> orca.host.Point"
+            ],
+            "doc": "__mul__(self: orca.host.Point, arg0: typing.SupportsFloat) -> orca.host.Point\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: orca.host.Point) -> str"
+            ],
+            "doc": "__repr__(self: orca.host.Point) -> str\n"
+          },
+          {
+            "name": "__sub__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__sub__(self: orca.host.Point, arg0: orca.host.Point) -> orca.host.Point"
+            ],
+            "doc": "__sub__(self: orca.host.Point, arg0: orca.host.Point) -> orca.host.Point\n"
+          },
+          {
+            "name": "x",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "y",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "Polygon",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.host.Polygon) -> None"
+            ],
+            "doc": "__init__(self: orca.host.Polygon) -> None\n"
+          },
+          {
+            "name": "append",
+            "kind": "instancemethod",
+            "signatures": [
+              "append(self: orca.host.Polygon, point: orca.host.Point) -> None"
+            ],
+            "doc": "append(self: orca.host.Polygon, point: orca.host.Point) -> None\n\nAppend a vertex. Structural change (count): invalidates previously returned Point refs and array views into this polygon (C++ vector semantics).\n"
+          },
+          {
+            "name": "area",
+            "kind": "instancemethod",
+            "signatures": [
+              "area(self: orca.host.Polygon) -> float"
+            ],
+            "doc": "area(self: orca.host.Polygon) -> float\n"
+          },
+          {
+            "name": "as_array",
+            "kind": "instancemethod",
+            "signatures": [
+              "as_array(self: object) -> object"
+            ],
+            "doc": "as_array(self: object) -> object\n\nVertices as a WRITABLE int64 (N,2) numpy view in scaled coords, aliasing the buffer. Count-preserving in-place edits only; valid during execute(ctx). Requires numpy.\n"
+          },
+          {
+            "name": "centroid",
+            "kind": "instancemethod",
+            "signatures": [
+              "centroid(self: orca.host.Polygon) -> orca.host.Point"
+            ],
+            "doc": "centroid(self: orca.host.Polygon) -> orca.host.Point\n"
+          },
+          {
+            "name": "contains",
+            "kind": "instancemethod",
+            "signatures": [
+              "contains(self: orca.host.Polygon, point: orca.host.Point) -> bool"
+            ],
+            "doc": "contains(self: orca.host.Polygon, point: orca.host.Point) -> bool\n"
+          },
+          {
+            "name": "douglas_peucker",
+            "kind": "instancemethod",
+            "signatures": [
+              "douglas_peucker(self: orca.host.Polygon, tolerance: typing.SupportsFloat) -> None"
+            ],
+            "doc": "douglas_peucker(self: orca.host.Polygon, tolerance: typing.SupportsFloat) -> None\n"
+          },
+          {
+            "name": "is_clockwise",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_clockwise(self: orca.host.Polygon) -> bool"
+            ],
+            "doc": "is_clockwise(self: orca.host.Polygon) -> bool\n"
+          },
+          {
+            "name": "is_counter_clockwise",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_counter_clockwise(self: orca.host.Polygon) -> bool"
+            ],
+            "doc": "is_counter_clockwise(self: orca.host.Polygon) -> bool\n"
+          },
+          {
+            "name": "is_valid",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_valid(self: orca.host.Polygon) -> bool"
+            ],
+            "doc": "is_valid(self: orca.host.Polygon) -> bool\n"
+          },
+          {
+            "name": "make_clockwise",
+            "kind": "instancemethod",
+            "signatures": [
+              "make_clockwise(self: orca.host.Polygon) -> bool"
+            ],
+            "doc": "make_clockwise(self: orca.host.Polygon) -> bool\n"
+          },
+          {
+            "name": "make_counter_clockwise",
+            "kind": "instancemethod",
+            "signatures": [
+              "make_counter_clockwise(self: orca.host.Polygon) -> bool"
+            ],
+            "doc": "make_counter_clockwise(self: orca.host.Polygon) -> bool\n\nReorient to CCW in place. Returns True if it reversed the winding.\n"
+          },
+          {
+            "name": "offset",
+            "kind": "instancemethod",
+            "signatures": [
+              "offset(self: orca.host.Polygon, delta: typing.SupportsInt) -> list[orca.host.Polygon]"
+            ],
+            "doc": "offset(self: orca.host.Polygon, delta: typing.SupportsInt) -> list[orca.host.Polygon]\n\nClipper offset by `delta` scaled units (negative shrinks). Returns [Polygon].\n"
+          },
+          {
+            "name": "points",
+            "kind": "property",
+            "doc": "Vertices as [Point] references into this polygon. Editing a Point mutates the buffer in place. Structural changes (count) go through set_points/append, which invalidate previously returned Point refs and array views (C++ vector semantics)."
+          },
+          {
+            "name": "rotate",
+            "kind": "instancemethod",
+            "signatures": [
+              "rotate(self: orca.host.Polygon, angle: typing.SupportsFloat) -> None",
+              "rotate(self: orca.host.Polygon, angle: typing.SupportsFloat, center: orca.host.Point) -> None"
+            ],
+            "doc": "rotate(*args, **kwargs)\nOverloaded function.\n\n1. rotate(self: orca.host.Polygon, angle: typing.SupportsFloat) -> None\n\n2. rotate(self: orca.host.Polygon, angle: typing.SupportsFloat, center: orca.host.Point) -> None\n"
+          },
+          {
+            "name": "set_points",
+            "kind": "instancemethod",
+            "signatures": [
+              "set_points(self: orca.host.Polygon, points: object) -> None"
+            ],
+            "doc": "set_points(self: orca.host.Polygon, points: object) -> None\n\nReplace all vertices from an (N,2) int64 ndarray (scaled coords). Count-changing; invalidates prior Point refs and array views. Raises ValueError on malformed input.\n"
+          },
+          {
+            "name": "simplify",
+            "kind": "instancemethod",
+            "signatures": [
+              "simplify(self: orca.host.Polygon, tolerance: typing.SupportsFloat) -> list[orca.host.Polygon]"
+            ],
+            "doc": "simplify(self: orca.host.Polygon, tolerance: typing.SupportsFloat) -> list[orca.host.Polygon]\n\nReturn simplified geometry as a list of Polygon (may split into several).\n"
+          },
+          {
+            "name": "size",
+            "kind": "instancemethod",
+            "signatures": [
+              "size(self: orca.host.Polygon) -> int"
+            ],
+            "doc": "size(self: orca.host.Polygon) -> int\n"
+          },
+          {
+            "name": "translate",
+            "kind": "instancemethod",
+            "signatures": [
+              "translate(self: orca.host.Polygon, x: typing.SupportsFloat, y: typing.SupportsFloat) -> None"
+            ],
+            "doc": "translate(self: orca.host.Polygon, x: typing.SupportsFloat, y: typing.SupportsFloat) -> None\n"
+          }
+        ]
+      },
+      {
+        "name": "Preset",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "alias",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "bundle_id",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "config_keys",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_keys(self: orca.host.Preset) -> list[str]"
+            ],
+            "doc": "config_keys(self: orca.host.Preset) -> list[str]\n"
+          },
+          {
+            "name": "config_value",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_value(self: orca.host.Preset, arg0: str) -> object"
+            ],
+            "doc": "config_value(self: orca.host.Preset, arg0: str) -> object\n"
+          },
+          {
+            "name": "file",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_compatible",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_default",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_dirty",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_external",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_from_bundle",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_from_bundle(self: orca.host.Preset) -> bool"
+            ],
+            "doc": "is_from_bundle(self: orca.host.Preset) -> bool\n"
+          },
+          {
+            "name": "is_project_embedded",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_system",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_user",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_user(self: orca.host.Preset) -> bool"
+            ],
+            "doc": "is_user(self: orca.host.Preset) -> bool\n"
+          },
+          {
+            "name": "is_visible",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "label",
+            "kind": "instancemethod",
+            "signatures": [
+              "label(self: orca.host.Preset, no_alias: bool = False) -> str"
+            ],
+            "doc": "label(self: orca.host.Preset, no_alias: bool = False) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "type",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "PresetBundle",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "current_filament_preset_names",
+            "kind": "instancemethod",
+            "signatures": [
+              "current_filament_preset_names(self: orca.host.PresetBundle) -> list[str]"
+            ],
+            "doc": "current_filament_preset_names(self: orca.host.PresetBundle) -> list[str]\n"
+          },
+          {
+            "name": "current_filament_presets",
+            "kind": "instancemethod",
+            "signatures": [
+              "current_filament_presets(self: orca.host.PresetBundle) -> list"
+            ],
+            "doc": "current_filament_presets(self: orca.host.PresetBundle) -> list\n"
+          },
+          {
+            "name": "current_print_preset",
+            "kind": "instancemethod",
+            "signatures": [
+              "current_print_preset(self: orca.host.PresetBundle) -> orca.host.Preset"
+            ],
+            "doc": "current_print_preset(self: orca.host.PresetBundle) -> orca.host.Preset\n"
+          },
+          {
+            "name": "current_printer_preset",
+            "kind": "instancemethod",
+            "signatures": [
+              "current_printer_preset(self: orca.host.PresetBundle) -> orca.host.Preset"
+            ],
+            "doc": "current_printer_preset(self: orca.host.PresetBundle) -> orca.host.Preset\n"
+          },
+          {
+            "name": "current_process_preset",
+            "kind": "instancemethod",
+            "signatures": [
+              "current_process_preset(self: orca.host.PresetBundle) -> orca.host.Preset"
+            ],
+            "doc": "current_process_preset(self: orca.host.PresetBundle) -> orca.host.Preset\n"
+          },
+          {
+            "name": "filaments",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "full_config_keys",
+            "kind": "instancemethod",
+            "signatures": [
+              "full_config_keys(self: orca.host.PresetBundle) -> list[str]"
+            ],
+            "doc": "full_config_keys(self: orca.host.PresetBundle) -> list[str]\n"
+          },
+          {
+            "name": "full_config_value",
+            "kind": "instancemethod",
+            "signatures": [
+              "full_config_value(self: orca.host.PresetBundle, arg0: str) -> object"
+            ],
+            "doc": "full_config_value(self: orca.host.PresetBundle, arg0: str) -> object\n"
+          },
+          {
+            "name": "printers",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "prints",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "sla_materials",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "sla_prints",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "PresetCollection",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "edited_preset",
+            "kind": "instancemethod",
+            "signatures": [
+              "edited_preset(self: orca.host.PresetCollection) -> orca.host.Preset"
+            ],
+            "doc": "edited_preset(self: orca.host.PresetCollection) -> orca.host.Preset\n"
+          },
+          {
+            "name": "find_preset",
+            "kind": "instancemethod",
+            "signatures": [
+              "find_preset(self: orca.host.PresetCollection, arg0: str) -> orca.host.Preset"
+            ],
+            "doc": "find_preset(self: orca.host.PresetCollection, arg0: str) -> orca.host.Preset\n"
+          },
+          {
+            "name": "get_edited_preset",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_edited_preset(self: orca.host.PresetCollection) -> orca.host.Preset"
+            ],
+            "doc": "get_edited_preset(self: orca.host.PresetCollection) -> orca.host.Preset\n"
+          },
+          {
+            "name": "get_selected_preset",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_selected_preset(self: orca.host.PresetCollection) -> orca.host.Preset"
+            ],
+            "doc": "get_selected_preset(self: orca.host.PresetCollection) -> orca.host.Preset\n"
+          },
+          {
+            "name": "get_selected_preset_name",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_selected_preset_name(self: orca.host.PresetCollection) -> str"
+            ],
+            "doc": "get_selected_preset_name(self: orca.host.PresetCollection) -> str\n"
+          },
+          {
+            "name": "preset",
+            "kind": "instancemethod",
+            "signatures": [
+              "preset(self: orca.host.PresetCollection, arg0: typing.SupportsInt) -> orca.host.Preset"
+            ],
+            "doc": "preset(self: orca.host.PresetCollection, arg0: typing.SupportsInt) -> orca.host.Preset\n"
+          },
+          {
+            "name": "preset_names",
+            "kind": "instancemethod",
+            "signatures": [
+              "preset_names(self: orca.host.PresetCollection) -> list[str]"
+            ],
+            "doc": "preset_names(self: orca.host.PresetCollection) -> list[str]\n"
+          },
+          {
+            "name": "selected_preset",
+            "kind": "instancemethod",
+            "signatures": [
+              "selected_preset(self: orca.host.PresetCollection) -> orca.host.Preset"
+            ],
+            "doc": "selected_preset(self: orca.host.PresetCollection) -> orca.host.Preset\n"
+          },
+          {
+            "name": "selected_preset_name",
+            "kind": "instancemethod",
+            "signatures": [
+              "selected_preset_name(self: orca.host.PresetCollection) -> str"
+            ],
+            "doc": "selected_preset_name(self: orca.host.PresetCollection) -> str\n"
+          },
+          {
+            "name": "size",
+            "kind": "instancemethod",
+            "signatures": [
+              "size(self: orca.host.PresetCollection) -> int"
+            ],
+            "doc": "size(self: orca.host.PresetCollection) -> int\n"
+          }
+        ]
+      },
+      {
+        "name": "PresetType",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "Filament",
+            "kind": "PresetType"
+          },
+          {
+            "name": "Invalid",
+            "kind": "PresetType"
+          },
+          {
+            "name": "Model",
+            "kind": "PresetType"
+          },
+          {
+            "name": "PhysicalPrinter",
+            "kind": "PresetType"
+          },
+          {
+            "name": "Plate",
+            "kind": "PresetType"
+          },
+          {
+            "name": "Print",
+            "kind": "PresetType"
+          },
+          {
+            "name": "Printer",
+            "kind": "PresetType"
+          },
+          {
+            "name": "SlaMaterial",
+            "kind": "PresetType"
+          },
+          {
+            "name": "SlaPrint",
+            "kind": "PresetType"
+          },
+          {
+            "name": "__eq__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__eq__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__eq__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__hash__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__hash__(self: object, /) -> int"
+            ],
+            "doc": "__hash__(self: object, /) -> int\n"
+          },
+          {
+            "name": "__index__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__index__(self: orca.host.PresetType, /) -> int"
+            ],
+            "doc": "__index__(self: orca.host.PresetType, /) -> int\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.host.PresetType, value: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.host.PresetType, value: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__int__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__int__(self: orca.host.PresetType, /) -> int"
+            ],
+            "doc": "__int__(self: orca.host.PresetType, /) -> int\n"
+          },
+          {
+            "name": "__ne__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__ne__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__ne__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: object, /) -> str"
+            ],
+            "doc": "__repr__(self: object, /) -> str\n"
+          },
+          {
+            "name": "__str__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__str__(self: object, /) -> str"
+            ],
+            "doc": "__str__(self: object, /) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": "name(self: object, /) -> str\n"
+          },
+          {
+            "name": "value",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "Print",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "canceled",
+            "kind": "instancemethod",
+            "signatures": [
+              "canceled(self: orca.host.Print) -> bool"
+            ],
+            "doc": "canceled(self: orca.host.Print) -> bool\n\nTrue once cancellation was requested (prefer ctx.cancelled()).\n"
+          },
+          {
+            "name": "config_keys",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_keys(self: orca.host.Print) -> list[str]"
+            ],
+            "doc": "config_keys(self: orca.host.Print) -> list[str]\n"
+          },
+          {
+            "name": "config_value",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_value(self: orca.host.Print, key: str) -> object"
+            ],
+            "doc": "config_value(self: orca.host.Print, key: str) -> object\n\nSerialized value of the resolved (full) print config for this slice, or None.\n"
+          },
+          {
+            "name": "model",
+            "kind": "instancemethod",
+            "signatures": [
+              "model(self: orca.host.Print) -> orca.host.Model"
+            ],
+            "doc": "model(self: orca.host.Print) -> orca.host.Model\n\nThe Print's own Model snapshot (worker-thread stable). Inside slicing hooks use THIS \u2014 never orca.host.model(), which is the live GUI model owned by another thread.\n"
+          },
+          {
+            "name": "objects",
+            "kind": "instancemethod",
+            "signatures": [
+              "objects(self: object) -> list"
+            ],
+            "doc": "objects(self: object) -> list\n\nThe print's objects as [PrintObject].\n"
+          }
+        ]
+      },
+      {
+        "name": "PrintObject",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "bounding_box",
+            "kind": "instancemethod",
+            "signatures": [
+              "bounding_box(self: orca.host.PrintObject) -> tuple"
+            ],
+            "doc": "bounding_box(self: orca.host.PrintObject) -> tuple\n\nObject XY bounding box in scaled coords as (min_x, min_y, max_x, max_y). The sliced polygons live in this same frame, so its midpoint is the footprint center.\n"
+          },
+          {
+            "name": "config_keys",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_keys(self: orca.host.PrintObject) -> list[str]"
+            ],
+            "doc": "config_keys(self: orca.host.PrintObject) -> list[str]\n"
+          },
+          {
+            "name": "config_value",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_value(self: orca.host.PrintObject, key: str) -> object"
+            ],
+            "doc": "config_value(self: orca.host.PrintObject, key: str) -> object\n\nSerialized value of a resolved per-object config option, or None if absent.\n"
+          },
+          {
+            "name": "id",
+            "kind": "instancemethod",
+            "signatures": [
+              "id(self: orca.host.PrintObject) -> int"
+            ],
+            "doc": "id(self: orca.host.PrintObject) -> int\n\nStable numeric object id (ObjectBase::id()).\n"
+          },
+          {
+            "name": "layers",
+            "kind": "instancemethod",
+            "signatures": [
+              "layers(self: object) -> list"
+            ],
+            "doc": "layers(self: object) -> list\n\nObject layers, bottom-up, as [Layer].\n"
+          },
+          {
+            "name": "model_object",
+            "kind": "instancemethod",
+            "signatures": [
+              "model_object(self: orca.host.PrintObject) -> object"
+            ],
+            "doc": "model_object(self: orca.host.PrintObject) -> object\n\nThe source orca.host.ModelObject from the Print's own model snapshot.\n"
+          },
+          {
+            "name": "support_layers",
+            "kind": "instancemethod",
+            "signatures": [
+              "support_layers(self: object) -> list"
+            ],
+            "doc": "support_layers(self: object) -> list\n\nSupport layers as [Layer] (support-specific fields are not exposed).\n"
+          },
+          {
+            "name": "trafo",
+            "kind": "instancemethod",
+            "signatures": [
+              "trafo(self: orca.host.PrintObject) -> object"
+            ],
+            "doc": "trafo(self: orca.host.PrintObject) -> object\n\nObject-to-print 4x4 float64 affine matrix (copy). Requires numpy.\n"
+          }
+        ]
+      },
+      {
+        "name": "PrintRegion",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "config_keys",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_keys(self: orca.host.PrintRegion) -> list[str]"
+            ],
+            "doc": "config_keys(self: orca.host.PrintRegion) -> list[str]\n"
+          },
+          {
+            "name": "config_value",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_value(self: orca.host.PrintRegion, key: str) -> object"
+            ],
+            "doc": "config_value(self: orca.host.PrintRegion, key: str) -> object\n\nSerialized value of this region's resolved config option, or None if absent.\n"
+          }
+        ]
+      },
+      {
+        "name": "Surface",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.host.Surface, surface_type: orca.host.SurfaceType, expolygon: orca.host.ExPolygon) -> None",
+              "__init__(self: orca.host.Surface, surface_type: orca.host.SurfaceType) -> None"
+            ],
+            "doc": "__init__(*args, **kwargs)\nOverloaded function.\n\n1. __init__(self: orca.host.Surface, surface_type: orca.host.SurfaceType, expolygon: orca.host.ExPolygon) -> None\n\n2. __init__(self: orca.host.Surface, surface_type: orca.host.SurfaceType) -> None\n"
+          },
+          {
+            "name": "area",
+            "kind": "instancemethod",
+            "signatures": [
+              "area(self: orca.host.Surface) -> float"
+            ],
+            "doc": "area(self: orca.host.Surface) -> float\n"
+          },
+          {
+            "name": "bridge_angle",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "expolygon",
+            "kind": "property",
+            "doc": "This surface's geometry. Read returns a live ExPolygon ref; assign to replace it."
+          },
+          {
+            "name": "extra_perimeters",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_bottom",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_bottom(self: orca.host.Surface) -> bool"
+            ],
+            "doc": "is_bottom(self: orca.host.Surface) -> bool\n"
+          },
+          {
+            "name": "is_bridge",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_bridge(self: orca.host.Surface) -> bool"
+            ],
+            "doc": "is_bridge(self: orca.host.Surface) -> bool\n"
+          },
+          {
+            "name": "is_external",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_external(self: orca.host.Surface) -> bool"
+            ],
+            "doc": "is_external(self: orca.host.Surface) -> bool\n"
+          },
+          {
+            "name": "is_internal",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_internal(self: orca.host.Surface) -> bool"
+            ],
+            "doc": "is_internal(self: orca.host.Surface) -> bool\n"
+          },
+          {
+            "name": "is_solid",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_solid(self: orca.host.Surface) -> bool"
+            ],
+            "doc": "is_solid(self: orca.host.Surface) -> bool\n"
+          },
+          {
+            "name": "is_top",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_top(self: orca.host.Surface) -> bool"
+            ],
+            "doc": "is_top(self: orca.host.Surface) -> bool\n"
+          },
+          {
+            "name": "surface_type",
+            "kind": "property",
+            "doc": "This surface's SurfaceType. Assigning reclassifies it in place (geometry unchanged)."
+          },
+          {
+            "name": "thickness",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "SurfaceCollection",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "append",
+            "kind": "instancemethod",
+            "signatures": [
+              "append(self: orca.host.SurfaceCollection, expolygons: collections.abc.Sequence[orca.host.ExPolygon], surface_type: orca.host.SurfaceType) -> None"
+            ],
+            "doc": "append(self: orca.host.SurfaceCollection, expolygons: collections.abc.Sequence[orca.host.ExPolygon], surface_type: orca.host.SurfaceType) -> None\n"
+          },
+          {
+            "name": "clear",
+            "kind": "instancemethod",
+            "signatures": [
+              "clear(self: orca.host.SurfaceCollection) -> None"
+            ],
+            "doc": "clear(self: orca.host.SurfaceCollection) -> None\n"
+          },
+          {
+            "name": "empty",
+            "kind": "instancemethod",
+            "signatures": [
+              "empty(self: orca.host.SurfaceCollection) -> bool"
+            ],
+            "doc": "empty(self: orca.host.SurfaceCollection) -> bool\n"
+          },
+          {
+            "name": "filter_by_type",
+            "kind": "instancemethod",
+            "signatures": [
+              "filter_by_type(self: object, surface_type: orca.host.SurfaceType) -> list"
+            ],
+            "doc": "filter_by_type(self: object, surface_type: orca.host.SurfaceType) -> list\n\nSurfaces of a given type as [Surface] refs. Invalidated by set()/append()/clear() on this collection (C++ vector semantics), same as .surfaces.\n"
+          },
+          {
+            "name": "has",
+            "kind": "instancemethod",
+            "signatures": [
+              "has(self: orca.host.SurfaceCollection, surface_type: orca.host.SurfaceType) -> bool"
+            ],
+            "doc": "has(self: orca.host.SurfaceCollection, surface_type: orca.host.SurfaceType) -> bool\n"
+          },
+          {
+            "name": "set",
+            "kind": "instancemethod",
+            "signatures": [
+              "set(self: orca.host.SurfaceCollection, expolygons: collections.abc.Sequence[orca.host.ExPolygon], surface_type: orca.host.SurfaceType) -> None",
+              "set(self: orca.host.SurfaceCollection, surfaces: collections.abc.Sequence[orca.host.Surface]) -> None"
+            ],
+            "doc": "set(*args, **kwargs)\nOverloaded function.\n\n1. set(self: orca.host.SurfaceCollection, expolygons: collections.abc.Sequence[orca.host.ExPolygon], surface_type: orca.host.SurfaceType) -> None\n\nReplace all surfaces from a list of ExPolygon, all tagged `surface_type`.\n\n2. set(self: orca.host.SurfaceCollection, surfaces: collections.abc.Sequence[orca.host.Surface]) -> None\n\nReplace all surfaces from a list of Surface (types preserved per surface).\n"
+          },
+          {
+            "name": "set_type",
+            "kind": "instancemethod",
+            "signatures": [
+              "set_type(self: orca.host.SurfaceCollection, surface_type: orca.host.SurfaceType) -> None"
+            ],
+            "doc": "set_type(self: orca.host.SurfaceCollection, surface_type: orca.host.SurfaceType) -> None\n"
+          },
+          {
+            "name": "size",
+            "kind": "instancemethod",
+            "signatures": [
+              "size(self: orca.host.SurfaceCollection) -> int"
+            ],
+            "doc": "size(self: orca.host.SurfaceCollection) -> int\n"
+          },
+          {
+            "name": "surfaces",
+            "kind": "property",
+            "doc": "Surfaces as [Surface] references into the live collection. Invalidated by set()/append()/clear() on this collection (C++ vector semantics)."
+          }
+        ]
+      },
+      {
+        "name": "SurfaceType",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__eq__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__eq__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__eq__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__hash__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__hash__(self: object, /) -> int"
+            ],
+            "doc": "__hash__(self: object, /) -> int\n"
+          },
+          {
+            "name": "__index__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__index__(self: orca.host.SurfaceType, /) -> int"
+            ],
+            "doc": "__index__(self: orca.host.SurfaceType, /) -> int\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.host.SurfaceType, value: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.host.SurfaceType, value: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__int__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__int__(self: orca.host.SurfaceType, /) -> int"
+            ],
+            "doc": "__int__(self: orca.host.SurfaceType, /) -> int\n"
+          },
+          {
+            "name": "__ne__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__ne__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__ne__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: object, /) -> str"
+            ],
+            "doc": "__repr__(self: object, /) -> str\n"
+          },
+          {
+            "name": "__str__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__str__(self: object, /) -> str"
+            ],
+            "doc": "__str__(self: object, /) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": "name(self: object, /) -> str\n"
+          },
+          {
+            "name": "stBottom",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stBottomBridge",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stCount",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stInternal",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stInternalAfterExternalBridge",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stInternalBridge",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stInternalSolid",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stInternalVoid",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stPerimeter",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stSecondInternalBridge",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "stTop",
+            "kind": "SurfaceType"
+          },
+          {
+            "name": "value",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "TriangleMesh",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "bounding_box",
+            "kind": "instancemethod",
+            "signatures": [
+              "bounding_box(self: orca.host.TriangleMesh) -> orca.host.BoundingBox"
+            ],
+            "doc": "bounding_box(self: orca.host.TriangleMesh) -> orca.host.BoundingBox\n"
+          },
+          {
+            "name": "face_normals",
+            "kind": "instancemethod",
+            "signatures": [
+              "face_normals(self: orca.host.TriangleMesh) -> object"
+            ],
+            "doc": "face_normals(self: orca.host.TriangleMesh) -> object\n\nPer-triangle normalized normals as an (M, 3) float32 ndarray (copy). Requires numpy.\n"
+          },
+          {
+            "name": "facets_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "facets_count(self: orca.host.TriangleMesh) -> int"
+            ],
+            "doc": "facets_count(self: orca.host.TriangleMesh) -> int\n"
+          },
+          {
+            "name": "is_empty",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_empty(self: orca.host.TriangleMesh) -> bool"
+            ],
+            "doc": "is_empty(self: orca.host.TriangleMesh) -> bool\n"
+          },
+          {
+            "name": "is_manifold",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_manifold(self: orca.host.TriangleMesh) -> bool"
+            ],
+            "doc": "is_manifold(self: orca.host.TriangleMesh) -> bool\n"
+          },
+          {
+            "name": "triangle",
+            "kind": "instancemethod",
+            "signatures": [
+              "triangle(self: orca.host.TriangleMesh, arg0: typing.SupportsInt) -> tuple"
+            ],
+            "doc": "triangle(self: orca.host.TriangleMesh, arg0: typing.SupportsInt) -> tuple\n"
+          },
+          {
+            "name": "triangle_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "triangle_count(self: orca.host.TriangleMesh) -> int"
+            ],
+            "doc": "triangle_count(self: orca.host.TriangleMesh) -> int\n"
+          },
+          {
+            "name": "triangles",
+            "kind": "instancemethod",
+            "signatures": [
+              "triangles(self: object) -> object"
+            ],
+            "doc": "triangles(self: object) -> object\n\nRead-only zero-copy (M, 3) int32 ndarray of triangle vertex indices. Requires numpy.\n"
+          },
+          {
+            "name": "vertex",
+            "kind": "instancemethod",
+            "signatures": [
+              "vertex(self: orca.host.TriangleMesh, arg0: typing.SupportsInt) -> tuple"
+            ],
+            "doc": "vertex(self: orca.host.TriangleMesh, arg0: typing.SupportsInt) -> tuple\n"
+          },
+          {
+            "name": "vertex_count",
+            "kind": "instancemethod",
+            "signatures": [
+              "vertex_count(self: orca.host.TriangleMesh) -> int"
+            ],
+            "doc": "vertex_count(self: orca.host.TriangleMesh) -> int\n"
+          },
+          {
+            "name": "vertices",
+            "kind": "instancemethod",
+            "signatures": [
+              "vertices(self: object) -> object"
+            ],
+            "doc": "vertices(self: object) -> object\n\nRead-only zero-copy (N, 3) float32 ndarray of vertex positions (local mm). Requires numpy.\n"
+          },
+          {
+            "name": "volume",
+            "kind": "instancemethod",
+            "signatures": [
+              "volume(self: orca.host.TriangleMesh) -> float"
+            ],
+            "doc": "volume(self: orca.host.TriangleMesh) -> float\n"
+          }
+        ]
+      },
+      {
+        "name": "app_info",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "app_info() -> dict"
+        ],
+        "doc": "app_info() -> dict\n\nThe running app: version, mode, language, app_config_version (the version that wrote the app config before this run, empty when there was none), stealth_mode and is_signed_in. Upstream also reports the Orca/Bambu cloud states and the network plugin version; those agents are trimmed on this fork.\n"
+      },
+      {
+        "name": "app_language",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "app_language() -> str"
+        ],
+        "doc": "app_language() -> str\n"
+      },
+      {
+        "name": "gl_info",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "gl_info() -> object"
+        ],
+        "doc": "gl_info() -> object\n\nOpenGL vendor, renderer, version and glsl_version of the 3D view; None before it has been created. Upstream also reports core_profile; this fork's GLInfo does not track it.\n"
+      },
+      {
+        "name": "model",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "model() -> orca.host.Model"
+        ],
+        "doc": "model() -> orca.host.Model\n"
+      },
+      {
+        "name": "plater",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "plater() -> orca.host.Plater"
+        ],
+        "doc": "plater() -> orca.host.Plater\n"
+      },
+      {
+        "name": "plugin",
+        "kind": "module",
+        "module": "orca.host.plugin"
+      },
+      {
+        "name": "preset",
+        "kind": "module",
+        "module": "orca.host.preset"
+      },
+      {
+        "name": "preset_bundle",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "preset_bundle() -> orca.host.PresetBundle"
+        ],
+        "doc": "preset_bundle() -> orca.host.PresetBundle\n"
+      },
+      {
+        "name": "stBottom",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stBottomBridge",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stCount",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stInternal",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stInternalAfterExternalBridge",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stInternalBridge",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stInternalSolid",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stInternalVoid",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stPerimeter",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stSecondInternalBridge",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "stTop",
+        "kind": "SurfaceType"
+      },
+      {
+        "name": "ui",
+        "kind": "module",
+        "module": "orca.host.ui"
+      }
+    ],
+    "orca.host.plugin": [
+      {
+        "name": "storage",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "storage() -> str"
+        ],
+        "doc": "storage() -> str\n\nReturn the installed folder of the current plugin.\n"
+      }
+    ],
+    "orca.host.preset": [
+      {
+        "name": "PresetEditor",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "begin_update",
+            "kind": "instancemethod",
+            "signatures": [
+              "begin_update(self: orca.host.preset.PresetEditor, preset_name: str = '') -> orca.host.preset.PresetTransaction",
+              "begin_update(self: orca.host.preset.PresetEditor, slot_number: typing.SupportsInt, preset_name: str = '') -> orca.host.preset.PresetTransaction"
+            ],
+            "doc": "begin_update(*args, **kwargs)\nOverloaded function.\n\n1. begin_update(self: orca.host.preset.PresetEditor, preset_name: str = '') -> orca.host.preset.PresetTransaction\n\nResolve and bind this category's target preset and return a PresetTransaction. With no preset_name the currently active preset is targeted; a preset_name must be a preset this category can select, and is selected through the normal preset-selection flow (which prompts about unsaved edits). The call blocks the background Script worker until any such dialog is answered, leaving the UI thread responsive. A selection the user cancels raises RuntimeError; an unavailable or invalid target raises ValueError. Either failure creates no transaction and stages no setting. Call it from the background Script worker, never from the UI thread. This form is for process and printer; filament takes begin_update(slot_number, preset_name=\"\").\n\n2. begin_update(self: orca.host.preset.PresetEditor, slot_number: typing.SupportsInt, preset_name: str = '') -> orca.host.preset.PresetTransaction\n\nResolve and bind a filament preset by 1-based slot and return a PresetTransaction. Omitting preset_name targets the preset assigned to the slot; supplying a different name selects it for the slot through the normal flow (prompting about unsaved edits) and, once that succeeds, records the new slot assignment with the same Plater side effects the sidebar selection performs (project/selection refresh, dynamic filament list, conditional support-filament flushing recalc and the slot's AMS sync badge). A requested preset this slot's dropdown does not offer is rejected before that flow, so it raises no prompt; the slot's own current assignment stays targetable even when the dropdown hides it. A selection the user cancels raises RuntimeError and changes neither the slot assignment nor any setting. An out-of-range, empty or unresolved slot is rejected, and a mixed-color virtual slot is rejected whether or not preset_name is given. The transaction edits the shared preset, so every slot assigned to it is affected. The call blocks the background Script worker until the selection settles, leaving the UI thread responsive; call it from that worker, never from the UI thread.\n"
+          },
+          {
+            "name": "type",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "update",
+            "kind": "instancemethod",
+            "signatures": [
+              "update(self: orca.host.preset.PresetEditor, key: str, value: str) -> None",
+              "update(self: orca.host.preset.PresetEditor, slot_number: typing.SupportsInt, key: str, value: str) -> None"
+            ],
+            "doc": "update(*args, **kwargs)\nOverloaded function.\n\n1. update(self: orca.host.preset.PresetEditor, key: str, value: str) -> None\n\nSet one setting of the currently edited preset and run the same committed-change path as editing the setting in the GUI; the edited preset becomes dirty until saved/exported. key must be a setting of this preset category and value its serialized string form, otherwise ValueError is raised and nothing is written. A setting edited through a field runs that field's validation even before its page has been opened; one the GUI edits outside a field (such as compatible printers) also recomputes preset compatibility. Equivalent to begin_update() with the active preset as target, then set(key, value) and commit(); like begin_update() this call blocks the background Script worker.\n\n2. update(self: orca.host.preset.PresetEditor, slot_number: typing.SupportsInt, key: str, value: str) -> None\n\nSet one setting of the filament preset assigned to a 1-based filament slot. When that preset is not the one currently edited the call switches to it through the normal preset-selection flow, so an unsaved edited preset still prompts the user and a declined prompt cancels the call with an error and no change. An out-of-range, empty or unresolved slot is rejected with a clear error, as is a mixed-color virtual slot, which has no single preset to edit. Other preset editors accept only update(key, value); this form raises ValueError on them. Equivalent to begin_update(slot_number) with an omitted preset_name (the slot's current assignment is kept), then set(key, value) and commit(); like begin_update() this call blocks the background Script worker.\n"
+          }
+        ]
+      },
+      {
+        "name": "PresetTransaction",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "category",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "commit",
+            "kind": "instancemethod",
+            "signatures": [
+              "commit(self: orca.host.preset.PresetTransaction) -> orca.host.preset.PresetUpdateResult"
+            ],
+            "doc": "commit(self: orca.host.preset.PresetTransaction) -> orca.host.preset.PresetUpdateResult\n\nValidate and apply every staged setting through the same path as editing it in the GUI, then return a PresetUpdateResult. An invalid key or value raises ValueError; a changed target or filament slot mapping raises RuntimeError; a failure leaves none of the staged settings applied. The edited preset becomes dirty until the user saves it.\n"
+          },
+          {
+            "name": "selection_changed",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "set",
+            "kind": "instancemethod",
+            "signatures": [
+              "set(self: orca.host.preset.PresetTransaction, key: str, value: str) -> None"
+            ],
+            "doc": "set(self: orca.host.preset.PresetTransaction, key: str, value: str) -> None\n\nStage one setting change. key must be a setting of the target preset category and value its serialized string form; staging validates neither, so commit() is where an invalid key or value fails. Staging the same key twice in one transaction raises ValueError (conflicting duplicate writes are rejected). After commit() the transaction is closed.\n"
+          },
+          {
+            "name": "slot_number",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "staged_keys",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "target_name",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "type",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "PresetUpdateResult",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: orca.host.preset.PresetUpdateResult) -> str"
+            ],
+            "doc": "__repr__(self: orca.host.preset.PresetUpdateResult) -> str\n"
+          },
+          {
+            "name": "category",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "dirty",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "keys",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "selection_changed",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "shared_slots",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "slot_assignment_changed",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "slot_number",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "target_name",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "type",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "bundles",
+        "kind": "module",
+        "module": "orca.host.preset.bundles"
+      },
+      {
+        "name": "filament",
+        "kind": "PresetEditor"
+      },
+      {
+        "name": "printer",
+        "kind": "PresetEditor"
+      },
+      {
+        "name": "process",
+        "kind": "PresetEditor"
+      }
+    ],
+    "orca.host.preset.bundles": [
+      {
+        "name": "list_ids",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "list_ids() -> list[str]"
+        ],
+        "doc": "list_ids() -> list[str]\n\nIDs of user preset folders under <data_dir>/user that reload_local() accepts, including folders created after startup.\n"
+      },
+      {
+        "name": "reload_local",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "reload_local(bundle_id: str) -> None"
+        ],
+        "doc": "reload_local(bundle_id: str) -> None\n\nReload one user preset folder under <data_dir>/user from disk (this build's local preset bundle unit); preset selections are preserved. Valid ids come from list_ids().\n"
+      }
+    ],
+    "orca.host.ui": [
+      {
+        "name": "ErrorNotificationLevel",
+        "kind": "NotificationLevel"
+      },
+      {
+        "name": "HintNotificationLevel",
+        "kind": "NotificationLevel"
+      },
+      {
+        "name": "ImportantNotificationLevel",
+        "kind": "NotificationLevel"
+      },
+      {
+        "name": "NotificationLevel",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "ErrorNotificationLevel",
+            "kind": "NotificationLevel"
+          },
+          {
+            "name": "HintNotificationLevel",
+            "kind": "NotificationLevel"
+          },
+          {
+            "name": "ImportantNotificationLevel",
+            "kind": "NotificationLevel"
+          },
+          {
+            "name": "PrintInfoNotificationLevel",
+            "kind": "NotificationLevel"
+          },
+          {
+            "name": "PrintInfoShortNotificationLevel",
+            "kind": "NotificationLevel"
+          },
+          {
+            "name": "ProgressBarNotificationLevel",
+            "kind": "NotificationLevel"
+          },
+          {
+            "name": "RegularNotificationLevel",
+            "kind": "NotificationLevel"
+          },
+          {
+            "name": "SeriousWarningNotificationLevel",
+            "kind": "NotificationLevel"
+          },
+          {
+            "name": "WarningNotificationLevel",
+            "kind": "NotificationLevel"
+          },
+          {
+            "name": "__eq__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__eq__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__eq__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__hash__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__hash__(self: object, /) -> int"
+            ],
+            "doc": "__hash__(self: object, /) -> int\n"
+          },
+          {
+            "name": "__index__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__index__(self: orca.host.ui.NotificationLevel, /) -> int"
+            ],
+            "doc": "__index__(self: orca.host.ui.NotificationLevel, /) -> int\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.host.ui.NotificationLevel, value: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.host.ui.NotificationLevel, value: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__int__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__int__(self: orca.host.ui.NotificationLevel, /) -> int"
+            ],
+            "doc": "__int__(self: orca.host.ui.NotificationLevel, /) -> int\n"
+          },
+          {
+            "name": "__ne__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__ne__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__ne__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: object, /) -> str"
+            ],
+            "doc": "__repr__(self: object, /) -> str\n"
+          },
+          {
+            "name": "__str__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__str__(self: object, /) -> str"
+            ],
+            "doc": "__str__(self: object, /) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": "name(self: object, /) -> str\n"
+          },
+          {
+            "name": "value",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "PD_APP_MODAL",
+        "kind": "int"
+      },
+      {
+        "name": "PD_AUTO_HIDE",
+        "kind": "int"
+      },
+      {
+        "name": "PD_CAN_ABORT",
+        "kind": "int"
+      },
+      {
+        "name": "PD_CAN_SKIP",
+        "kind": "int"
+      },
+      {
+        "name": "PD_ELAPSED_TIME",
+        "kind": "int"
+      },
+      {
+        "name": "PD_ESTIMATED_TIME",
+        "kind": "int"
+      },
+      {
+        "name": "PD_REMAINING_TIME",
+        "kind": "int"
+      },
+      {
+        "name": "PrintInfoNotificationLevel",
+        "kind": "NotificationLevel"
+      },
+      {
+        "name": "PrintInfoShortNotificationLevel",
+        "kind": "NotificationLevel"
+      },
+      {
+        "name": "ProgressBarNotificationLevel",
+        "kind": "NotificationLevel"
+      },
+      {
+        "name": "ProgressDialog",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__enter__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__enter__(self: orca.host.ui.ProgressDialog) -> orca.host.ui.ProgressDialog"
+            ],
+            "doc": "__enter__(self: orca.host.ui.ProgressDialog) -> orca.host.ui.ProgressDialog\n"
+          },
+          {
+            "name": "__exit__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__exit__(self: orca.host.ui.ProgressDialog, arg0: object, arg1: object, arg2: object) -> bool"
+            ],
+            "doc": "__exit__(self: orca.host.ui.ProgressDialog, arg0: object, arg1: object, arg2: object) -> bool\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.host.ui.ProgressDialog, title: str, message: str, maximum: typing.SupportsInt = 100, style: typing.SupportsInt = 6) -> None"
+            ],
+            "doc": "__init__(self: orca.host.ui.ProgressDialog, title: str, message: str, maximum: typing.SupportsInt = 100, style: typing.SupportsInt = 6) -> None\n"
+          },
+          {
+            "name": "close",
+            "kind": "instancemethod",
+            "signatures": [
+              "close(self: orca.host.ui.ProgressDialog) -> None"
+            ],
+            "doc": "close(self: orca.host.ui.ProgressDialog) -> None\n\nClose the progress dialog.\n"
+          },
+          {
+            "name": "id",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_open",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_open(self: orca.host.ui.ProgressDialog) -> bool"
+            ],
+            "doc": "is_open(self: orca.host.ui.ProgressDialog) -> bool\n\nReturn True while this progress dialog is registered.\n"
+          },
+          {
+            "name": "pulse",
+            "kind": "instancemethod",
+            "signatures": [
+              "pulse(self: orca.host.ui.ProgressDialog, message: str = '') -> bool"
+            ],
+            "doc": "pulse(self: orca.host.ui.ProgressDialog, message: str = '') -> bool\n\nPulse the dialog gauge; returns False if the dialog is closed or cancelled.\n"
+          },
+          {
+            "name": "start_pulse",
+            "kind": "instancemethod",
+            "signatures": [
+              "start_pulse(self: orca.host.ui.ProgressDialog, interval_ms: typing.SupportsInt = 100, message: str = '') -> None"
+            ],
+            "doc": "start_pulse(self: orca.host.ui.ProgressDialog, interval_ms: typing.SupportsInt = 100, message: str = '') -> None\n\nStart periodic pulsing.\n"
+          },
+          {
+            "name": "stop_pulse",
+            "kind": "instancemethod",
+            "signatures": [
+              "stop_pulse(self: orca.host.ui.ProgressDialog) -> None"
+            ],
+            "doc": "stop_pulse(self: orca.host.ui.ProgressDialog) -> None\n\nStop periodic pulsing.\n"
+          },
+          {
+            "name": "update",
+            "kind": "instancemethod",
+            "signatures": [
+              "update(self: orca.host.ui.ProgressDialog, value: typing.SupportsInt, message: str = '') -> bool"
+            ],
+            "doc": "update(self: orca.host.ui.ProgressDialog, value: typing.SupportsInt, message: str = '') -> bool\n\nSet the dialog progress value; returns False if the dialog is closed or cancelled.\n"
+          }
+        ]
+      },
+      {
+        "name": "RegularNotificationLevel",
+        "kind": "NotificationLevel"
+      },
+      {
+        "name": "SeriousWarningNotificationLevel",
+        "kind": "NotificationLevel"
+      },
+      {
+        "name": "UiDockPanel",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "close",
+            "kind": "instancemethod",
+            "signatures": [
+              "close(self: orca.host.ui.UiDockPanel) -> None"
+            ],
+            "doc": "close(self: orca.host.ui.UiDockPanel) -> None\n\nClose the panel (fires on_close).\n"
+          },
+          {
+            "name": "hide",
+            "kind": "instancemethod",
+            "signatures": [
+              "hide(self: orca.host.ui.UiDockPanel) -> None"
+            ],
+            "doc": "hide(self: orca.host.ui.UiDockPanel) -> None\n\nHide the panel without closing it.\n"
+          },
+          {
+            "name": "id",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_open",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_open(self: orca.host.ui.UiDockPanel) -> bool"
+            ],
+            "doc": "is_open(self: orca.host.ui.UiDockPanel) -> bool\n\nReturn True until the panel is closed; a hidden panel is still open.\n"
+          },
+          {
+            "name": "post",
+            "kind": "instancemethod",
+            "signatures": [
+              "post(self: orca.host.ui.UiDockPanel, data: object) -> None"
+            ],
+            "doc": "post(self: orca.host.ui.UiDockPanel, data: object) -> None\n\nSend a payload to the page (delivered to window.orca.onMessage handlers).\n"
+          },
+          {
+            "name": "show",
+            "kind": "instancemethod",
+            "signatures": [
+              "show(self: orca.host.ui.UiDockPanel) -> None"
+            ],
+            "doc": "show(self: orca.host.ui.UiDockPanel) -> None\n\nShow the panel again after hide().\n"
+          }
+        ]
+      },
+      {
+        "name": "UiWindow",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "close",
+            "kind": "instancemethod",
+            "signatures": [
+              "close(self: orca.host.ui.UiWindow) -> None"
+            ],
+            "doc": "close(self: orca.host.ui.UiWindow) -> None\n\nClose the window (fires on_close).\n"
+          },
+          {
+            "name": "id",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "is_open",
+            "kind": "instancemethod",
+            "signatures": [
+              "is_open(self: orca.host.ui.UiWindow) -> bool"
+            ],
+            "doc": "is_open(self: orca.host.ui.UiWindow) -> bool\n\nReturn True while the window is open.\n"
+          },
+          {
+            "name": "post",
+            "kind": "instancemethod",
+            "signatures": [
+              "post(self: orca.host.ui.UiWindow, data: object) -> None"
+            ],
+            "doc": "post(self: orca.host.ui.UiWindow, data: object) -> None\n\nSend a payload to the page (delivered to window.orca.onMessage handlers).\n"
+          }
+        ]
+      },
+      {
+        "name": "WINDOW_MODAL",
+        "kind": "int"
+      },
+      {
+        "name": "WINDOW_MODELESS",
+        "kind": "int"
+      },
+      {
+        "name": "WarningNotificationLevel",
+        "kind": "NotificationLevel"
+      },
+      {
+        "name": "create_dock_panel",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "create_dock_panel(html: str, title: str = 'OrcaSlicer', width: typing.SupportsInt = 320, height: typing.SupportsInt = 480, on_message: object = None, on_close: object = None, dock: str = 'right') -> object"
+        ],
+        "doc": "create_dock_panel(html: str, title: str = 'OrcaSlicer', width: typing.SupportsInt = 320, height: typing.SupportsInt = 480, on_message: object = None, on_close: object = None, dock: str = 'right') -> object\n\nOpen an HTML panel docked beside the 3D view and return a UiDockPanel. dock is \"left\", \"right\", \"bottom\" or \"float\", and width/height are in DIPs; the user can move and resize the panel, and a panel opened again comes back where the window layout was last saved. The panel belongs to the Prepare and Preview tabs. on_message(data) is called on the UI thread when the page posts; window.orca.close() or the panel's close button closes it and calls on_close(). A post() made before the page has loaded can be dropped, so have the page request its first data.\n"
+      },
+      {
+        "name": "create_progress_dialog",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "create_progress_dialog(title: str, message: str, maximum: typing.SupportsInt = 100, style: typing.SupportsInt = 6) -> orca.host.ui.ProgressDialog"
+        ],
+        "doc": "create_progress_dialog(title: str, message: str, maximum: typing.SupportsInt = 100, style: typing.SupportsInt = 6) -> orca.host.ui.ProgressDialog\n\nCreate a native progress dialog and return a ProgressDialog handle.\n"
+      },
+      {
+        "name": "create_window",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "create_window(html: str, title: str = 'OrcaSlicer', width: typing.SupportsInt = 820, height: typing.SupportsInt = 600, on_message: object = None, on_close: object = None, style: typing.SupportsInt = 0, on_submit: object = None) -> object"
+        ],
+        "doc": "create_window(html: str, title: str = 'OrcaSlicer', width: typing.SupportsInt = 820, height: typing.SupportsInt = 600, on_message: object = None, on_close: object = None, style: typing.SupportsInt = 0, on_submit: object = None) -> object\n\nOpen a persistent HTML window or modal dialog and return a UiWindow. style is WINDOW_MODELESS or WINDOW_MODAL. on_message(data) is called on the UI thread when the page posts; on_submit(data) is called when the page submits; offload heavy work to a thread and push results back with window.post().\n"
+      },
+      {
+        "name": "message",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "message(text: str, title: str = 'OrcaSlicer', buttons: str = 'ok', icon: str = 'info') -> str"
+        ],
+        "doc": "message(text: str, title: str = 'OrcaSlicer', buttons: str = 'ok', icon: str = 'info') -> str\n\nShow a native modal message box; returns the clicked button id (\"ok\"/\"cancel\"/\"yes\"/\"no\"). buttons: \"ok\"|\"ok_cancel\"|\"yes_no\"|\"yes_no_cancel\"; icon: \"info\"|\"warning\"|\"error\"|\"question\".\n"
+      },
+      {
+        "name": "push_notification",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "push_notification(notification_level: orca.host.ui.NotificationLevel, text: str, hyper_text: str = '', on_click: object = None) -> None"
+        ],
+        "doc": "push_notification(notification_level: orca.host.ui.NotificationLevel, text: str, hyper_text: str = '', on_click: object = None) -> None\n\nPush a plater notification. hyper_text is an underlined label; on_click() is called when it is clicked and may return True to close the notification.\n"
+      }
+    ],
+    "orca.pages": [
+      {
+        "name": "PagesPluginCapabilityBase",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.pages.PagesPluginCapabilityBase) -> None"
+            ],
+            "doc": "__init__(self: orca.pages.PagesPluginCapabilityBase) -> None\n"
+          },
+          {
+            "name": "get_icon",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_icon(self: orca.pages.PagesPluginCapabilityBase) -> str"
+            ],
+            "doc": "get_icon(self: orca.pages.PagesPluginCapabilityBase) -> str\n"
+          },
+          {
+            "name": "get_type",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_type(self: orca.pages.PagesPluginCapabilityBase) -> orca.PluginType"
+            ],
+            "doc": "get_type(self: orca.pages.PagesPluginCapabilityBase) -> orca.PluginType\n"
+          },
+          {
+            "name": "get_ui",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_ui(self: orca.pages.PagesPluginCapabilityBase) -> str"
+            ],
+            "doc": "get_ui(self: orca.pages.PagesPluginCapabilityBase) -> str\n"
+          },
+          {
+            "name": "on_message",
+            "kind": "instancemethod",
+            "signatures": [
+              "on_message(self: orca.pages.PagesPluginCapabilityBase, arg0: str) -> None"
+            ],
+            "doc": "on_message(self: orca.pages.PagesPluginCapabilityBase, arg0: str) -> None\n"
+          },
+          {
+            "name": "post_message",
+            "kind": "instancemethod",
+            "signatures": [
+              "post_message(self: orca.pages.PagesPluginCapabilityBase, data: object) -> None"
+            ],
+            "doc": "post_message(self: orca.pages.PagesPluginCapabilityBase, data: object) -> None\n\nSend a JSON-compatible value to the page's window.orca.onMessage handlers.\n"
+          }
+        ]
+      }
+    ],
+    "orca.resource_texture": [
+      {
+        "name": "ResourceTexturePluginCapabilityBase",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.resource_texture.ResourceTexturePluginCapabilityBase) -> None"
+            ],
+            "doc": "__init__(self: orca.resource_texture.ResourceTexturePluginCapabilityBase) -> None\n"
+          },
+          {
+            "name": "get_texture_dir",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_texture_dir(self: orca.resource_texture.ResourceTexturePluginCapabilityBase) -> str"
+            ],
+            "doc": "get_texture_dir(self: orca.resource_texture.ResourceTexturePluginCapabilityBase) -> str\n"
+          },
+          {
+            "name": "get_type",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_type(self: orca.resource_texture.ResourceTexturePluginCapabilityBase) -> orca.PluginType"
+            ],
+            "doc": "get_type(self: orca.resource_texture.ResourceTexturePluginCapabilityBase) -> orca.PluginType\n"
+          }
+        ]
+      }
+    ],
+    "orca.script": [
+      {
+        "name": "ScriptPluginCapabilityBase",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.script.ScriptPluginCapabilityBase) -> None"
+            ],
+            "doc": "__init__(self: orca.script.ScriptPluginCapabilityBase) -> None\n"
+          },
+          {
+            "name": "execute",
+            "kind": "instancemethod",
+            "signatures": [
+              "execute(self: orca.script.ScriptPluginCapabilityBase) -> orca.ExecutionResult"
+            ],
+            "doc": "execute(self: orca.script.ScriptPluginCapabilityBase) -> orca.ExecutionResult\n"
+          },
+          {
+            "name": "get_type",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_type(self: orca.script.ScriptPluginCapabilityBase) -> orca.PluginType"
+            ],
+            "doc": "get_type(self: orca.script.ScriptPluginCapabilityBase) -> orca.PluginType\n"
+          }
+        ]
+      }
+    ],
+    "orca.slicing": [
+      {
+        "name": "SlicingPipelineCapabilityBase",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.slicing.SlicingPipelineCapabilityBase) -> None"
+            ],
+            "doc": "__init__(self: orca.slicing.SlicingPipelineCapabilityBase) -> None\n"
+          },
+          {
+            "name": "execute",
+            "kind": "instancemethod",
+            "signatures": [
+              "execute(self: orca.slicing.SlicingPipelineCapabilityBase, arg0: orca.slicing.SlicingPipelineContext) -> orca.ExecutionResult"
+            ],
+            "doc": "execute(self: orca.slicing.SlicingPipelineCapabilityBase, arg0: orca.slicing.SlicingPipelineContext) -> orca.ExecutionResult\n"
+          },
+          {
+            "name": "get_type",
+            "kind": "instancemethod",
+            "signatures": [
+              "get_type(self: orca.slicing.SlicingPipelineCapabilityBase) -> orca.PluginType"
+            ],
+            "doc": "get_type(self: orca.slicing.SlicingPipelineCapabilityBase) -> orca.PluginType\n"
+          }
+        ]
+      },
+      {
+        "name": "SlicingPipelineContext",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__init__",
+            "kind": "wrapper_descriptor",
+            "signatures": [],
+            "doc": "Initialize self.  See help(type(self)) for accurate signature."
+          },
+          {
+            "name": "cancelled",
+            "kind": "instancemethod",
+            "signatures": [
+              "cancelled(self: orca.slicing.SlicingPipelineContext) -> bool"
+            ],
+            "doc": "cancelled(self: orca.slicing.SlicingPipelineContext) -> bool\n"
+          },
+          {
+            "name": "config_value",
+            "kind": "instancemethod",
+            "signatures": [
+              "config_value(self: orca.slicing.SlicingPipelineContext, key: str) -> object"
+            ],
+            "doc": "config_value(self: orca.slicing.SlicingPipelineContext, key: str) -> object\n\nserialized value of a resolved (full) print config option for this slice, or None if absent. Shorthand for ctx.print.config_value(key).\n"
+          },
+          {
+            "name": "gcode_path",
+            "kind": "property",
+            "doc": "Path to the working G-code file, set ONLY at Step.psGCodePostProcess. Edit it in place; empty at every other step."
+          },
+          {
+            "name": "host",
+            "kind": "property",
+            "doc": "Target host at Step.psGCodePostProcess (\"File\", \"OctoPrint\", ...); empty otherwise."
+          },
+          {
+            "name": "object",
+            "kind": "property",
+            "doc": "orca.host.PrintObject for object-scoped steps, or None for print-wide steps. Valid only during the execute(ctx) call."
+          },
+          {
+            "name": "orca_version",
+            "kind": "property",
+            "doc": ""
+          },
+          {
+            "name": "output_name",
+            "kind": "property",
+            "doc": "Final output G-code name at Step.psGCodePostProcess (mirrors SLIC3R_PP_OUTPUT_NAME); empty otherwise."
+          },
+          {
+            "name": "print",
+            "kind": "property",
+            "doc": "The orca.host.Print being sliced \u2014 the raw slicing graph, exactly what the C++ pipeline walks. Valid only during the execute(ctx) call. For mesh access use ctx.print.model() (the Print's snapshot), never orca.host.model()."
+          },
+          {
+            "name": "step",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "Step",
+        "kind": "pybind11_type",
+        "members": [
+          {
+            "name": "__eq__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__eq__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__eq__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__hash__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__hash__(self: object, /) -> int"
+            ],
+            "doc": "__hash__(self: object, /) -> int\n"
+          },
+          {
+            "name": "__index__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__index__(self: orca.slicing.Step, /) -> int"
+            ],
+            "doc": "__index__(self: orca.slicing.Step, /) -> int\n"
+          },
+          {
+            "name": "__init__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__init__(self: orca.slicing.Step, value: typing.SupportsInt) -> None"
+            ],
+            "doc": "__init__(self: orca.slicing.Step, value: typing.SupportsInt) -> None\n"
+          },
+          {
+            "name": "__int__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__int__(self: orca.slicing.Step, /) -> int"
+            ],
+            "doc": "__int__(self: orca.slicing.Step, /) -> int\n"
+          },
+          {
+            "name": "__ne__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__ne__(self: object, other: object, /) -> bool"
+            ],
+            "doc": "__ne__(self: object, other: object, /) -> bool\n"
+          },
+          {
+            "name": "__repr__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__repr__(self: object, /) -> str"
+            ],
+            "doc": "__repr__(self: object, /) -> str\n"
+          },
+          {
+            "name": "__str__",
+            "kind": "instancemethod",
+            "signatures": [
+              "__str__(self: object, /) -> str"
+            ],
+            "doc": "__str__(self: object, /) -> str\n"
+          },
+          {
+            "name": "name",
+            "kind": "property",
+            "doc": "name(self: object, /) -> str\n"
+          },
+          {
+            "name": "posContouring",
+            "kind": "Step"
+          },
+          {
+            "name": "posDetectOverhangsForLift",
+            "kind": "Step"
+          },
+          {
+            "name": "posEstimateCurledExtrusions",
+            "kind": "Step"
+          },
+          {
+            "name": "posInfill",
+            "kind": "Step"
+          },
+          {
+            "name": "posIroning",
+            "kind": "Step"
+          },
+          {
+            "name": "posPerimeters",
+            "kind": "Step"
+          },
+          {
+            "name": "posPrepareInfill",
+            "kind": "Step"
+          },
+          {
+            "name": "posSimplifyPath",
+            "kind": "Step"
+          },
+          {
+            "name": "posSlice",
+            "kind": "Step"
+          },
+          {
+            "name": "posSupportMaterial",
+            "kind": "Step"
+          },
+          {
+            "name": "psGCodePostProcess",
+            "kind": "Step"
+          },
+          {
+            "name": "psSkirtBrim",
+            "kind": "Step"
+          },
+          {
+            "name": "psWipeTower",
+            "kind": "Step"
+          },
+          {
+            "name": "value",
+            "kind": "property",
+            "doc": ""
+          }
+        ]
+      },
+      {
+        "name": "posContouring",
+        "kind": "Step"
+      },
+      {
+        "name": "posDetectOverhangsForLift",
+        "kind": "Step"
+      },
+      {
+        "name": "posEstimateCurledExtrusions",
+        "kind": "Step"
+      },
+      {
+        "name": "posInfill",
+        "kind": "Step"
+      },
+      {
+        "name": "posIroning",
+        "kind": "Step"
+      },
+      {
+        "name": "posPerimeters",
+        "kind": "Step"
+      },
+      {
+        "name": "posPrepareInfill",
+        "kind": "Step"
+      },
+      {
+        "name": "posSimplifyPath",
+        "kind": "Step"
+      },
+      {
+        "name": "posSlice",
+        "kind": "Step"
+      },
+      {
+        "name": "posSupportMaterial",
+        "kind": "Step"
+      },
+      {
+        "name": "psGCodePostProcess",
+        "kind": "Step"
+      },
+      {
+        "name": "psSkirtBrim",
+        "kind": "Step"
+      },
+      {
+        "name": "psWipeTower",
+        "kind": "Step"
+      },
+      {
+        "name": "unscale",
+        "kind": "builtin_function_or_method",
+        "signatures": [
+          "unscale(coord: typing.SupportsInt) -> float"
+        ],
+        "doc": "unscale(coord: typing.SupportsInt) -> float\n\nConvert a scaled integer coordinate to millimeters (reads the live SCALING_FACTOR).\n"
+      }
+    ]
+  }
+}

@@ -20,6 +20,8 @@
 #include "host/PluginHost.hpp"
 #include "PyPluginPackage.hpp"
 #include "PyPluginTrampoline.hpp"
+#include "pluginTypes/exporter/ExporterPluginCapability.hpp"
+#include "pluginTypes/importer/ImporterPluginCapability.hpp"
 #include "pluginTypes/pages/PagesPluginCapability.hpp"
 #include "pluginTypes/resourceTexture/ResourceTexturePluginCapability.hpp"
 #include "pluginTypes/script/ScriptPluginCapability.hpp"
@@ -523,6 +525,8 @@ void bind_python_api(pybind11::module_& m)
 
     // Make sure you register your bindings here
     PagesPluginCapability::RegisterBindings(m);
+    ImporterPluginCapability::RegisterBindings(m);
+    ExporterPluginCapability::RegisterBindings(m);
     ScriptPluginCapability::RegisterBindings(m);
     SlicingPipelinePluginCapability::RegisterBindings(m);
     ResourceTexturePluginCapability::RegisterBindings(m);

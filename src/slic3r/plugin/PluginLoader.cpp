@@ -10,6 +10,8 @@
 #include "PluginInstallTransaction.hpp"
 #include "PythonInterpreter.hpp"
 #include "PythonPluginBridge.hpp"
+#include "pluginTypes/exporter/ExporterPluginCapability.hpp"
+#include "pluginTypes/importer/ImporterPluginCapability.hpp"
 #include "pluginTypes/resourceTexture/ResourceTexturePluginCapability.hpp"
 #include "PluginConfig.hpp"
 #include "slic3r/GUI/I18N.hpp"
@@ -34,6 +36,34 @@
 
 namespace Slic3r::plugin_loader {
 namespace {
+
+// Validate and normalize the extension list an Importer/Exporter capability claims:
+// lower-case, dot-prefixed, [a-z0-9] only, 2..16 chars, duplicates removed (first wins).
+// Invalid entries are dropped with a warning — a bad claim only costs the capability that
+// entry, never the load.
+std::vector<std::string> normalize_capability_extensions(const std::vector<std::string>& claimed,
+                                                         const std::string& capability_name,
+                                                         const std::string& plugin_key)
+{
+    std::vector<std::string> out;
+    for (std::string ext : claimed) {
+        for (char& c : ext)
+            c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+        const bool valid = ext.size() >= 2 && ext.size() <= 17 && ext.front() == '.' &&
+            std::all_of(ext.begin() + 1, ext.end(), [](char c) {
+                return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+            });
+        if (!valid) {
+            BOOST_LOG_TRIVIAL(warning)
+                << "Plugin capability '" << capability_name << "' of plugin '" << plugin_key
+                << "': ignoring malformed claimed extension '" << ext << "'";
+            continue;
+        }
+        if (std::find(out.begin(), out.end(), ext) == out.end())
+            out.push_back(std::move(ext));
+    }
+    return out;
+}
 
 boost::filesystem::path canonical_or_absolute(const boost::filesystem::path& path)
 {
@@ -396,6 +426,36 @@ bool load(const PluginDescriptor&                          descriptor,
                                 << "': get_texture_dir() failed (" << ex.what()
                                 << "); the capability will provide no textures";
                             resource_texture->set_texture_dir({});
+                        }
+                    }
+
+                    // Importer/Exporter capabilities resolve their claimed extensions here,
+                    // under the GIL this block already holds, and cache the validated list.
+                    // Dispatch consults only the cache (the registry lock must not take the
+                    // GIL). A fault or an invalid entry only costs the capability its claims,
+                    // so it is caught locally like the resource-texture block above.
+                    if (auto* importer = dynamic_cast<ImporterPluginCapability*>(instance.get())) {
+                        try {
+                            importer->set_supported_extensions(
+                                normalize_capability_extensions(importer->get_supported_extensions(), found.name, descriptor.plugin_key));
+                        } catch (const std::exception& ex) {
+                            BOOST_LOG_TRIVIAL(warning)
+                                << "Plugin capability '" << found.name << "' of plugin '" << descriptor.plugin_key
+                                << "': get_supported_extensions() failed (" << ex.what()
+                                << "); the capability will claim no files";
+                            importer->set_supported_extensions({});
+                        }
+                    }
+                    if (auto* exporter = dynamic_cast<ExporterPluginCapability*>(instance.get())) {
+                        try {
+                            exporter->set_supported_extensions(
+                                normalize_capability_extensions(exporter->get_supported_extensions(), found.name, descriptor.plugin_key));
+                        } catch (const std::exception& ex) {
+                            BOOST_LOG_TRIVIAL(warning)
+                                << "Plugin capability '" << found.name << "' of plugin '" << descriptor.plugin_key
+                                << "': get_supported_extensions() failed (" << ex.what()
+                                << "); the capability will offer no formats";
+                            exporter->set_supported_extensions({});
                         }
                     }
 

@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "upstream_commit": "e944e24ccd4671439fbaf297c72aef660a9a50dc",
+  "source": "live-embedded-orca",
+  "exporter_sha256": "b00f7bc86874bd9f4ce0994f9e17c2cc1764103b334e6fff3acb0c6c50a7e364",
+  "files": {
+    "api.json": "70bd9bb64a04c0b2830ee84921af5ff04fa748df387e82569ecc8a216eb0f1ea",
+    "examples/local_config.py": "044feaf1baaae7ca9d213eece01da9962642347b14efd37a8555f8a7265c8456",
+    "examples/local_gcode.py": "53d15c22655c8a351cf1e47dacc1bcff0a1b32213c20c2d20e64fd4fdfbd2e3c",
+    "examples/local_host.py": "d5f668a6092fea7aced1a4253b28a3491a0e73dafa71937522a2d3f0620a82c9",
+    "examples/local_page.py": "74ba164d6a27690044cf449695a76b31da0519c833e9a01a054f4169070bc3d8",
+    "examples/local_slicing.py": "fc6ac118a03f83198b1120618ba943b013da120db78fae05cdb793532224ba0e",
+    "examples/local_ui.py": "ff9d5cc91920ad0c408d1c75eb633b24c2d8f432b27c770ac9e76a41e25293d3",
+    "examples/native_host_hello.py": "4ba94d98c9ebb674c3827a789d0dc695822d437a0ba30d2f70f9b0c8c3b0a8cb",
+    "examples/texture_pack/.gitignore": "6efa30ea9b1c0be2f437c6ab70f6914efa1f6d8676b822e350ed1854509c6ebf",
+    "examples/texture_pack/pyproject.toml": "5c9bf501ace4b154dc76584637edd7563d37ee04f41676c3e4003b716b59ed03",
+    "examples/texture_pack/README.md": "6b0f6c82fd9474fc636e0e3be5dcc2e1a616bfda4718b11a4b1e10ee99235189",
+    "examples/texture_pack/src/snapmaker_texture_example/__init__.py": "a3dbfe10ef4ac879925e8b1784b198ee53f34b727d788cd201b849030cdfe84a",
+    "examples/texture_pack/src/snapmaker_texture_example/textures/height.png": "9b62a394e43f8d08a5983c256bec2d6ab0917c1068a3fd19df861a289beb688c",
+    "examples/workflow_slicing.py": "069087db80435968839cbe994e84d56e11cdfb6c705351eb681335419870ec4b",
+    "README.md": "0038ba91d396485a0cec13f39f1f129dc744d4812885de94d340cc8827fffd08",
+    "typings/orca/__init__.pyi": "959073a6df968d265bf2488448621257d827017df2cadeff6b3858199f4cae5a",
+    "typings/orca/host/__init__.pyi": "fd8189d3cab26c7162d786bebde75c30c0effb09c99d354f05e0d65a670a5bf1",
+    "typings/orca/host/plugin/__init__.pyi": "614ca65ea5b040e0a94cc33fbde7f9abbc1f7e029e7f4018c526f0ff774be09b",
+    "typings/orca/host/preset/__init__.pyi": "b83b747d9fe023fccd7b43a948b2f40eac9055117a5a5d0611eff3c9869fd1b9",
+    "typings/orca/host/preset/bundles/__init__.pyi": "608d011db84d2955ba89a3d131de877ed6988a9a37c612aa2a5ca405b1a1d860",
+    "typings/orca/host/ui/__init__.pyi": "d363a97357c8121caa40c6860ba1890ae5ae36a5e90952f7620db871907901cc",
+    "typings/orca/pages/__init__.pyi": "ff22846b499152099e54334bba4117ef1916c8102a1477ca00cf7430bf7c5eeb",
+    "typings/orca/resource_texture/__init__.pyi": "87034b33937d8c4fdd189051434a5ae48a15162156156b9665b3e528d00b633d",
+    "typings/orca/script/__init__.pyi": "0ff67545fd3d70ed63b00574d41919616d8792c4c78ec467fa1ccd583e7d5c05",
+    "typings/orca/slicing/__init__.pyi": "62cea81e79a499d3fbecf15a4d6469865b1402315ab26d45201bcdb26612529f"
+  }
+}

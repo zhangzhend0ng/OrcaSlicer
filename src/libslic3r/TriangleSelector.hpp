@@ -342,6 +342,9 @@ public:
     // Set facet of the mesh to a given state. Only works for original triangles.
     void set_facet(int facet_idx, EnforcerBlockerType state);
 
+    // State of an original (unsplit) triangle — the read side of set_facet().
+    EnforcerBlockerType get_facet(int facet_idx) const { assert(facet_idx < m_orig_size_indices); return m_triangles[facet_idx].state; }
+
     // Clear everything and make the tree empty.
     void reset();
 

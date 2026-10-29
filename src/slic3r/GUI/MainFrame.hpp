@@ -55,6 +55,8 @@ class wxProgressDialog;
 
 namespace Slic3r {
 
+class ExporterPluginCapability;
+
 namespace GUI
 {
 
@@ -419,6 +421,16 @@ public:
     BBLTopbar*            m_topbar{ nullptr };
     PrintHostQueueDialog* printhost_queue_dlg() { return m_printhost_queue_dlg; }
     Plater*               m_plater { nullptr };
+
+    // Fork addition: dynamic plugin-exporter section of the File > Export menu. Items are
+    // appended after the built-ins (m_plugin_export_section_base records where the section
+    // starts) and rebuilt on capability load/unload; ids live in a reserved range handled by
+    // one range-bound handler. See rebuild_plugin_export_items() in MainFrame.cpp.
+    void                rebuild_plugin_export_items();
+    void                on_plugin_export_menu(wxCommandEvent& evt);
+    wxMenu*             m_export_menu { nullptr };
+    int                 m_plugin_export_section_base { 0 };
+    std::map<int, std::shared_ptr<Slic3r::ExporterPluginCapability>> m_plugin_export_items;
     //BBS: GUI refactor
     MonitorPanel*         m_monitor{ nullptr };
 

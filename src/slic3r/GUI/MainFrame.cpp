@@ -1,4 +1,7 @@
 #include "MainFrame.hpp"
+#include <slic3r/plugin/PluginManager.hpp>
+#include <slic3r/plugin/pluginTypes/exporter/ExporterPluginCapability.hpp>
+#include "common_func/common_func.hpp"
 
 #include <wx/panel.h>
 #include <wx/textentry.h>
@@ -87,6 +90,10 @@
 
 #define UPDATE_BUSER    true
 #define UPDATE_BUAUTO   false
+
+// Reserved id range for the File > Export menu's dynamic plugin-exporter section.
+static constexpr int kPluginExportMenuIdBase = wxID_HIGHEST - 4096;
+static constexpr int kPluginExportMenuIdMax  = kPluginExportMenuIdBase + 63;
 
 namespace Slic3r {
 namespace GUI {
@@ -2835,6 +2842,16 @@ void MainFrame::init_menubar_as_editor()
             "menu_export_config", nullptr,
             []() { return true; }, this);
 
+        // Fork addition: plugin exporters. One range-bound handler covers the section's
+        // reserved id range; the section itself is rebuilt on capability load/unload
+        // (subscribed in GUI_App). Built when the menu is first created and whenever the
+        // exporter set changes.
+        m_export_menu = export_menu;
+        m_plugin_export_section_base = export_menu->GetMenuItemCount();
+        m_export_menu->Bind(wxEVT_MENU, &MainFrame::on_plugin_export_menu, this,
+                            kPluginExportMenuIdBase, kPluginExportMenuIdMax);
+        rebuild_plugin_export_items();
+
         append_submenu(fileMenu, export_menu, wxID_ANY, _L("Export"), "");
 
         fileMenu->AppendSeparator();
@@ -4686,3 +4703,95 @@ void SettingsDialog::on_dpi_changed(const wxRect& suggested_rect)
 
 } // GUI
 } // Slic3r
+
+
+// Fork addition: plugin exporters in the File > Export menu. Id range reserved for the
+// dynamic section; one range Bind (see the menu construction) maps ids back to capabilities.
+void MainFrame::rebuild_plugin_export_items()
+{
+    if (m_export_menu == nullptr)
+        return;
+
+    // Remove the previous plugin section (separator included): everything appended after
+    // the recorded base item count belongs to it.
+    while (m_export_menu->GetMenuItemCount() > m_plugin_export_section_base)
+        m_export_menu->Delete(m_export_menu->GetMenuItems().back());
+    m_plugin_export_items.clear();
+
+    const auto exporters = Slic3r::PluginManager::instance().get_plugin_capabilities(
+        "", Slic3r::PluginCapabilityType::Exporter, /*only_enabled=*/true);
+    if (exporters.empty())
+        return;
+
+    m_export_menu->AppendSeparator();
+    int next_id = kPluginExportMenuIdBase;
+    for (const auto& cap : exporters) {
+        auto* exporter = dynamic_cast<Slic3r::ExporterPluginCapability*>(cap.get());
+        if (exporter == nullptr || exporter->supported_extensions().empty() || next_id > kPluginExportMenuIdMax)
+            continue;
+        std::string exts;
+        for (const std::string& e : exporter->supported_extensions()) {
+            if (!exts.empty())
+                exts += " ";
+            exts += e;
+        }
+        m_export_menu->Append(next_id, from_u8(_u8L("Export via plugin")) + " " + from_u8(exporter->name()) + "  [" + from_u8(exts) + "]");
+        m_plugin_export_items.emplace(next_id, std::shared_ptr<Slic3r::ExporterPluginCapability>(cap, exporter));
+        ++next_id;
+    }
+}
+
+void MainFrame::on_plugin_export_menu(wxCommandEvent& evt)
+{
+    const auto found = m_plugin_export_items.find(evt.GetId());
+    if (found == m_plugin_export_items.end())
+        return;
+    std::shared_ptr<Slic3r::ExporterPluginCapability> exporter = found->second;
+    if (m_plater == nullptr || m_plater->model().objects.empty())
+        return;
+
+    // Save dialog with the exporter's own extensions as the default filter.
+    wxString filters = from_u8(_u8L("Export file")) + "|";
+    {
+        std::string pattern;
+        for (const std::string& e : exporter->supported_extensions()) {
+            if (!pattern.empty())
+                pattern += ";";
+            pattern += "*" + e;
+        }
+        filters += from_u8(pattern);
+    }
+    const std::string default_ext = exporter->supported_extensions().front();
+    wxFileDialog      dlg(this, from_u8(_u8L("Export to file")), "", "export" + from_u8(default_ext),
+                   filters, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    if (dlg.ShowModal() != wxID_OK)
+        return;
+    const std::string path = into_u8(dlg.GetPath());
+
+    // UI-thread snapshot (Model copy = a clone), then the plugin runs on a worker thread:
+    // the UI never waits for plugin work (the batch-3 review contract; the trampoline takes
+    // the GIL on the worker and grants dirname(path) as a scoped writable root). The thread
+    // owns the snapshot; the completion CallAfter is dropped if the app is closing.
+    auto snapshot = std::make_shared<Slic3r::Model>(m_plater->model());
+    std::thread([exporter, snapshot, path]() {
+        bool        ok = false;
+        std::string message;
+        try {
+            Slic3r::ExporterContext ctx;
+            ctx.orca_version = Snapmaker_VERSION;
+            ctx.path         = path;
+            ctx.model        = snapshot.get();
+            const Slic3r::ExecutionResult result = exporter->export_file(ctx);
+            ok      = result.status == Slic3r::PluginResult::Success;
+            message = result.message.empty() ? path : result.message;
+        } catch (const std::exception& e) {
+            message = e.what();
+        }
+        Slic3r::GUI::wxGetApp().CallAfter([ok, message]() {
+            if (wxTheApp == nullptr || Slic3r::GUI::wxGetApp().is_closing())
+                return;
+            wxMessageBox(from_u8(message), from_u8(ok ? _u8L("Export finished") : _u8L("Export failed")),
+                         wxOK | (ok ? wxICON_INFORMATION : wxICON_ERROR));
+        });
+    }).detach();
+}

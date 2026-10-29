@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools==75.8.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snapmaker-texture-example"
+version = "1.0.0"
+description = "Local Orca ResourceTexture example for Snapmaker Orca"
+requires-python = ">=3.12"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+snapmaker_texture_example = ["textures/*.png"]
