@@ -173,3 +173,48 @@ TEST_CASE("ReconnectPolicy backs off and resets after a stable connection", "[ga
     REQUIRE(policy.next_delay() == std::chrono::milliseconds{250});
     REQUIRE(policy.attempts() == 1);
 }
+
+TEST_CASE("PersistentFailureLogPolicy logs once after the failure streak spans the window", "[gateway][protocol]")
+{
+    detail::PersistentFailureLogPolicy::Config config;
+    config.log_after = std::chrono::milliseconds{600000};
+    detail::PersistentFailureLogPolicy policy(config);
+
+    SECTION("streak shorter than the window never logs")
+    {
+        policy.record_failure(1000);
+        REQUIRE_FALSE(policy.should_log_once(1000 + 599999));
+        REQUIRE(policy.failure_streak_duration(1000 + 599999) == std::chrono::milliseconds{599999});
+    }
+
+    SECTION("logs exactly once when the streak reaches the window")
+    {
+        policy.record_failure(1000);
+        REQUIRE(policy.should_log_once(1000 + 600000));
+        REQUIRE_FALSE(policy.should_log_once(1000 + 600001));
+        REQUIRE_FALSE(policy.should_log_once(1000 + 1200000));
+    }
+
+    SECTION("no failure streak means no log") { REQUIRE_FALSE(policy.should_log_once(600000)); }
+}
+
+TEST_CASE("PersistentFailureLogPolicy resets after a successful connection", "[gateway][protocol]")
+{
+    detail::PersistentFailureLogPolicy::Config config;
+    config.log_after = std::chrono::milliseconds{600000};
+    detail::PersistentFailureLogPolicy policy(config);
+
+    policy.record_failure(1000);
+    REQUIRE(policy.should_log_once(1000 + 600000));
+    REQUIRE_FALSE(policy.should_log_once(1000 + 600000)); // already logged for this streak
+
+    policy.record_connected();
+    REQUIRE(policy.failure_streak_duration(2000000) == std::chrono::milliseconds{0});
+
+    SECTION("a fresh streak after recovery can log again")
+    {
+        policy.record_failure(2000000);
+        REQUIRE_FALSE(policy.should_log_once(2000000 + 599999));
+        REQUIRE(policy.should_log_once(2000000 + 600000));
+    }
+}

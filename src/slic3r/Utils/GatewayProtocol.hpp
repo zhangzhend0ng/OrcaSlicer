@@ -115,6 +115,32 @@ private:
     std::optional<std::int64_t> connected_since_ms_;
 };
 
+// Logs-once policy for reconnect streaks that outlive every reasonable retry: once consecutive
+// failures span the configured window, the caller emits a single actionable error so a
+// permanently wedged gateway (e.g. a stale shared CLI owner) becomes visible in user logs.
+class PersistentFailureLogPolicy
+{
+public:
+    struct Config
+    {
+        std::chrono::milliseconds log_after{std::chrono::milliseconds{600000}};
+    };
+
+    explicit PersistentFailureLogPolicy(Config config);
+
+    void record_connected();
+    void record_failure(std::int64_t now_ms);
+    // Returns true exactly once per failure streak, once the streak has spanned log_after;
+    // the true return marks the log as emitted for the rest of the streak.
+    bool                      should_log_once(std::int64_t now_ms);
+    std::chrono::milliseconds failure_streak_duration(std::int64_t now_ms) const;
+
+private:
+    Config                      config_;
+    std::optional<std::int64_t> first_failure_ms_;
+    bool                        logged_{false};
+};
+
 } // namespace detail
 
 }} // namespace Slic3r::Gateway

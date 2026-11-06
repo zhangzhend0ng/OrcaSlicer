@@ -402,11 +402,11 @@ void GatewayWebSocketTransport::connect(std::uint16_t port, const std::string& p
 
 bool GatewayWebSocketTransport::send(const std::string& message)
 {
-    std::shared_ptr<Session> session;
+    std::shared_ptr<Session>          session;
     std::shared_ptr<asio::io_context> io_context;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        session = session_.lock();
+        session    = session_.lock();
         io_context = io_context_;
     }
     if (!session || !io_context)
@@ -763,6 +763,7 @@ void GatewayService::run(const std::string locale)
                 state_ = ConnectionState::Connected;
             }
             reconnect_policy_.record_connected(dependencies_.now_ms());
+            persistent_failure_log_policy_.record_connected();
             dispatch_state(ConnectionState::Connected, {});
 
             std::unique_lock<std::mutex> lock(state_mutex_);
@@ -772,7 +773,17 @@ void GatewayService::run(const std::string locale)
             error = transport_error("websocket connection was closed");
         }
 
-        reconnect_policy_.record_failure(dependencies_.now_ms());
+        const std::int64_t now_ms = dependencies_.now_ms();
+        reconnect_policy_.record_failure(now_ms);
+        persistent_failure_log_policy_.record_failure(now_ms);
+        if (persistent_failure_log_policy_.should_log_once(now_ms)) {
+            const auto streak     = persistent_failure_log_policy_.failure_streak_duration(now_ms);
+            const auto failed_for = std::chrono::duration_cast<std::chrono::seconds>(streak).count();
+            BOOST_LOG_TRIVIAL(error)
+                << "connection gateway has failed to connect for " << failed_for << "s (last error: " << error.message
+                << "); a stale snapmaker_control instance may be holding"
+                << " the gateway port. Terminate the snapmaker_control process (or reboot) and restart the application";
+        }
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
             state_          = ConnectionState::Disconnected;
@@ -834,8 +845,8 @@ GatewayError GatewayService::connect_once(const std::string& locale)
     }
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        health_ = std::move(health);
-        stale_owner_port_ = 0;
+        health_               = std::move(health);
+        stale_owner_port_     = 0;
         stale_owner_failures_ = 0;
     }
 
@@ -863,13 +874,13 @@ GatewayError GatewayService::wait_for_health(std::uint16_t port, HealthInfo& hea
             BOOST_LOG_TRIVIAL(info) << "connection gateway health response: status=" << response.status
                                     << ", device_connected=" << health.device_connected << ", has_device_state=" << health.has_device_state;
             std::string health_pages;
-            for (const auto &page : health.pages) {
+            for (const auto& page : health.pages) {
                 if (!health_pages.empty())
                     health_pages += ",";
                 health_pages += page.first + "=" + page.second;
             }
-            BOOST_LOG_TRIVIAL(warning)
-                << "[FLUTTER_FLOW] [gateway] [health_ready] port=" << port << " base_url=" << health.base_url << " pages=" << health_pages;
+            BOOST_LOG_TRIVIAL(warning) << "[FLUTTER_FLOW] [gateway] [health_ready] port=" << port << " base_url=" << health.base_url
+                                       << " pages=" << health_pages;
             return {};
         }
         std::this_thread::sleep_for(config_.health_poll_interval);

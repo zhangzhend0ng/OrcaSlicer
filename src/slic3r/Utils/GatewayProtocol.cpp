@@ -225,6 +225,37 @@ std::chrono::milliseconds ReconnectPolicy::next_delay(double jitter_ratio) const
     return std::chrono::milliseconds{capped + static_cast<std::int64_t>(jitter)};
 }
 
+PersistentFailureLogPolicy::PersistentFailureLogPolicy(Config config) : config_(std::move(config)) {}
+
+void PersistentFailureLogPolicy::record_connected()
+{
+    first_failure_ms_ = std::nullopt;
+    logged_           = false;
+}
+
+void PersistentFailureLogPolicy::record_failure(std::int64_t now_ms)
+{
+    if (!first_failure_ms_.has_value())
+        first_failure_ms_ = now_ms;
+}
+
+bool PersistentFailureLogPolicy::should_log_once(std::int64_t now_ms)
+{
+    if (logged_ || !first_failure_ms_.has_value())
+        return false;
+    if (std::chrono::milliseconds{now_ms - *first_failure_ms_} < config_.log_after)
+        return false;
+    logged_ = true;
+    return true;
+}
+
+std::chrono::milliseconds PersistentFailureLogPolicy::failure_streak_duration(std::int64_t now_ms) const
+{
+    if (!first_failure_ms_.has_value())
+        return std::chrono::milliseconds{0};
+    return std::chrono::milliseconds{now_ms - *first_failure_ms_};
+}
+
 } // namespace detail
 
 }} // namespace Slic3r::Gateway

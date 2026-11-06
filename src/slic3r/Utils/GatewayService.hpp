@@ -17,7 +17,9 @@
 #include <thread>
 #include <vector>
 
-namespace boost { namespace asio { class io_context; } }
+namespace boost { namespace asio {
+class io_context;
+}} // namespace boost::asio
 
 namespace Slic3r { namespace Gateway {
 
@@ -76,12 +78,12 @@ public:
 private:
     struct Session;
 
-    std::string            host_;
-    mutable std::mutex     mutex_;
-    Listener               listener_;
-    std::weak_ptr<Session> session_;
+    std::string                              host_;
+    mutable std::mutex                       mutex_;
+    Listener                                 listener_;
+    std::weak_ptr<Session>                   session_;
     std::shared_ptr<boost::asio::io_context> io_context_;
-    std::thread            io_thread_;
+    std::thread                              io_thread_;
 
     void close_locked();
 };
@@ -96,18 +98,19 @@ public:
 
     struct Config
     {
-        std::string                     host{"127.0.0.1"};
-        std::string                     health_path{"/api/health"};
-        std::string                     websocket_path{"/ws"};
-        std::string                     device_path{"/api/cache/all"};
-        std::string                     account_path{"/api/account"};
-        std::string                     store_path{"/api/store"};
-        std::string                     region_path{"/api/region"};
-        std::string                     app_config_path{"/api/config"};
-        std::chrono::milliseconds       health_poll_interval{std::chrono::milliseconds{100}};
-        std::chrono::milliseconds       health_timeout{std::chrono::milliseconds{5000}};
-        std::uint32_t                   stale_owner_grace_attempts{2};
-        detail::ReconnectPolicy::Config reconnect;
+        std::string                                host{"127.0.0.1"};
+        std::string                                health_path{"/api/health"};
+        std::string                                websocket_path{"/ws"};
+        std::string                                device_path{"/api/cache/all"};
+        std::string                                account_path{"/api/account"};
+        std::string                                store_path{"/api/store"};
+        std::string                                region_path{"/api/region"};
+        std::string                                app_config_path{"/api/config"};
+        std::chrono::milliseconds                  health_poll_interval{std::chrono::milliseconds{100}};
+        std::chrono::milliseconds                  health_timeout{std::chrono::milliseconds{5000}};
+        std::uint32_t                              stale_owner_grace_attempts{2};
+        detail::PersistentFailureLogPolicy::Config persistent_failure_log;
+        detail::ReconnectPolicy::Config            reconnect;
     };
 
     struct Dependencies
@@ -148,18 +151,18 @@ public:
     // Synchronous request. The callback is invoked directly on the websocket thread (bypassing
     // the dispatcher), so this is safe from any thread except the gateway's own websocket I/O
     // thread: waiting there would block the only thread that can deliver the response.
-    ApiResult    request_sync(const std::string& method, const nlohmann::json& params, std::chrono::milliseconds timeout);
-    std::int64_t watch_device(const nlohmann::json& params, RpcCallback callback);
-    ApiResult    get_device(const std::optional<std::string>& serial_number = std::nullopt);
-    ApiResult    get_account();
+    ApiResult           request_sync(const std::string& method, const nlohmann::json& params, std::chrono::milliseconds timeout);
+    std::int64_t        watch_device(const nlohmann::json& params, RpcCallback callback);
+    ApiResult           get_device(const std::optional<std::string>& serial_number = std::nullopt);
+    ApiResult           get_account();
     PreprintStoreResult store_preprint_context(const std::string& id, const nlohmann::json& payload);
-    ApiResult    set_region(const std::string& region);
+    ApiResult           set_region(const std::string& region);
     // Push a host app-config key (e.g. enable_model_station) to the CLI. The
     // CLI serves it to the Flutter pages via GET /api/config and broadcasts
     // notify.config.changed on its websocket when the value changes.
-    ApiResult    set_app_config(const std::string& key, const nlohmann::json& value);
-    std::string  web_url(const std::string& page_key) const;
-    std::string  localfile_url(const std::string& file_path) const;
+    ApiResult   set_app_config(const std::string& key, const nlohmann::json& value);
+    std::string web_url(const std::string& page_key) const;
+    std::string localfile_url(const std::string& file_path) const;
 
 private:
     struct PendingRequest
@@ -200,6 +203,8 @@ private:
     std::uint32_t           stale_owner_failures_{0};
     std::atomic<bool>       stop_requested_{false};
     std::thread             worker_;
+    // Worker-thread-only, like reconnect_policy_: run() is the sole reader and writer.
+    detail::PersistentFailureLogPolicy persistent_failure_log_policy_{detail::PersistentFailureLogPolicy::Config{}};
 
     mutable std::mutex                          callback_mutex_;
     StateCallback                               state_callback_;

@@ -136,6 +136,16 @@ bool process_exited(std::uint64_t pid)
 #endif
 }
 
+// Unlike process_exited(), this only reports "dead" when the kernel confirms the PID is gone
+// (kill(pid, 0) with ESRCH), so a live process we merely cannot inspect is never mistaken for
+// an exited one.
+bool process_is_dead(std::uint64_t pid)
+{
+    if (::kill(static_cast<pid_t>(pid), 0) != 0)
+        return errno == ESRCH;
+    return false;
+}
+
 bool terminate_process(std::uint64_t pid, const boost::filesystem::path& expected_executable, std::uint16_t port)
 {
     constexpr int signal_timeout_ms = 5000;
@@ -368,13 +378,27 @@ PortOwnerTakeoverResult ConnectionProcessManager::terminate_port_owner(std::uint
     if (port == 0 || config_.executable.empty())
         return PortOwnerTakeoverResult::NotTakenOver;
 
-    const std::optional<std::uint64_t> pid = owner_pid_from_lock(shared_cli_lock_path(), port);
+    const boost::filesystem::path      lock_path = shared_cli_lock_path();
+    const std::optional<std::uint64_t> pid       = owner_pid_from_lock(lock_path, port);
     if (!pid.has_value()) {
         BOOST_LOG_TRIVIAL(warning) << "connection gateway stale owner lock does not identify port " << port;
         return PortOwnerTakeoverResult::NotTakenOver;
     }
 
     if (!terminate_process(*pid, config_.executable, port)) {
+        // A recorded owner that already exited (e.g. the machine rebooted, or a previous
+        // takeover succeeded) leaves a stale lock that blocks every future CLI instance
+        // from taking the port. Clear the lock so the next spawn can take over.
+        if (process_is_dead(*pid)) {
+            boost::system::error_code remove_error;
+            if (boost::filesystem::remove(lock_path, remove_error) && !remove_error) {
+                BOOST_LOG_TRIVIAL(warning) << "connection gateway removed stale shared CLI lock of exited owner: pid=" << *pid
+                                           << ", port=" << port;
+                return PortOwnerTakeoverResult::TakenOver;
+            }
+            BOOST_LOG_TRIVIAL(warning) << "connection gateway cannot remove stale shared CLI lock of exited owner: pid=" << *pid
+                                       << ", port=" << port << ", error=" << remove_error.message();
+        }
         BOOST_LOG_TRIVIAL(warning) << "connection gateway stale owner ignored or termination failed: pid=" << *pid << ", port=" << port;
         return PortOwnerTakeoverResult::NotTakenOver;
     }

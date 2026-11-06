@@ -2,12 +2,48 @@
 
 #include "slic3r/Utils/ConnectionProcessManager.hpp"
 
-#include <boost/filesystem/path.hpp>
+#include <boost/filesystem.hpp>
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <fstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace Slic3r::Gateway;
+
+namespace {
+
+// Each lock test writes its own lock file into a unique throwaway directory; the guard removes
+// the directory when the test finishes so repeated runs never share state.
+struct TempDirGuard
+{
+    boost::filesystem::path path;
+
+    TempDirGuard()
+    {
+        static std::atomic<unsigned> counter{0};
+        const auto                   stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        path = boost::filesystem::temp_directory_path() / ("sm-cli-lock-test-" + std::to_string(stamp) + "-" + std::to_string(counter++));
+        boost::filesystem::create_directories(path);
+    }
+
+    ~TempDirGuard()
+    {
+        boost::system::error_code error;
+        boost::filesystem::remove_all(path, error);
+    }
+};
+
+void write_lock_file(const boost::filesystem::path& file, std::string_view content)
+{
+    std::ofstream stream{file.string(), std::ios::binary | std::ios::trunc};
+    stream.write(content.data(), static_cast<std::streamsize>(content.size()));
+}
+
+} // namespace
 
 TEST_CASE("ConnectionProcessManager builds the Orca launch arguments", "[gateway][process]")
 {
@@ -100,4 +136,111 @@ TEST_CASE("ConnectionProcessManager terminate is a no-op without a tracked child
     // Injected runners bypass the real child tracking, so terminate() must stay safe.
     manager.terminate();
     manager.terminate();
+}
+
+TEST_CASE("owner_pid_from_lock accepts a serving Orca lock for the matching port", "[gateway][process]")
+{
+    TempDirGuard                  temp;
+    const boost::filesystem::path lock = temp.path / "snapmaker_control.lock";
+
+    SECTION("returns the recorded pid for a valid lock")
+    {
+        write_lock_file(lock, R"({"pid": 4242, "port": 30996, "mode": "orca", "state": "serving"})");
+        const auto pid = ConnectionProcessManager::owner_pid_from_lock(lock, 30996);
+        REQUIRE(pid.has_value());
+        REQUIRE(*pid == 4242u);
+    }
+
+    SECTION("ignores extra fields and keeps the maximum representable pid")
+    {
+        // INT_MAX stays inside pid_t range on every supported platform.
+        write_lock_file(lock, R"({"pid": 2147483647, "port": 30996, "mode": "orca", "state": "serving", "started": "2026-11-05"})");
+        const auto pid = ConnectionProcessManager::owner_pid_from_lock(lock, 30996);
+        REQUIRE(pid.has_value());
+        REQUIRE(*pid == 2147483647u);
+    }
+
+    SECTION("rejects a lock that records a different port")
+    {
+        write_lock_file(lock, R"({"pid": 4242, "port": 30997, "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+    }
+}
+
+TEST_CASE("owner_pid_from_lock rejects unusable lock content", "[gateway][process]")
+{
+    TempDirGuard                  temp;
+    const boost::filesystem::path lock = temp.path / "snapmaker_control.lock";
+
+    SECTION("missing file") { REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value()); }
+
+    SECTION("empty file")
+    {
+        write_lock_file(lock, "");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+    }
+
+    SECTION("file above the 64 KiB size cap")
+    {
+        write_lock_file(lock, std::string(64 * 1024 + 1, 'x'));
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+    }
+
+    SECTION("malformed JSON")
+    {
+        write_lock_file(lock, R"({"pid": 4242, "port": 30996,)");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+    }
+
+    SECTION("non-object JSON payload")
+    {
+        write_lock_file(lock, R"([{"pid": 4242}] )");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+    }
+
+    SECTION("pid field wrong type or out of range")
+    {
+        write_lock_file(lock, R"({"pid": "4242", "port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+
+        write_lock_file(lock, R"({"pid": -1, "port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+
+        write_lock_file(lock, R"({"pid": 0, "port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+
+        write_lock_file(lock, R"({"pid": 4242.5, "port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+
+        // Above pid_t range on every supported platform.
+        write_lock_file(lock, R"({"pid": 4294967296, "port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+
+        write_lock_file(lock, R"({"port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+    }
+
+    SECTION("port field wrong type")
+    {
+        write_lock_file(lock, R"({"pid": 4242, "port": "30996", "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+    }
+
+    SECTION("mode is not orca")
+    {
+        write_lock_file(lock, R"({"pid": 4242, "port": 30996, "mode": "app", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+
+        write_lock_file(lock, R"({"pid": 4242, "port": 30996, "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+    }
+
+    SECTION("state is not serving")
+    {
+        write_lock_file(lock, R"({"pid": 4242, "port": 30996, "mode": "orca", "state": "starting"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+
+        write_lock_file(lock, R"({"pid": 4242, "port": 30996, "mode": "orca"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
+    }
 }
