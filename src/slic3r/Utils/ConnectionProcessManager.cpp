@@ -285,7 +285,9 @@ std::optional<std::uint64_t> ConnectionProcessManager::owner_pid_from_lock(const
     const std::uint64_t owner_pid = pid->get<std::uint64_t>();
     if (owner_pid == 0 || owner_pid > maximum_owner_pid())
         return std::nullopt;
-    if (lock_port == lock.end() || !lock_port->is_number_unsigned() || lock_port->get<std::uint64_t>() != port)
+    // A zero port accepts any recorded port: zero is never a valid gateway port, and the
+    // pre-handshake stale-lock cleanup does not know the gateway port yet.
+    if (lock_port == lock.end() || !lock_port->is_number_unsigned() || (port != 0 && lock_port->get<std::uint64_t>() != port))
         return std::nullopt;
     if (mode == lock.end() || !mode->is_string() || mode->get<std::string>() != "orca")
         return std::nullopt;
@@ -293,6 +295,47 @@ std::optional<std::uint64_t> ConnectionProcessManager::owner_pid_from_lock(const
         return std::nullopt;
 
     return owner_pid;
+}
+
+bool ConnectionProcessManager::remove_stale_lock(const boost::filesystem::path&      lock_path,
+                                                 std::uint16_t                       port,
+                                                 const std::optional<std::uint64_t>& expected_pid)
+{
+#if defined(__APPLE__) || defined(__linux__)
+    const std::optional<std::uint64_t> pid = owner_pid_from_lock(lock_path, port);
+    if (!pid.has_value() || (expected_pid.has_value() && *expected_pid != *pid) || !process_is_dead(*pid))
+        return false;
+
+    // Re-read right before removal: another host may have raced us, replaced the dead owner,
+    // and rewritten the lock. Only delete the file when it still records the same exited pid.
+    const std::optional<std::uint64_t> recorded_again = owner_pid_from_lock(lock_path, port);
+    if (!recorded_again.has_value() || *recorded_again != *pid)
+        return false;
+
+    boost::system::error_code remove_error;
+    const bool                removed = boost::filesystem::remove(lock_path, remove_error);
+    if (remove_error) {
+        BOOST_LOG_TRIVIAL(warning) << "connection gateway cannot remove stale shared CLI lock: error=" << remove_error.message();
+        return false;
+    }
+    if (removed)
+        BOOST_LOG_TRIVIAL(warning) << "connection gateway removed stale shared CLI lock of exited owner: pid=" << *pid << ", port=" << port;
+    return removed;
+#else
+    (void) lock_path;
+    (void) port;
+    (void) expected_pid;
+    return false;
+#endif
+}
+
+bool ConnectionProcessManager::clear_stale_shared_cli_lock()
+{
+#if defined(__APPLE__) || defined(__linux__)
+    return remove_stale_lock(shared_cli_lock_path(), 0, std::nullopt);
+#else
+    return false;
+#endif
 }
 
 struct ConnectionProcessManager::ChildProcessTracker
@@ -388,17 +431,10 @@ PortOwnerTakeoverResult ConnectionProcessManager::terminate_port_owner(std::uint
     if (!terminate_process(*pid, config_.executable, port)) {
         // A recorded owner that already exited (e.g. the machine rebooted, or a previous
         // takeover succeeded) leaves a stale lock that blocks every future CLI instance
-        // from taking the port. Clear the lock so the next spawn can take over.
-        if (process_is_dead(*pid)) {
-            boost::system::error_code remove_error;
-            if (boost::filesystem::remove(lock_path, remove_error) && !remove_error) {
-                BOOST_LOG_TRIVIAL(warning) << "connection gateway removed stale shared CLI lock of exited owner: pid=" << *pid
-                                           << ", port=" << port;
-                return PortOwnerTakeoverResult::TakenOver;
-            }
-            BOOST_LOG_TRIVIAL(warning) << "connection gateway cannot remove stale shared CLI lock of exited owner: pid=" << *pid
-                                       << ", port=" << port << ", error=" << remove_error.message();
-        }
+        // from taking the port. remove_stale_lock() clears it, re-reading the file so a
+        // concurrently installed new owner is never deleted.
+        if (remove_stale_lock(lock_path, port, pid))
+            return PortOwnerTakeoverResult::TakenOver;
         BOOST_LOG_TRIVIAL(warning) << "connection gateway stale owner ignored or termination failed: pid=" << *pid << ", port=" << port;
         return PortOwnerTakeoverResult::NotTakenOver;
     }

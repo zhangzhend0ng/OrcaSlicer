@@ -77,9 +77,22 @@ public:
     const boost::filesystem::path& executable() const { return config_.executable; }
     const Config&                  config() const { return config_; }
 
-    static ProcessDiscoveryError        parse_port_frame(const std::string& output, std::uint16_t& port);
-    static std::vector<std::string>     build_arguments(const std::string& locale);
+    static ProcessDiscoveryError    parse_port_frame(const std::string& output, std::uint16_t& port);
+    static std::vector<std::string> build_arguments(const std::string& locale);
+    // Reads the shared-CLI lock and returns the recorded owner pid when the file is a valid
+    // Orca lock for the given port. A zero port accepts any port value (zero is never a
+    // valid gateway port); used before the first handshake, when the gateway port is unknown.
     static std::optional<std::uint64_t> owner_pid_from_lock(const boost::filesystem::path& lock_path, std::uint16_t port);
+    // Removes a lock whose recorded owner already exited, so the next CLI spawn is not
+    // blocked by a stale lock. The file is re-read right before removal: when another host
+    // raced us and installed a new owner, the lock is preserved. Returns true when a stale
+    // lock was removed; false when nothing was removed or the platform has no lock file.
+    static bool remove_stale_lock(const boost::filesystem::path&      lock_path,
+                                  std::uint16_t                       port,
+                                  const std::optional<std::uint64_t>& expected_pid);
+    // Convenience wrapper around remove_stale_lock() for the real shared-CLI lock of this
+    // data directory, matching any port and any recorded owner.
+    static bool clear_stale_shared_cli_lock();
     // File name of the snapmaker_connection CLI binary expected next to the resources directory
     // for the current platform and architecture. The binary itself is placed locally and not tracked in git.
     static std::string_view cli_executable_name();

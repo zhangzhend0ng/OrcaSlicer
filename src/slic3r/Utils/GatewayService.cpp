@@ -817,6 +817,12 @@ void GatewayService::run(const std::string locale)
 
 GatewayError GatewayService::connect_once(const std::string& locale)
 {
+    // A stale shared-CLI lock (its owner exited without cleanup) makes every spawned CLI
+    // defer to the dead instance; clear it up front so the first attempt can take the port
+    // instead of waiting for the health-gated takeover.
+    if (dependencies_.process_manager && dependencies_.process_manager->clear_stale_shared_cli_lock())
+        BOOST_LOG_TRIVIAL(warning) << "connection gateway cleared a stale shared CLI lock before launch";
+
     const ConnectionProcessManager::DiscoveryResult discovery = dependencies_.process_manager->discover_port(locale);
     if (discovery.error != ProcessDiscoveryError::None)
         return {GatewayErrorCode::ReconnectFailed, discovery.message};

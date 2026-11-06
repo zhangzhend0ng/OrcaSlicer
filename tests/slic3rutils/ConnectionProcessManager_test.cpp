@@ -244,3 +244,86 @@ TEST_CASE("owner_pid_from_lock rejects unusable lock content", "[gateway][proces
         REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 30996).has_value());
     }
 }
+
+TEST_CASE("owner_pid_from_lock accepts any port when queried with zero", "[gateway][process]")
+{
+    TempDirGuard                  temp;
+    const boost::filesystem::path lock = temp.path / "snapmaker_control.lock";
+
+    SECTION("zero port matches a lock recorded for a different port")
+    {
+        write_lock_file(lock, R"({"pid": 4242, "port": 30996, "mode": "orca", "state": "serving"})");
+        const auto pid = ConnectionProcessManager::owner_pid_from_lock(lock, 0);
+        REQUIRE(pid.has_value());
+        REQUIRE(*pid == 4242u);
+    }
+
+    SECTION("zero port still rejects invalid lock content")
+    {
+        write_lock_file(lock, R"({"pid": 4242, "port": 30996, "mode": "orca", "state": "starting"})");
+        REQUIRE_FALSE(ConnectionProcessManager::owner_pid_from_lock(lock, 0).has_value());
+    }
+}
+
+#if defined(__APPLE__) || defined(__linux__)
+
+#include <cerrno>
+#include <signal.h>
+#include <unistd.h>
+
+namespace {
+std::uint64_t dead_test_pid()
+{
+    for (std::uint64_t candidate = 40001; candidate < 40100; ++candidate)
+        if (::kill(static_cast<pid_t>(candidate), 0) != 0 && errno == ESRCH)
+            return candidate;
+    return 1; // init always exists; keeps the live-owner branch meaningful even here.
+}
+} // namespace
+
+TEST_CASE("remove_stale_lock only clears locks of exited owners", "[gateway][process]")
+{
+    TempDirGuard                  temp;
+    const boost::filesystem::path lock = temp.path / "snapmaker_control.lock";
+
+    SECTION("missing file removes nothing") { REQUIRE_FALSE(ConnectionProcessManager::remove_stale_lock(lock, 0, std::nullopt)); }
+
+    SECTION("dead owner is cleared, with and without a port constraint")
+    {
+        const std::uint64_t dead = dead_test_pid();
+        write_lock_file(lock, R"({"pid": )" + std::to_string(dead) + R"(, "port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE(ConnectionProcessManager::remove_stale_lock(lock, 0, std::nullopt));
+        REQUIRE_FALSE(boost::filesystem::exists(lock));
+
+        write_lock_file(lock, R"({"pid": )" + std::to_string(dead) + R"(, "port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE(ConnectionProcessManager::remove_stale_lock(lock, 30996, dead));
+        REQUIRE_FALSE(boost::filesystem::exists(lock));
+    }
+
+    SECTION("live owner is never cleared")
+    {
+        const std::uint64_t self = static_cast<std::uint64_t>(::getpid());
+        write_lock_file(lock, R"({"pid": )" + std::to_string(self) + R"(, "port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::remove_stale_lock(lock, 0, std::nullopt));
+        REQUIRE(boost::filesystem::exists(lock));
+    }
+
+    SECTION("recorded pid different from the expected pid keeps the lock")
+    {
+        const std::uint64_t dead = dead_test_pid();
+        write_lock_file(lock, R"({"pid": )" + std::to_string(dead) + R"(, "port": 30996, "mode": "orca", "state": "serving"})");
+        // Another host replaced the owner between reads: the expected pid no longer matches.
+        REQUIRE_FALSE(ConnectionProcessManager::remove_stale_lock(lock, 0, dead + 1));
+        REQUIRE(boost::filesystem::exists(lock));
+    }
+
+    SECTION("port mismatch with a non-zero port keeps the lock")
+    {
+        const std::uint64_t dead = dead_test_pid();
+        write_lock_file(lock, R"({"pid": )" + std::to_string(dead) + R"(, "port": 30996, "mode": "orca", "state": "serving"})");
+        REQUIRE_FALSE(ConnectionProcessManager::remove_stale_lock(lock, 30997, std::nullopt));
+        REQUIRE(boost::filesystem::exists(lock));
+    }
+}
+
+#endif // defined(__APPLE__) || defined(__linux__)
