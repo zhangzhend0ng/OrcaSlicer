@@ -2077,6 +2077,12 @@ GUI_App::~GUI_App()
         BOOST_LOG_TRIVIAL(warning) << "~GUI_App: version-check callbacks still in flight, proceeding with teardown";
 
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": enter");
+    // The preset updater's worker can still read app_config and preset_bundle.
+    if (preset_updater != nullptr) {
+        BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": destroy preset updater");
+        delete preset_updater;
+    }
+
     if (app_config != nullptr) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": destroy app_config");
         delete app_config;
@@ -2085,11 +2091,6 @@ GUI_App::~GUI_App()
     if (preset_bundle != nullptr) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": destroy preset_bundle");
         delete preset_bundle;
-    }
-
-    if (preset_updater != nullptr) {
-        BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": destroy preset updater");
-        delete preset_updater;
     }
 
     AllowlistManager::uninit();

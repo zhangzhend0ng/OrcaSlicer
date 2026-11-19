@@ -1,6 +1,7 @@
 #include "PresetUpdater.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <boost/filesystem/operations.hpp>
 #include <boost/nowide/fstream.hpp>
 #include <functional>
@@ -250,7 +251,7 @@ struct PresetUpdater::priv
 	fs::path rsrc_path;
 	fs::path vendor_path;
 
-	bool cancel;
+	std::atomic<bool> cancel;
 	std::thread thread;
 
 	bool has_waiting_updates { false };
@@ -876,6 +877,9 @@ void PresetUpdater::priv::download_profiles_resource_async(const std::string& ur
 // Orca: sync config update for currect App version
 void PresetUpdater::priv::sync_config(bool isAuto_check)
 {
+    if (cancel.load())
+        return;
+
     auto cache_profile_path        = cache_path;
   
     AppConfig *app_config = GUI::wxGetApp().app_config;
@@ -884,7 +888,11 @@ void PresetUpdater::priv::sync_config(bool isAuto_check)
     // parse the assets section and get the latest asset by comparing the name
 
     Http::get(profile_update_url)
-        .on_error([cache_profile_path, isAuto_check](std::string body, std::string error, unsigned http_status) {
+        .on_progress([this](Http::Progress, bool& cancel_http) { cancel_http = cancel.load(); })
+        .on_error([this, isAuto_check](std::string body, std::string error, unsigned http_status) {
+            if (cancel.load())
+                return;
+
             // Orca: we check the response body to see if it's "Not Found", if so, it means for the current Orca version we don't have OTA
             // updates, we can delete the cache file
             wxCommandEvent* evt = new wxCommandEvent(EVT_REQUEST_SERVER_FAIL);
@@ -895,9 +903,9 @@ void PresetUpdater::priv::sync_config(bool isAuto_check)
             BOOST_LOG_TRIVIAL(info) << format("Error getting: `%1%`: HTTP %2%, %3%", "sync_config_orca", http_status, error);
         })
         .timeout_connect(TIMEOUT_CONNECT)
+        .timeout_max(30)
         .on_complete([this, cache_profile_path, isAuto_check](std::string body, unsigned http_status) {
-            // Http response OK
-            if (http_status != 200)
+            if (cancel.load() || http_status != 200)
                 return;
    
             json jsonObj = json::parse(body);
